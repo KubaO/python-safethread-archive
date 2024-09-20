@@ -53,6 +53,7 @@ all_feature_names = [
     "division",
     "absolute_import",
     "with_statement",
+    "shared_module",
 ]
 
 __all__ = ["all_feature_names"] + all_feature_names
@@ -66,6 +67,7 @@ CO_GENERATOR_ALLOWED = 0        # generators (obsolete, was 0x1000)
 CO_FUTURE_DIVISION   = 0x2000   # division
 CO_FUTURE_ABSOLUTE_IMPORT = 0x4000 # perform absolute imports by default
 CO_FUTURE_WITH_STATEMENT  = 0x8000   # with statement
+CO_FUTURE_SHARED_MODULE   = 0x0800 # module shared between threads
 
 class _Feature:
     def __init__(self, optionalRelease, mandatoryRelease, compiler_flag):
@@ -114,3 +116,8 @@ absolute_import = _Feature((2, 5, 0, "alpha", 1),
 with_statement = _Feature((2, 5, 0, "alpha", 1),
                           (2, 6, 0, "alpha", 0),
                           CO_FUTURE_WITH_STATEMENT)
+
+shared_module = _Feature((3, 1, 0, "alpha", 1),
+                          (4, 0, 0, "alpha", 0),
+                          CO_FUTURE_SHARED_MODULE)
+shared_module = '__future__.shared_module XXX FIXME'

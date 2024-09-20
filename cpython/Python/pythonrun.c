@@ -59,15 +59,21 @@ static void err_input(perrdetail *);
 static void initsigs(void);
 static void call_py_exitfuncs(void);
 static void call_ll_exitfuncs(void);
+extern void _PyGC_Init(void);
+extern void _PyUnicode_PreInit(void);
 extern void _PyUnicode_Init(void);
 extern void _PyUnicode_Fini(void);
+extern void _PyUnicode_PostFini(void);
+extern void _PyString_PostFini(void);
+extern void _PyDict_PreInit(void);
 extern int _PyLong_Init(void);
 extern void PyLong_Fini(void);
 
-#ifdef WITH_THREAD
-extern void _PyGILState_Init(PyInterpreterState *, PyThreadState *);
-extern void _PyGILState_Fini(void);
-#endif /* WITH_THREAD */
+extern void _PyState_InitThreads(void);
+extern void _PyState_Fini(void);
+
+extern void _Py_Refchain_Init(void);
+extern void _Py_Refchain_Fini(void);
 
 int Py_DebugFlag; /* Needed by parser.c */
 int Py_VerboseFlag; /* Needed by import.c */
@@ -149,7 +155,7 @@ void
 Py_InitializeEx(int install_sigs)
 {
 	PyInterpreterState *interp;
-	PyThreadState *tstate;
+	//PyThreadState *tstate;
 	PyObject *bimod, *sysmod;
 	char *p;
 #if defined(HAVE_LANGINFO_H) && defined(CODESET)
@@ -175,27 +181,47 @@ Py_InitializeEx(int install_sigs)
 	if ((p = Py_GETENV("PYTHONOPTIMIZE")) && *p != '\0')
 		Py_OptimizeFlag = add_flag(Py_OptimizeFlag, p);
 
+	_PyGC_Init();
+
+	_Py_Refchain_Init();
+
+	_PyState_InitThreads();
+
 	interp = PyInterpreterState_New();
 	if (interp == NULL)
 		Py_FatalError("Py_Initialize: can't make first interpreter");
 
-	tstate = PyThreadState_New(interp);
-	if (tstate == NULL)
-		Py_FatalError("Py_Initialize: can't make first thread");
-	(void) PyThreadState_Swap(tstate);
+	interp->entertag = PyState_Enter();
+	if (!interp->entertag)
+		Py_FatalError("Py_Initialize: PySpace_Enter failed");
+	//tstate = PyThreadState_New(interp);
+	//if (tstate == NULL)
+	//	Py_FatalError("Py_Initialize: can't make first thread");
+	//(void) PyThreadState_Swap(tstate);
+	//PyState_Resume();
 
-	_Py_ReadyTypes();
+	/* Bare minimum before other types */
+	_PyUnicode_PreInit();
+	_PyDict_PreInit();
 
 	if (!_PyFrame_Init())
 		Py_FatalError("Py_Initialize: can't init frames");
-
+	_PyMethod_Init();
 	if (!_PyLong_Init())
 		Py_FatalError("Py_Initialize: can't init longs");
-
+	_PyFloat_Init();
+	_PyTuple_Init();
+	_PyList_Init();
+	_PySet_Init();
+	_PyString_Init();
 	if (!PyBytes_Init())
 		Py_FatalError("Py_Initialize: can't init bytes");
+	_PyCFunction_Init();
 
-	_PyFloat_Init();
+	/* Init Unicode implementation; relies on the codec registry */
+	_PyUnicode_Init();
+
+	_Py_ReadyTypes();
 
 	interp->modules = PyDict_New();
 	if (interp->modules == NULL)
@@ -204,9 +230,6 @@ Py_InitializeEx(int install_sigs)
 	if (interp->modules_reloading == NULL)
 		Py_FatalError("Py_Initialize: can't make modules_reloading dictionary");
 
-	/* Init Unicode implementation; relies on the codec registry */
-	_PyUnicode_Init();
-
 	bimod = _PyBuiltin_Init();
 	if (bimod == NULL)
 		Py_FatalError("Py_Initialize: can't initialize __builtin__");
@@ -214,6 +237,8 @@ Py_InitializeEx(int install_sigs)
 	if (interp->builtins == NULL)
 		Py_FatalError("Py_Initialize: can't initialize builtins dict");
 	Py_INCREF(interp->builtins);
+
+	_Py_ThreadTools_Init();
 
 	sysmod = _PySys_Init();
 	if (sysmod == NULL)
@@ -229,9 +254,6 @@ Py_InitializeEx(int install_sigs)
 
 	_PyImport_Init();
 
-	/* initialize builtin exceptions */
-	_PyExc_Init();
-
 	/* phase 2 of builtins */
 	_PyImport_FixupExtension("__builtin__", "__builtin__");
 
@@ -243,11 +265,6 @@ Py_InitializeEx(int install_sigs)
 	initmain(); /* Module __main__ */
 	if (!Py_NoSiteFlag)
 		initsite(); /* Module site */
-
-	/* auto-thread-state API, if available */
-#ifdef WITH_THREAD
-	_PyGILState_Init(interp, tstate);
-#endif /* WITH_THREAD */
 
 	warnings_module = PyImport_ImportModule("warnings");
 	if (!warnings_module)
@@ -358,7 +375,7 @@ Py_Finalize(void)
 	flush_std_files();
 
 	/* Get current thread state and interpreter pointer */
-	tstate = PyThreadState_GET();
+	tstate = PyThreadState_Get();
 	interp = tstate->interp;
 
 	/* Disable signal handling */
@@ -380,13 +397,13 @@ Py_Finalize(void)
 	 * XXX but I'm unclear on exactly how that one happens.  In any case,
 	 * XXX I haven't seen a real-life report of either of these.
 	 */
-	PyGC_Collect();
+	//PyGC_Collect();
 #ifdef COUNT_ALLOCS
 	/* With COUNT_ALLOCS, it helps to run GC multiple times:
 	   each collection might release some types from the type
 	   list, so they become garbage. */
-	while (PyGC_Collect() > 0)
-		/* nothing */;
+	//while (PyGC_Collect() > 0)
+	//	/* nothing */;
 #endif
 
 	/* Destroy all modules */
@@ -434,11 +451,6 @@ Py_Finalize(void)
 		_Py_PrintReferences(stderr);
 #endif /* Py_TRACE_REFS */
 
-	/* Cleanup auto-thread-state */
-#ifdef WITH_THREAD
-	_PyGILState_Fini();
-#endif /* WITH_THREAD */
-
 	/* Clear interpreter state */
 	PyInterpreterState_Clear(interp);
 
@@ -450,16 +462,13 @@ Py_Finalize(void)
 
 	_PyExc_Fini();
 
-	/* Delete current thread */
-	PyThreadState_Swap(NULL);
-	PyInterpreterState_Delete(interp);
-
 	/* Sundry finalizers */
 	PyMethod_Fini();
 	PyFrame_Fini();
 	PyCFunction_Fini();
 	PyTuple_Fini();
 	PyList_Fini();
+	PyDict_Fini();
 	PySet_Fini();
 	PyString_Fini();
 	PyBytes_Fini();
@@ -490,9 +499,24 @@ Py_Finalize(void)
 		_PyObject_DebugMallocStats();
 #endif
 
+	_PyUnicode_PostFini();
+	_PyString_PostFini();
+
 	call_ll_exitfuncs();
+
+	/* Delete current thread */
+	//PyThreadState_Swap(NULL);
+	//PyThreadState_DeleteCurrent();
+	PyState_Exit(interp->entertag);
+	PyInterpreterState_Delete(interp);
+
+	/* Cleanup auto-thread-state */
+	_PyState_Fini();
+
+	_Py_Refchain_Fini();
 }
 
+#if 0
 /* Create and initialize a new interpreter and thread, and return the
    new thread.  This requires that Py_Initialize() has been called
    first.
@@ -510,7 +534,7 @@ PyThreadState *
 Py_NewInterpreter(void)
 {
 	PyInterpreterState *interp;
-	PyThreadState *tstate, *save_tstate;
+	PyThreadState *tstate;
 	PyObject *bimod, *sysmod;
 
 	if (!initialized)
@@ -526,7 +550,8 @@ Py_NewInterpreter(void)
 		return NULL;
 	}
 
-	save_tstate = PyThreadState_Swap(tstate);
+	//save_tstate = PyThreadState_Swap(tstate);
+	PyState_Resume();
 
 	/* XXX The following is lax in error checking */
 
@@ -563,7 +588,8 @@ handle_error:
 
 	PyErr_Print();
 	PyThreadState_Clear(tstate);
-	PyThreadState_Swap(save_tstate);
+	//PyThreadState_Swap(save_tstate);
+	PyState_Suspend();
 	PyThreadState_Delete(tstate);
 	PyInterpreterState_Delete(interp);
 
@@ -587,7 +613,7 @@ Py_EndInterpreter(PyThreadState *tstate)
 {
 	PyInterpreterState *interp = tstate->interp;
 
-	if (tstate != PyThreadState_GET())
+	if (tstate != PyThreadState_Get())
 		Py_FatalError("Py_EndInterpreter: thread is not current");
 	if (tstate->frame != NULL)
 		Py_FatalError("Py_EndInterpreter: thread still has a frame");
@@ -596,9 +622,10 @@ Py_EndInterpreter(PyThreadState *tstate)
 
 	PyImport_Cleanup();
 	PyInterpreterState_Clear(interp);
-	PyThreadState_Swap(NULL);
+	//PyThreadState_Swap(NULL);
 	PyInterpreterState_Delete(interp);
 }
+#endif
 
 static char *progname = "python";
 
@@ -659,8 +686,14 @@ initsite(void)
 	PyObject *m, *f;
 	m = PyImport_ImportModule("site");
 	if (m == NULL) {
-		f = PySys_GetObject("stderr");
-		if (Py_VerboseFlag) {
+		//f = PySys_GetObject("stderr");
+		f = NULL;
+		if (f == NULL) {
+			fprintf(stderr, "'import site' failed; retrieving "
+				"sys.stderr also failed.\n");
+			PyErr_Print();
+			//PyErr_Clear();
+		} else if (Py_VerboseFlag) {
 			PyFile_WriteString(
 				"'import site' failed; traceback:\n", f);
 			PyErr_Print();
@@ -1144,11 +1177,12 @@ PyErr_Display(PyObject *exception, PyObject *value, PyObject *tb)
 	int err = 0;
 	PyObject *f = PySys_GetObject("stderr");
 	Py_INCREF(value);
-	if (f == NULL)
+
+	if (f == NULL) {
 		_PyObject_Dump(value);
-	if (f == NULL)
+		PyTraceBack_Print(tb, NULL);  /* XXX FIXME check return? */
 		fprintf(stderr, "lost sys.stderr\n");
-	else {
+	} else {
 		fflush(stdout);
 		if (tb && tb != Py_None)
 			err = PyTraceBack_Print(tb, f);

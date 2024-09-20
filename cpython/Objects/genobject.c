@@ -14,35 +14,51 @@ gen_traverse(PyGenObject *gen, visitproc visit, void *arg)
 	return 0;
 }
 
+static inline int
+bitcount(AO_t num)
+{
+	int count = 0;
+	while (num) {
+		count += num & 1;
+		num >>= 1;
+	}
+	return count;
+}
+
 static void
 gen_dealloc(PyGenObject *gen)
 {
-	PyObject *self = (PyObject *) gen;
-
 	_PyObject_GC_UNTRACK(gen);
 
-	if (gen->gi_weakreflist != NULL)
-		PyObject_ClearWeakRefs(self);
-
-	_PyObject_GC_TRACK(self);
-
 	if (gen->gi_frame != NULL && gen->gi_frame->f_stacktop != NULL) {
-		/* Generator is paused, so we need to close */
-		Py_Type(gen)->tp_del(self);
-		if (self->ob_refcnt > 0)
-			return;		/* resurrected.  :( */
+		/* XXX We should require all generators with "try"
+		 * blocks to be bound to the stack before first running
+		 * them, making this impossible. */
+		static AO_t warning_count = 0;
+		AO_t current = AO_fetch_and_add1_full(&warning_count) + 1;
+
+		/* This might get printed out of order, but who cares?
+		 * Heck, there's no guarantee the printing itself is
+		 * atomic. */
+		/* All we do here is check for powers of 2.  The key to
+		 * this test is that the only time your mask won't
+		 * include your most-significant-bit is when it rolls
+		 * over from 0x100 to 0xFF. */
+		if (current != 0 && !(current & (current - 1)))
+			fprintf(stderr, "Warning: deleting paused "
+				"generator without closing, %lu times\n",
+				current);
 	}
 
-	_PyObject_GC_UNTRACK(self);
 	Py_CLEAR(gen->gi_frame);
-	PyObject_GC_Del(gen);
+	PyObject_DEL(gen);
 }
 
 
 static PyObject *
 gen_send_ex(PyGenObject *gen, PyObject *arg, int exc)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyThreadState *tstate = PyThreadState_Get();
 	PyFrameObject *f = gen->gi_frame;
 	PyObject *result;
 
@@ -140,67 +156,6 @@ gen_close(PyGenObject *gen, PyObject *args)
 		return Py_None;
 	}
 	return NULL;
-}
-
-static void
-gen_del(PyObject *self)
-{
-        PyObject *res;
-        PyObject *error_type, *error_value, *error_traceback;
-	PyGenObject *gen = (PyGenObject *)self;
-
-	if (gen->gi_frame == NULL || gen->gi_frame->f_stacktop == NULL)
-		/* Generator isn't paused, so no need to close */
-		return;
-
-        /* Temporarily resurrect the object. */
-        assert(self->ob_refcnt == 0);
-        self->ob_refcnt = 1;
-
-        /* Save the current exception, if any. */
-        PyErr_Fetch(&error_type, &error_value, &error_traceback);
-
-	res = gen_close(gen, NULL);
-
-	if (res == NULL)
-		PyErr_WriteUnraisable(self);
-	else
-		Py_DECREF(res);
-
-        /* Restore the saved exception. */
-        PyErr_Restore(error_type, error_value, error_traceback);
-
-        /* Undo the temporary resurrection; can't use DECREF here, it would
-         * cause a recursive call.
-         */
-        assert(self->ob_refcnt > 0);
-        if (--self->ob_refcnt == 0)
-                return; /* this is the normal path out */
-
-        /* close() resurrected it!  Make it look like the original Py_DECREF
-         * never happened.
-         */
-        {
-                Py_ssize_t refcnt = self->ob_refcnt;
-                _Py_NewReference(self);
-                self->ob_refcnt = refcnt;
-        }
-        assert(PyType_IS_GC(self->ob_type) &&
-               _Py_AS_GC(self)->gc.gc_refs != _PyGC_REFS_UNTRACKED);
-
-        /* If Py_REF_DEBUG, _Py_NewReference bumped _Py_RefTotal, so
-         * we need to undo that. */
-        _Py_DEC_REFTOTAL;
-        /* If Py_TRACE_REFS, _Py_NewReference re-added self to the object
-         * chain, so no more to do there.
-         * If COUNT_ALLOCS, the original decref bumped tp_frees, and
-         * _Py_NewReference bumped tp_allocs:  both of those need to be
-         * undone.
-         */
-#ifdef COUNT_ALLOCS
-        --self->ob_type->tp_frees;
-        --self->ob_type->tp_allocs;
-#endif
 }
 
 
@@ -332,22 +287,19 @@ PyTypeObject PyGen_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	0,					/* tp_new */
-	0,					/* tp_free */
 	0,					/* tp_is_gc */
 	0,					/* tp_bases */
 	0,					/* tp_mro */
 	0,					/* tp_cache */
 	0,					/* tp_subclasses */
 	0,					/* tp_weaklist */
-	gen_del,				/* tp_del */
 };
 
 PyObject *
 PyGen_New(PyFrameObject *f)
 {
-	PyGenObject *gen = PyObject_GC_New(PyGenObject, &PyGen_Type);
+	PyGenObject *gen = PyObject_NEW(PyGenObject, &PyGen_Type);
 	if (gen == NULL) {
 		Py_DECREF(f);
 		return NULL;
@@ -355,7 +307,6 @@ PyGen_New(PyFrameObject *f)
 	gen->gi_frame = f;
 	gen->gi_running = 0;
 	gen->gi_weakreflist = NULL;
-	_PyObject_GC_TRACK(gen);
 	return (PyObject *)gen;
 }
 

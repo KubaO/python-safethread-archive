@@ -17,13 +17,22 @@ static PyMemberDef module_members[] = {
 PyObject *
 PyModule_New(const char *name)
 {
+	return PyModule_NewEx(name, 0);
+}
+
+PyObject *
+PyModule_NewEx(const char *name, int shared)
+{
 	PyModuleObject *m;
 	PyObject *nameobj;
-	m = PyObject_GC_New(PyModuleObject, &PyModule_Type);
+	m = PyObject_NEW(PyModuleObject, &PyModule_Type);
 	if (m == NULL)
 		return NULL;
 	nameobj = PyUnicode_FromString(name);
-	m->md_dict = PyDict_New();
+	if (shared)
+		m->md_dict = PyObject_CallObject((PyObject *)&PySharedDict_Type, NULL);
+	else
+		m->md_dict = PyDict_New();
 	if (m->md_dict == NULL || nameobj == NULL)
 		goto fail;
 	if (PyDict_SetItemString(m->md_dict, "__name__", nameobj) != 0)
@@ -31,7 +40,6 @@ PyModule_New(const char *name)
 	if (PyDict_SetItemString(m->md_dict, "__doc__", Py_None) != 0)
 		goto fail;
 	Py_DECREF(nameobj);
-	PyObject_GC_Track(m);
 	return (PyObject *)m;
 
  fail:
@@ -176,7 +184,7 @@ module_dealloc(PyModuleObject *m)
 		_PyModule_Clear((PyObject *)m);
 		Py_DECREF(m->md_dict);
 	}
-	Py_Type(m)->tp_free((PyObject *)m);
+	PyObject_DEL(m);
 }
 
 static PyObject *
@@ -208,6 +216,18 @@ module_traverse(PyModuleObject *m, visitproc visit, void *arg)
 	return 0;
 }
 
+static int
+module_isshareable(PyModuleObject *m)
+{
+	/* XXX FIXME HACK! */
+	const char *name = PyModule_GetName((PyObject *)m);
+	if (strcmp(name, "sys") == 0 || strcmp(name, "os") == 0 ||
+			strcmp(name, "io") == 0)
+		return 1;
+
+	return PyObject_IsShareable(m->md_dict);
+}
+
 PyDoc_STRVAR(module_doc,
 "module(name[, doc])\n\
 \n\
@@ -235,7 +255,8 @@ PyTypeObject PyModule_Type = {
 	PyObject_GenericSetAttr,		/* tp_setattro */
 	0,					/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-		Py_TPFLAGS_BASETYPE,		/* tp_flags */
+		Py_TPFLAGS_BASETYPE |
+		Py_TPFLAGS_SHAREABLE,		/* tp_flags */
 	module_doc,				/* tp_doc */
 	(traverseproc)module_traverse,		/* tp_traverse */
 	0,					/* tp_clear */
@@ -252,7 +273,12 @@ PyTypeObject PyModule_Type = {
 	0,					/* tp_descr_set */
 	offsetof(PyModuleObject, md_dict),	/* tp_dictoffset */
 	(initproc)module_init,			/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	PyType_GenericNew,			/* tp_new */
-	PyObject_GC_Del,		        /* tp_free */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	(isshareablefunc)module_isshareable,	/* tp_isshareable */
 };

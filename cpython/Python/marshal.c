@@ -231,7 +231,7 @@ w_object(PyObject *v, WFILE *p)
 	}
 #endif
 	else if (PyString_Check(v)) {
-		if (p->strings && PyString_CHECK_INTERNED(v)) {
+		if (p->strings && _PyString_SnoopState((PyStringObject *)v)) {
 			PyObject *o = PyDict_GetItem(p->strings, v);
 			if (o) {
 				long w = PyInt_AsLong(o);

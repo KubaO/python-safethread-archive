@@ -114,7 +114,7 @@ mmap_object_dealloc(mmap_object *m_obj)
 	}
 #endif /* UNIX */
 
-	PyObject_Del(m_obj);
+	PyObject_DEL(m_obj);
 }
 
 static PyObject *
@@ -965,7 +965,7 @@ new_mmap_object(PyObject *self, PyObject *args, PyObject *kwdict)
 		}
 	}
 #endif
-	m_obj = PyObject_New(mmap_object, &mmap_object_type);
+	m_obj = PyObject_NEW(mmap_object, &mmap_object_type);
 	if (m_obj == NULL) {return NULL;}
 	m_obj->data = NULL;
 	m_obj->size = (size_t) map_size;
@@ -1083,7 +1083,7 @@ new_mmap_object(PyObject *self, PyObject *args, PyObject *kwdict)
 		lseek(fileno, 0, SEEK_SET);
 	}
 
-	m_obj = PyObject_New(mmap_object, &mmap_object_type);
+	m_obj = PyObject_NEW(mmap_object, &mmap_object_type);
 	if (m_obj == NULL)
 		return NULL;
 	/* Set every field to an invalid marker, so we can safely

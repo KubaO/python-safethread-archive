@@ -10,6 +10,7 @@ class DictTest(unittest.TestCase):
         # calling built-in types without argument must return empty
         self.assertEqual(dict(), {})
         self.assert_(dict() is not {})
+        self.assertRaises(TypeError, dict, {'a': 7}, {'a': 42})
 
     def test_bool(self):
         self.assert_(not {})
@@ -632,6 +633,58 @@ class DictTest(unittest.TestCase):
         d[9] = 6
 
 
+class FrozenDictTest(unittest.TestCase):
+    def test_constructor(self):
+        # calling built-in types without argument must return empty
+        self.assertEqual(frozendict(), {})
+        # XXX This could change
+        self.assert_(frozendict() is not frozendict())
+
+    def test_clear(self):
+        d = frozendict()
+        self.assertRaises(TypeError, d.clear)
+        d = frozendict({1:1, 2:2, 3:3})
+        self.assertRaises(TypeError, d.clear)
+
+    def test_update(self):
+        d = frozendict()
+        self.assertRaises(TypeError, d.update, {})
+        self.assertRaises(TypeError, d.update, {1:100})
+
+    def test_fromkeys(self):
+        self.assertEqual(frozendict.fromkeys(set('abc')), {'a':None, 'b':None, 'c':None})
+        self.assertEqual(frozendict.fromkeys('abc'), {'a':None, 'b':None, 'c':None})
+        d = frozendict({})
+        self.assert_(not(d.fromkeys('abc') is d))
+        self.assertEqual(d.fromkeys('abc'), {'a':None, 'b':None, 'c':None})
+        self.assertEqual(d.fromkeys((4,5),0), {4:0, 5:0})
+        self.assertEqual(d.fromkeys([]), {})
+        def g():
+            yield 1
+        self.assertEqual(d.fromkeys(g()), {1:None})
+        self.assertRaises(TypeError, frozendict.fromkeys, 3)
+        self.assertRaises(TypeError, frozendict.fromkeys)
+
+        class Exc(Exception): pass
+
+        class BadSeq(object):
+            def __iter__(self):
+                return self
+            def __next__(self):
+                raise Exc()
+
+        self.assertRaises(Exc, frozendict.fromkeys, BadSeq())
+
+    def test_setdefault(self):
+        self.assertRaises(TypeError, frozendict().setdefault, 'a', 'b')
+
+    def test_popitem(self):
+        self.assertRaises(TypeError, frozendict().popitem, 'a')
+
+    def test_pop(self):
+        self.assertRaises(TypeError, frozendict().pop)
+
+
 from test import mapping_tests
 
 class GeneralMappingTests(mapping_tests.BasicTestMappingProtocol):
@@ -646,6 +699,7 @@ class SubclassMappingTests(mapping_tests.BasicTestMappingProtocol):
 def test_main():
     test_support.run_unittest(
         DictTest,
+        FrozenDictTest,
         GeneralMappingTests,
         SubclassMappingTests,
     )

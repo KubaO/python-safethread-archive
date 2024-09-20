@@ -533,7 +533,7 @@ logreader_dealloc(LogReaderObject *self)
         self->logfp = NULL;
     }
     Py_XDECREF(self->info);
-    PyObject_Del(self);
+    PyObject_DEL(self);
 }
 
 static PyObject *
@@ -1164,7 +1164,7 @@ profiler_dealloc(ProfilerObject *self)
         fclose(self->logfp);
     Py_XDECREF(self->filemap);
     Py_XDECREF(self->logfilename);
-    PyObject_Del((PyObject *)self);
+    PyObject_DEL((PyObject *)self);
 }
 
 static PyMethodDef profiler_methods[] = {
@@ -1349,7 +1349,7 @@ hotshot_logreader(PyObject *unused, PyObject *args)
     int err = 0;
 
     if (PyArg_ParseTuple(args, "s:logreader", &filename)) {
-        self = PyObject_New(LogReaderObject, &LogReaderType);
+        self = PyObject_NEW(LogReaderObject, &LogReaderType);
         if (self != NULL) {
             self->frametimings = 1;
             self->linetimings = 0;
@@ -1500,7 +1500,7 @@ hotshot_profiler(PyObject *unused, PyObject *args)
 
     if (PyArg_ParseTuple(args, "s|ii:profiler", &logfilename,
                          &lineevents, &linetimings)) {
-        self = PyObject_New(ProfilerObject, &ProfilerType);
+        self = PyObject_NEW(ProfilerObject, &ProfilerType);
         if (self == NULL)
             return NULL;
         self->frametimings = 1;

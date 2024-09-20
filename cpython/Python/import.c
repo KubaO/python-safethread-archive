@@ -14,6 +14,7 @@
 #include "eval.h"
 #include "osdefs.h"
 #include "importdl.h"
+#include "pystate.h"
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
@@ -253,7 +254,7 @@ lock_import(void)
 	if (me == -1)
 		return; /* Too bad */
 	if (import_lock == NULL) {
-		import_lock = PyThread_allocate_lock();
+		import_lock = PyThread_lock_allocate();
 		if (import_lock == NULL)
 			return;  /* Nothing much we can do. */
 	}
@@ -261,11 +262,14 @@ lock_import(void)
 		import_lock_level++;
 		return;
 	}
-	if (import_lock_thread != -1 || !PyThread_acquire_lock(import_lock, 0))
+	if (import_lock_thread != -1 || !_PyThread_lock_tryacquire(import_lock))
 	{
-		PyThreadState *tstate = PyEval_SaveThread();
-		PyThread_acquire_lock(import_lock, 1);
-		PyEval_RestoreThread(tstate);
+		//PyThreadState *tstate = PyEval_SaveThread();
+		PyState_Suspend();
+		PyThread_lock_acquire(import_lock);
+		/* XXX This should be replaced with a "large lock" with deadlock detection */
+		//PyEval_RestoreThread(tstate);
+		PyState_Resume();
 	}
 	import_lock_thread = me;
 	import_lock_level = 1;
@@ -282,7 +286,7 @@ unlock_import(void)
 	import_lock_level--;
 	if (import_lock_level == 0) {
 		import_lock_thread = -1;
-		PyThread_release_lock(import_lock);
+		PyThread_lock_release(import_lock);
 	}
 	return 1;
 }
@@ -295,7 +299,7 @@ _PyImport_ReInitLock(void)
 {
 #ifdef _AIX
 	if (import_lock != NULL)
-		import_lock = PyThread_allocate_lock();
+		import_lock = PyThread_lock_allocate();
 #endif
 }
 
@@ -353,7 +357,7 @@ imp_modules_reloading_clear(void)
 PyObject *
 PyImport_GetModuleDict(void)
 {
-	PyInterpreterState *interp = PyThreadState_GET()->interp;
+	PyInterpreterState *interp = PyThreadState_Get()->interp;
 	if (interp->modules == NULL)
 		Py_FatalError("PyImport_GetModuleDict: no module dictionary!");
 	return interp->modules;
@@ -384,7 +388,7 @@ PyImport_Cleanup(void)
 	Py_ssize_t pos, ndone;
 	char *name;
 	PyObject *key, *value, *dict;
-	PyInterpreterState *interp = PyThreadState_GET()->interp;
+	PyInterpreterState *interp = PyThreadState_Get()->interp;
 	PyObject *modules = interp->modules;
 
 	if (modules == NULL)
@@ -452,7 +456,7 @@ PyImport_Cleanup(void)
 		ndone = 0;
 		pos = 0;
 		while (PyDict_Next(modules, &pos, &key, &value)) {
-			if (value->ob_refcnt != 1)
+			if (!Py_RefcntMatches(value, 1))
 				continue;
 			if (PyUnicode_Check(key) && PyModule_Check(value)) {
 				name = PyUnicode_AsString(key);
@@ -589,13 +593,19 @@ _PyImport_FindExtension(char *name, char *filename)
 PyObject *
 PyImport_AddModule(const char *name)
 {
+	return PyImport_AddModuleEx(name, 0);
+}
+
+PyObject *
+PyImport_AddModuleEx(const char *name, int shared)
+{
 	PyObject *modules = PyImport_GetModuleDict();
 	PyObject *m;
 
 	if ((m = PyDict_GetItemString(modules, name)) != NULL &&
 	    PyModule_Check(m))
 		return m;
-	m = PyModule_New(name);
+	m = PyModule_NewEx(name, shared);
 	if (m == NULL)
 		return NULL;
 	if (PyDict_SetItemString(modules, name, m) != 0) {
@@ -637,10 +647,17 @@ PyImport_ExecCodeModuleEx(char *name, PyObject *co, char *pathname)
 {
 	PyObject *modules = PyImport_GetModuleDict();
 	PyObject *m, *d, *v;
+	int shared = 0;
 
-	m = PyImport_AddModule(name);
-	if (m == NULL)
+	PyState_EnterImport(); /* XXX should probably be done earlier */
+	if (((PyCodeObject *)co)->co_flags & CO_FUTURE_SHARED_MODULE)
+		shared = 1;
+
+	m = PyImport_AddModuleEx(name, shared);
+	if (m == NULL) {
+		PyState_ExitImport();
 		return NULL;
+	}
 	/* If the module is being reloaded, we get the old module back
 	   and re-use its dict to exec the new code. */
 	d = PyModule_GetDict(m);
@@ -673,15 +690,18 @@ PyImport_ExecCodeModuleEx(char *name, PyObject *co, char *pathname)
 		PyErr_Format(PyExc_ImportError,
 			     "Loaded module %.200s not found in sys.modules",
 			     name);
+		PyState_ExitImport();
 		return NULL;
 	}
 
 	Py_INCREF(m);
 
+	PyState_ExitImport();
 	return m;
 
   error:
 	_RemoveModule(name);
+	PyState_ExitImport();
 	return NULL;
 }
 
@@ -2975,7 +2995,6 @@ static PyTypeObject NullImporterType = {
 	0,                         /* tp_descr_set */
 	0,                         /* tp_dictoffset */
 	(initproc)NullImporter_init,      /* tp_init */
-	0,                         /* tp_alloc */
 	PyType_GenericNew          /* tp_new */
 };
 

@@ -58,7 +58,7 @@ get_small_int(int ival)
 /* If a freshly-allocated long is already shared, it must
    be a small integer, so negating it must go to PyLong_FromLong */
 #define NEGATE(x) \
-	do if (Py_Refcnt(x) == 1) Py_Size(x) = -Py_Size(x);  \
+	do if (Py_RefcntMatches(x, 1)) Py_Size(x) = -Py_Size(x);  \
 	   else { PyObject* tmp=PyInt_FromLong(-MEDIUM_VALUE(x));  \
 		   Py_DECREF(x); (x) = (PyLongObject*)tmp; }	   \
         while(0)
@@ -89,12 +89,6 @@ static PyLongObject *mul1(PyLongObject *, wdigit);
 static PyLongObject *muladd1(PyLongObject *, wdigit, wdigit);
 static PyLongObject *divrem1(PyLongObject *, digit, digit *);
 
-#define SIGCHECK(PyTryBlock) \
-	if (--_Py_Ticker < 0) { \
-		_Py_Ticker = _Py_CheckInterval; \
-		if (PyErr_CheckSignals()) PyTryBlock \
-	}
-
 /* Normalize (remove leading zeros from) a long int object.
    Doesn't attempt to free the storage--in most cases, due to the nature
    of the algorithms used, this could save at most be one word anyway. */
@@ -118,7 +112,7 @@ long_normalize(register PyLongObject *v)
 PyLongObject *
 _PyLong_New(Py_ssize_t size)
 {
-	PyLongObject *result;
+	//PyLongObject *result;
 	/* Can't use sizeof(PyLongObject) here, since the
 	   compiler takes padding at the end into account.
 	   As the consequence, this would waste 2 bytes on
@@ -126,13 +120,18 @@ _PyLong_New(Py_ssize_t size)
 	   This computation would be incorrect on systems
 	   which have padding before the digits; with 16-bit
 	   digits this should not happen. */
-	result = PyObject_MALLOC(sizeof(PyVarObject) + 
-				 size*sizeof(digit));
-	if (!result) {
-		PyErr_NoMemory();
-		return NULL;
-	}
-	return (PyLongObject*)PyObject_INIT_VAR(result, &PyLong_Type, size);
+	//result = PyObject_MALLOC(sizeof(PyVarObject) + 
+	//			 size*sizeof(digit));
+	//result = (PyLongObject *) _PyObject_GC_Malloc(sizeof(PyVarObject) +
+	//		size * sizeof(digit));
+	/* XXX FIXME _PyObject_GC_Malloc already calls PyErr_NoMemory */
+	//if (!result) {
+	//	PyErr_NoMemory();
+	//	return NULL;
+	//}
+	//return (PyLongObject*)PyObject_INIT_VAR(result, &PyLong_Type, size);
+	/* XXX FIXME reduce extra size somehow */
+	return PyObject_NEWVAR(PyLongObject, &PyLong_Type, size);
 }
 
 PyObject *
@@ -172,6 +171,15 @@ PyLong_FromLong(long ival)
 
 	CHECK_SMALL_INT(ival);
 
+#if 0
+	{
+		static AO_t count;
+		AO_t cur = AO_fetch_and_add1_full(&count);
+		if ((cur % 100) == 0)
+			printf("count: %llu\n", (unsigned long long)cur);
+	}
+#endif
+
 	if (ival < 0) {
 		ival = -ival;
 		sign = -1;
@@ -191,6 +199,8 @@ PyLong_FromLong(long ival)
 	if (!(ival >> 2*PyLong_SHIFT)) {
 		v = _PyLong_New(2);
 		if (v) {
+			//printf("Moo: long %p  value %08ld  thread %p\n", v, ival, PyThreadState_Get());
+			//printf("Moo: long %p  thread %p\n", v, PyThreadState_Get());
 			Py_Size(v) = 2*sign;
 			v->ob_digit[0] = (digit)ival & PyLong_MASK;
 			v->ob_digit[1] = ival >> PyLong_SHIFT;
@@ -1512,11 +1522,11 @@ _PyLong_Format(PyObject *aa, int base)
 			pin = scratch->ob_digit; /* no need to use a again */
 			if (pin[size - 1] == 0)
 				--size;
-			SIGCHECK({
+			if (PyThreadState_Tick()) {
 				Py_DECREF(scratch);
 				Py_DECREF(str);
 				return NULL;
-			})
+			}
 
 			/* Break rem into digits. */
 			assert(ntostore > 0);
@@ -2043,7 +2053,7 @@ x_divrem(PyLongObject *v1, PyLongObject *w1, PyLongObject **prem)
 	}
 
 	assert(size_v >= size_w && size_w > 1); /* Assert checks by div() */
-	assert(Py_Refcnt(v) == 1); /* Since v will be used as accumulator! */
+	assert(Py_RefcntMatches(v, 1)); /* Since v will be used as accumulator! */
 	assert(size_w == ABS(Py_Size(w))); /* That's how d was calculated */
 
 	size_v = ABS(Py_Size(v));
@@ -2056,11 +2066,11 @@ x_divrem(PyLongObject *v1, PyLongObject *w1, PyLongObject **prem)
 		stwodigits carry = 0;
 		int i;
 
-		SIGCHECK({
+		if (PyThreadState_Tick()) {
 			Py_DECREF(a);
 			a = NULL;
 			break;
-		})
+		}
 		if (vj == w->ob_digit[size_w-1])
 			q = PyLong_MASK;
 		else
@@ -2129,7 +2139,7 @@ x_divrem(PyLongObject *v1, PyLongObject *w1, PyLongObject **prem)
 static void
 long_dealloc(PyObject *v)
 {
-	Py_Type(v)->tp_free(v);
+	PyObject_Del(v);
 }
 
 static PyObject *
@@ -2396,10 +2406,10 @@ x_mul(PyLongObject *a, PyLongObject *b)
 			digit *pa = a->ob_digit + i + 1;
 			digit *paend = a->ob_digit + size_a;
 
-			SIGCHECK({
+			if (PyThreadState_Tick()) {
 				Py_DECREF(z);
 				return NULL;
-			})
+			}
 
 			carry = *pz + f * f;
 			*pz++ = (digit)(carry & PyLong_MASK);
@@ -2434,10 +2444,10 @@ x_mul(PyLongObject *a, PyLongObject *b)
 			digit *pb = b->ob_digit;
 			digit *pbend = b->ob_digit + size_b;
 
-			SIGCHECK({
+			if (PyThreadState_Tick()) {
 				Py_DECREF(z);
 				return NULL;
-			})
+			}
 
 			while (pb < pbend) {
 				carry += *pz + *pb++ * f;
@@ -3507,7 +3517,7 @@ long_subtype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	n = Py_Size(tmp);
 	if (n < 0)
 		n = -n;
-	newobj = (PyLongObject *)type->tp_alloc(type, n);
+	newobj = PyObject_NEWVAR(PyLongObject, type, n);
 	if (newobj == NULL) {
 		Py_DECREF(tmp);
 		return NULL;
@@ -3529,6 +3539,12 @@ long_getnewargs(PyLongObject *v)
 static PyObject *
 long_getN(PyLongObject *v, void *context) {
 	return PyLong_FromLong((intptr_t)context);
+}
+
+static int
+long_isshareable (PyObject *v)
+{
+	return PyLong_CheckExact(v);
 }
 
 static PyObject *
@@ -3677,7 +3693,8 @@ PyTypeObject PyLong_Type = {
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
-		Py_TPFLAGS_LONG_SUBCLASS,	/* tp_flags */
+		Py_TPFLAGS_LONG_SUBCLASS |
+		Py_TPFLAGS_SHAREABLE,		/* tp_flags */
 	long_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -3694,10 +3711,18 @@ PyTypeObject PyLong_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	long_new,				/* tp_new */
-	PyObject_Del,                           /* tp_free */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	long_isshareable,			/* tp_isshareable */
 };
+
+static const PyLongObject dummy = 
+	{PyVarObject_HEAD_INIT_NOCOMMA(&PyLong_Type, 0)};
 
 int
 _PyLong_Init(void)
@@ -3706,12 +3731,12 @@ _PyLong_Init(void)
 	int ival;
 	PyLongObject *v = small_ints;
 	for (ival = -NSMALLNEGINTS; ival < 0; ival++, v++) {
-		PyObject_INIT(v, &PyLong_Type);
+		*v = dummy;
 		Py_Size(v) = -1;
 		v->ob_digit[0] = -ival;
 	}
 	for (; ival < NSMALLPOSINTS; ival++, v++) {
-		PyObject_INIT(v, &PyLong_Type);
+		*v = dummy;
 		Py_Size(v) = ival ? 1 : 0;
 		v->ob_digit[0] = ival;
 	}

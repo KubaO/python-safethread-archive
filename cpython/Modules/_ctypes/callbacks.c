@@ -124,7 +124,9 @@ static void _CallPythonObject(void *mem,
 	PyObject *arglist = NULL;
 	Py_ssize_t nArgs;
 #ifdef WITH_THREAD
-	PyGILState_STATE state = PyGILState_Ensure();
+	PyState_EnterTag entertag = PyState_Enter();
+	if (!entertag)
+		Py_FatalError("PyState_Enter failed");
 #endif
 
 	nArgs = PySequence_Length(converters);
@@ -235,7 +237,7 @@ if (x == NULL) _AddTraceback(what, __FILE__, __LINE__ - 1), PyErr_Print()
   Done:
 	Py_XDECREF(arglist);
 #ifdef WITH_THREAD
-	PyGILState_Release(state);
+	PyState_Exit(entertag);
 #endif
 }
 
@@ -349,9 +351,6 @@ void init_callbacks_in_module(PyObject *m)
 static void LoadPython(void)
 {
 	if (!Py_IsInitialized()) {
-#ifdef WITH_THREAD
-		PyEval_InitThreads();
-#endif
 		Py_Initialize();
 	}
 }
@@ -423,16 +422,18 @@ STDAPI DllGetClassObject(REFCLSID rclsid,
 {
 	long result;
 #ifdef WITH_THREAD
-	PyGILState_STATE state;
+	PyState_EnterTag entertag;
 #endif
 
 	LoadPython();
 #ifdef WITH_THREAD
-	state = PyGILState_Ensure();
+	entertag = PyState_Enter();
+	if (!entertag)
+		Py_FatalError("PyState_Enter failed");
 #endif
 	result = Call_GetClassObject(rclsid, riid, ppv);
 #ifdef WITH_THREAD
-	PyGILState_Release(state);
+	PyState_Exit(entertag);
 #endif
 	return result;
 }
@@ -486,11 +487,13 @@ STDAPI DllCanUnloadNow(void)
 {
 	long result;
 #ifdef WITH_THREAD
-	PyGILState_STATE state = PyGILState_Ensure();
+	PyState_EnterTag entertag = PyState_Enter();
+	if (!entertag)
+		Py_FatalError("PyState_Enter failed");
 #endif
 	result = Call_CanUnloadNow();
 #ifdef WITH_THREAD
-	PyGILState_Release(state);
+	PyState_Exit(entertag);
 #endif
 	return result;
 }

@@ -1645,6 +1645,7 @@ ast_for_factor(struct compiling *c, const node *n)
             return NULL;
         s[0] = '-';
         strcpy(s + 1, STR(pnum));
+        //printf("Old %p '%s' -> new %p '%s'\n", STR(pnum), STR(pnum), s, s);
         PyObject_FREE(STR(pnum));
         STR(pnum) = s;
         return ast_for_atom(c, patom);
@@ -3117,6 +3118,7 @@ decode_unicode(const char *s, size_t len, int rawmode, const char *encoding)
     char *buf;
     char *p;
     const char *end;
+    const char *orig_s = s;
     if (encoding == NULL) {
         buf = (char *)s;
         u = NULL;
@@ -3131,6 +3133,8 @@ decode_unicode(const char *s, size_t len, int rawmode, const char *encoding)
         p = buf = PyString_AsString(u);
         end = s + len;
         while (s < end) {
+            if (*s == '\0')
+                Py_FatalError("Meh");
             if (*s == '\\') {
                 *p++ = *s++;
                 if (*s & 0x80) {
@@ -3162,9 +3166,14 @@ decode_unicode(const char *s, size_t len, int rawmode, const char *encoding)
                 *p++ = *s++;
             }
         }
+        *p = '\0';
         len = p - buf;
         s = buf;
+//        if (s[len] == '\0')
+//            Py_FatalError("Feh");
     }
+//    if (s - orig_s > strlen(orig_s))
+//        Py_FatalError("decode_unicode went too far\n");
     if (rawmode)
         v = PyUnicode_DecodeRawUnicodeEscape(s, len, NULL);
     else

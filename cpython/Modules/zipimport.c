@@ -171,7 +171,7 @@ zipimporter_dealloc(ZipImporter *self)
 	Py_XDECREF(self->archive);
 	Py_XDECREF(self->prefix);
 	Py_XDECREF(self->files);
-	Py_Type(self)->tp_free((PyObject *)self);
+	PyObject_DEL(self);
 }
 
 static PyObject *
@@ -588,9 +588,7 @@ static PyTypeObject ZipImporter_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	(initproc)zipimporter_init,		/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	PyType_GenericNew,			/* tp_new */
-	PyObject_GC_Del,			/* tp_free */
 };
 
 

@@ -6,6 +6,7 @@
 #include "frameobject.h"
 #include "opcode.h"
 #include "structmember.h"
+#include "pythread.h"
 
 #undef MIN
 #undef MAX
@@ -392,13 +393,20 @@ static PyGetSetDef frame_getsetlist[] = {
    frames could provoke free_list into growing without bound.
 */
 
+#ifndef WITH_FREETHREAD
+#define USE_FRAME_FREELIST
+#endif
+
+#ifdef USE_FRAME_FREELIST
 static PyFrameObject *free_list = NULL;
 static int numfree = 0;		/* number of frames currently in free_list */
 #define MAXFREELIST 200		/* max value for numfree */
+#endif
 
 static void
 frame_dealloc(PyFrameObject *f)
 {
+	PyThreadState *tstate = PyThreadState_Get();
 	PyObject **p, **valuestack;
 	PyCodeObject *co;
 
@@ -407,35 +415,38 @@ frame_dealloc(PyFrameObject *f)
 	/* Kill all local variables */
 	valuestack = f->f_valuestack;
 	for (p = f->f_localsplus; p < valuestack; p++)
-		Py_CLEAR(*p);
+		Py_CLEARTS(*p);
 
 	/* Free stack */
 	if (f->f_stacktop != NULL) {
 		for (p = valuestack; p < f->f_stacktop; p++)
-			Py_XDECREF(*p);
+			Py_XDECREFTS(*p);
 	}
 
-	Py_XDECREF(f->f_back);
-	Py_DECREF(f->f_builtins);
-	Py_DECREF(f->f_globals);
-	Py_CLEAR(f->f_locals);
-	Py_CLEAR(f->f_trace);
-	Py_CLEAR(f->f_exc_type);
-	Py_CLEAR(f->f_exc_value);
-	Py_CLEAR(f->f_exc_traceback);
+	Py_XDECREFTS(f->f_back);
+	Py_DECREFTS(f->f_builtins);
+	Py_DECREFTS(f->f_globals);
+	Py_CLEARTS(f->f_locals);
+	Py_CLEARTS(f->f_trace);
+	Py_CLEARTS(f->f_exc_type);
+	Py_CLEARTS(f->f_exc_value);
+	Py_CLEARTS(f->f_exc_traceback);
 
 	co = f->f_code;
+#ifdef USE_FRAME_FREELIST
 	if (co->co_zombieframe == NULL)
 		co->co_zombieframe = f;
 	else if (numfree < MAXFREELIST) {
 		++numfree;
 		f->f_back = free_list;
 		free_list = f;
-	}
-	else 
-		PyObject_GC_Del(f);
+	} else
+		PyObject_DEL(f);
+#else
+	PyObject_DEL(f);
+#endif
 
-	Py_DECREF(co);
+	Py_DECREFTS(co);
 	Py_TRASHCAN_SAFE_END(f)
 }
 
@@ -581,7 +592,7 @@ PyFrame_New(PyThreadState *tstate, PyCodeObject *code, PyObject *globals,
 				return NULL;
 		}
 		else
-			Py_INCREF(builtins);
+			Py_INCREFTS(builtins);
 
 	}
 	else {
@@ -589,27 +600,33 @@ PyFrame_New(PyThreadState *tstate, PyCodeObject *code, PyObject *globals,
 		   Save a lookup and a call. */
 		builtins = back->f_builtins;
 		assert(builtins != NULL && PyDict_Check(builtins));
-		Py_INCREF(builtins);
+		Py_INCREFTS(builtins);
 	}
+#ifdef USE_FRAME_FREELIST
 	if (code->co_zombieframe != NULL) {
 		f = code->co_zombieframe;
 		code->co_zombieframe = NULL;
 		_Py_NewReference((PyObject *)f);
 		assert(f->f_code == code);
-	}
-	else {
+	} else
+#endif
+        {
 		Py_ssize_t extras, ncells, nfrees;
 		ncells = PyTuple_GET_SIZE(code->co_cellvars);
 		nfrees = PyTuple_GET_SIZE(code->co_freevars);
 		extras = code->co_stacksize + code->co_nlocals + ncells +
 		    nfrees;
+#ifdef USE_FRAME_FREELIST
 		if (free_list == NULL) {
-		    f = PyObject_GC_NewVar(PyFrameObject, &PyFrame_Type,
+#endif
+		    f = PyObject_NEWVAR(PyFrameObject, &PyFrame_Type,
 			extras);
 		    if (f == NULL) {
-			    Py_DECREF(builtins);
+			    Py_DECREFTS(builtins);
 			    return NULL;
 		    }
+		    _PyObject_GC_UNTRACK(f); /* XXX FIXME hack */
+#ifdef USE_FRAME_FREELIST
 		}
 		else {
 		    assert(numfree > 0);
@@ -617,14 +634,23 @@ PyFrame_New(PyThreadState *tstate, PyCodeObject *code, PyObject *globals,
 		    f = free_list;
 		    free_list = free_list->f_back;
 		    if (Py_Size(f) < extras) {
+#if 0
 			    f = PyObject_GC_Resize(PyFrameObject, f, extras);
 			    if (f == NULL) {
-				    Py_DECREF(builtins);
+				    Py_DECREFTS(builtins);
 				    return NULL;
 			    }
+#else
+			    PyObject *tmp = PyObject_RESIZE(PyFrameObject, f, extras);
+			    if (tmp == NULL) {
+				Py_DECREF(f);
+				return NULL;
+			    }
+#endif
 		    }
 		    _Py_NewReference((PyObject *)f);
 		}
+#endif
 
 		f->f_code = code;
 		extras = code->co_nlocals + ncells + nfrees;
@@ -637,10 +663,10 @@ PyFrame_New(PyThreadState *tstate, PyCodeObject *code, PyObject *globals,
 	}
 	f->f_stacktop = f->f_valuestack;
 	f->f_builtins = builtins;
-	Py_XINCREF(back);
+	Py_XINCREFTS(back);
 	f->f_back = back;
-	Py_INCREF(code);
-	Py_INCREF(globals);
+	Py_INCREFTS(code);
+	Py_INCREFTS(globals);
 	f->f_globals = globals;
 	/* Most functions have CO_NEWLOCALS and CO_OPTIMIZED set. */
 	if ((code->co_flags & (CO_NEWLOCALS | CO_OPTIMIZED)) ==
@@ -649,7 +675,7 @@ PyFrame_New(PyThreadState *tstate, PyCodeObject *code, PyObject *globals,
 	else if (code->co_flags & CO_NEWLOCALS) {
 		locals = PyDict_New();
 		if (locals == NULL) {
-			Py_DECREF(f);
+			Py_DECREFTS(f);
 			return NULL;
 		}
 		f->f_locals = locals;
@@ -657,7 +683,7 @@ PyFrame_New(PyThreadState *tstate, PyCodeObject *code, PyObject *globals,
 	else {
 		if (locals == NULL)
 			locals = globals;
-		Py_INCREF(locals);
+		Py_INCREFTS(locals);
 		f->f_locals = locals;
 	}
 	f->f_tstate = tstate;
@@ -886,13 +912,15 @@ PyFrame_LocalsToFast(PyFrameObject *f, int clear)
 void
 PyFrame_Fini(void)
 {
+#ifdef USE_FRAME_FREELIST
 	while (free_list != NULL) {
 		PyFrameObject *f = free_list;
 		free_list = free_list->f_back;
-		PyObject_GC_Del(f);
+		PyObject_DEL(f);
 		--numfree;
 	}
 	assert(numfree == 0);
+#endif
 	Py_XDECREF(builtin_object);
 	builtin_object = NULL;
 }

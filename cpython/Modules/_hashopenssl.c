@@ -55,7 +55,7 @@ DEFINE_CONSTS_FOR_NEW(sha512)
 static EVPobject *
 newEVPobject(PyObject *name)
 {
-    EVPobject *retval = (EVPobject *)PyObject_New(EVPobject, &EVPtype);
+    EVPobject *retval = PyObject_NEW(EVPobject, &EVPtype);
 
     /* save the name for .name to return */
     if (retval != NULL) {

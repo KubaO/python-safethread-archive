@@ -89,10 +89,14 @@ struct _dictobject {
 };
 
 PyAPI_DATA(PyTypeObject) PyDict_Type;
+PyAPI_DATA(PyTypeObject) PyFrozenDict_Type;
+PyAPI_DATA(PyTypeObject) PySharedDict_Type;
 
 #define PyDict_Check(op) \
                  PyType_FastSubclass(Py_Type(op), Py_TPFLAGS_DICT_SUBCLASS)
 #define PyDict_CheckExact(op) (Py_Type(op) == &PyDict_Type)
+#define PyFrozenDict_Check(op) (Py_Type(op) == &PyFrozenDict_Type)
+#define PySharedDict_Check(op) (Py_Type(op) == &PySharedDict_Type)
 
 PyAPI_FUNC(PyObject *) PyDict_New(void);
 PyAPI_FUNC(PyObject *) PyDict_GetItem(PyObject *mp, PyObject *key);

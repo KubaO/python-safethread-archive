@@ -8,6 +8,8 @@
 */
 
 #include "Python.h"
+#include "pystate.h"
+#include "pythread.h"
 
 typedef PyDictEntry dictentry;
 typedef PyDictObject dictobject;
@@ -24,6 +26,39 @@ set_key_error(PyObject *arg)
 		return; /* caller will expect error to be set anyway */
 	PyErr_SetObject(PyExc_KeyError, tup);
 	Py_DECREF(tup);
+}
+
+static inline int
+block_readonlydict(PyObject *mp, int newfrozen)
+{
+#if 1
+	if ((PyFrozenDict_Check(mp) && !newfrozen) ||
+			(PySharedDict_Check(mp) &&
+			!PyThreadState_Get()->import_depth)) {
+		PyErr_Format(PyExc_TypeError,
+			"%.200s instance cannot be modified",
+			mp->ob_type->tp_name);
+		return 1;
+	}
+#endif
+	return 0;
+}
+
+static inline int
+block_unshareable_keyvalue(PyObject *mp, PyObject *v)
+{
+#if 1
+	if (PyFrozenDict_Check(mp) || PySharedDict_Check(mp)) {
+		if (!PyObject_IsShareable(v)) {
+			PyErr_Format(PyExc_TypeError,
+				"%.200s contents must be shareable, "
+				"'%s' object is not",
+				mp->ob_type->tp_name, v->ob_type->tp_name);
+			return 1;
+		}
+	}
+#endif
+	return 0;
 }
 
 /* Define this out if you don't want conversion statistics on exit. */
@@ -150,6 +185,10 @@ _PyDict_Dummy(void)
 /* forward declarations */
 static dictentry *
 lookdict_unicode(dictobject *mp, PyObject *key, long hash);
+static int
+_PyDict_MergeFromSeq2(PyObject *d, PyObject *seq2, int override, int newfrozen);
+static int
+_PyDict_Merge(PyObject *a, PyObject *b, int override, int newfrozen);
 
 #ifdef SHOW_CONVERSION_COUNTS
 static long created = 0L;
@@ -184,10 +223,16 @@ show_counts(void)
 	INIT_NONZERO_DICT_SLOTS(mp);					\
     } while(0)
 
+//#define USE_DICT_FREELIST
+
+#ifdef USE_DICT_FREELIST
 /* Dictionary reuse scheme to save calls to malloc, free, and memset */
 #define MAXFREEDICTS 80
 static PyDictObject *free_dicts[MAXFREEDICTS];
 static int num_free_dicts = 0;
+/* This lock is only used while the GIL is already held */
+static PyThread_type_lock free_dicts_lock;
+#endif
 
 PyObject *
 PyDict_New(void)
@@ -201,8 +246,11 @@ PyDict_New(void)
 		Py_AtExit(show_counts);
 #endif
 	}
+#ifdef USE_DICT_FREELIST
+	PyThread_lock_acquire(free_dicts_lock);
 	if (num_free_dicts) {
 		mp = free_dicts[--num_free_dicts];
+		PyThread_lock_release(free_dicts_lock);
 		assert (mp != NULL);
 		assert (Py_Type(mp) == &PyDict_Type);
 		_Py_NewReference((PyObject *)mp);
@@ -213,16 +261,19 @@ PyDict_New(void)
 		assert (mp->ma_table == mp->ma_smalltable);
 		assert (mp->ma_mask == PyDict_MINSIZE - 1);
 	} else {
-		mp = PyObject_GC_New(dictobject, &PyDict_Type);
+		PyThread_lock_release(free_dicts_lock);
+#endif
+		mp = PyObject_NEW(dictobject, &PyDict_Type);
 		if (mp == NULL)
 			return NULL;
 		EMPTY_TO_MINSIZE(mp);
+#ifdef USE_DICT_FREELIST
 	}
+#endif
 	mp->ma_lookup = lookdict_unicode;
 #ifdef SHOW_CONVERSION_COUNTS
 	++created;
 #endif
-	_PyObject_GC_TRACK(mp);
 	return (PyObject *)mp;
 }
 
@@ -580,10 +631,10 @@ dictresize(dictobject *mp, Py_ssize_t minused)
 PyObject *
 PyDict_GetItem(PyObject *op, PyObject *key)
 {
+	PyThreadState *tstate = PyThreadState_Get();
 	long hash;
 	dictobject *mp = (dictobject *)op;
 	dictentry *ep;
-	PyThreadState *tstate;
 	if (!PyDict_Check(op))
 		return NULL;
 	if (!PyUnicode_CheckExact(key) ||
@@ -599,7 +650,7 @@ PyDict_GetItem(PyObject *op, PyObject *key)
 	/* We can arrive here with a NULL tstate during initialization:
 	   try running "python -Wi" for an example related to string
 	   interning.  Let's just hope that no exception occurs then... */
-	tstate = _PyThreadState_Current;
+	/* XXX It's now impossible to have a NULL tstate */
 	if (tstate != NULL && tstate->curexc_type != NULL) {
 		/* preserve the existing exception */
 		PyObject *err_type, *err_value, *err_tb;
@@ -656,9 +707,10 @@ PyDict_GetItemWithError(PyObject *op, PyObject *key)
  * and occasionally replace a value -- but you can't insert new keys or
  * remove them.
  */
-int
-PyDict_SetItem(register PyObject *op, PyObject *key, PyObject *value)
+static int
+_PyDict_SetItem(register PyObject *op, PyObject *key, PyObject *value, int newfrozen)
 {
+	PyThreadState *tstate = PyThreadState_Get();
 	register dictobject *mp;
 	register long hash;
 	register Py_ssize_t n_used;
@@ -670,6 +722,12 @@ PyDict_SetItem(register PyObject *op, PyObject *key, PyObject *value)
 	assert(key);
 	assert(value);
 	mp = (dictobject *)op;
+	if (block_readonlydict(op, newfrozen))
+		return -1;
+	if (block_unshareable_keyvalue(op, key))
+		return -1;
+	if (block_unshareable_keyvalue(op, value))
+		return -1;
 	if (!PyUnicode_CheckExact(key) ||
 	    (hash = ((PyUnicodeObject *) key)->hash) == -1)
 	{
@@ -679,8 +737,8 @@ PyDict_SetItem(register PyObject *op, PyObject *key, PyObject *value)
 	}
 	assert(mp->ma_fill <= mp->ma_mask);  /* at least one empty slot */
 	n_used = mp->ma_used;
-	Py_INCREF(value);
-	Py_INCREF(key);
+	Py_INCREFTS(value);
+	Py_INCREFTS(key);
 	if (insertdict(mp, key, hash, value) != 0)
 		return -1;
 	/* If we added a key, we can safely resize.  Otherwise just return!
@@ -703,6 +761,12 @@ PyDict_SetItem(register PyObject *op, PyObject *key, PyObject *value)
 }
 
 int
+PyDict_SetItem(register PyObject *op, PyObject *key, PyObject *value)
+{
+	return _PyDict_SetItem(op, key, value, 0);
+}
+
+int
 PyDict_DelItem(PyObject *op, PyObject *key)
 {
 	register dictobject *mp;
@@ -722,6 +786,8 @@ PyDict_DelItem(PyObject *op, PyObject *key)
 			return -1;
 	}
 	mp = (dictobject *)op;
+	if (block_readonlydict(op, 0))
+		return -1;
 	ep = (mp->ma_lookup)(mp, key, hash);
 	if (ep == NULL)
 		return -1;
@@ -755,6 +821,10 @@ PyDict_Clear(PyObject *op)
 	if (!PyDict_Check(op))
 		return;
 	mp = (dictobject *)op;
+	if (PyFrozenDict_Check(mp) || (PySharedDict_Check(mp) &&
+			!PyThreadState_Get()->import_depth)) {
+		return; /* No error status, boo! */
+	}
 #ifdef Py_DEBUG
 	n = mp->ma_mask + 1;
 	i = 0;
@@ -896,10 +966,18 @@ dict_dealloc(register dictobject *mp)
 	}
 	if (mp->ma_table != mp->ma_smalltable)
 		PyMem_DEL(mp->ma_table);
-	if (num_free_dicts < MAXFREEDICTS && Py_Type(mp) == &PyDict_Type)
+#ifdef USE_DICT_FREELIST
+	PyThread_lock_acquire(free_dicts_lock);
+	if (num_free_dicts < MAXFREEDICTS && Py_Type(mp) == &PyDict_Type) {
 		free_dicts[num_free_dicts++] = mp;
-	else
-		Py_Type(mp)->tp_free((PyObject *)mp);
+		PyThread_lock_release(free_dicts_lock);
+	} else {
+		PyThread_lock_release(free_dicts_lock);
+#endif
+		PyObject_DEL(mp);
+#ifdef USE_DICT_FREELIST
+	}
+#endif
 	Py_TRASHCAN_SAFE_END(mp)
 }
 
@@ -982,6 +1060,43 @@ Done:
 	return result;
 }
 
+/* Also used by shareddict */
+static PyObject *
+frozendict_repr(dictobject *mp)
+{
+	PyObject *s = NULL, *inner = NULL, *name = NULL, *format = NULL;
+	PyObject *t = NULL;
+
+	format = PyString_FromString("%s(%s)");
+	if (format == NULL)
+		goto Done;
+
+	name = PyObject_GetAttrString((PyObject *)Py_Type(mp), "__name__");
+	if (name == NULL)
+		goto Done;
+
+	inner = dict_repr(mp);
+	if (inner == NULL)
+		goto Done;
+
+	t = PyTuple_New(2);
+	if (t == NULL)
+		goto Done;
+	PyTuple_SET_ITEM(t, 0, name);
+	name = NULL;
+	PyTuple_SET_ITEM(t, 1, inner);
+	inner = NULL;
+
+	s = PyString_Format(format, t);
+
+Done:
+	Py_XDECREF(format);
+	Py_XDECREF(name);
+	Py_XDECREF(inner);
+	Py_XDECREF(t);
+	return s;
+}
+
 static Py_ssize_t
 dict_length(dictobject *mp)
 {
@@ -1032,7 +1147,7 @@ dict_ass_sub(dictobject *mp, PyObject *v, PyObject *w)
 	if (w == NULL)
 		return PyDict_DelItem((PyObject *)mp, v);
 	else
-		return PyDict_SetItem((PyObject *)mp, v, w);
+		return _PyDict_SetItem((PyObject *)mp, v, w, 0);
 }
 
 static PyMappingMethods dict_as_mapping = {
@@ -1173,6 +1288,16 @@ dict_fromkeys(PyObject *cls, PyObject *args)
 	if (!PyArg_UnpackTuple(args, "fromkeys", 1, 2, &seq, &value))
 		return NULL;
 
+	assert(PyType_Check(cls));
+	if (cls == (PyObject *)&PyFrozenDict_Type) {
+		PyObject *temp_d = dict_fromkeys((PyObject *)&PyDict_Type, args);
+		if (temp_d == NULL)
+			return NULL;
+		d = PyObject_CallFunction((PyObject *)&PyFrozenDict_Type, "(O)", temp_d);
+		Py_DECREF(temp_d);
+		return d;
+	}
+
 	d = PyObject_CallObject(cls, NULL);
 	if (d == NULL)
 		return NULL;
@@ -1189,8 +1314,10 @@ dict_fromkeys(PyObject *cls, PyObject *args)
 		while (_PySet_NextEntry(seq, &pos, &key, &hash)) {
 			Py_INCREF(key);
 			Py_INCREF(value);
-			if (insertdict(mp, key, hash, value))
+			if (insertdict(mp, key, hash, value)) {
+				Py_DECREF(d);
 				return NULL;
+			}
 		}
 		return d;
 	}
@@ -1224,7 +1351,8 @@ Fail:
 }
 
 static int
-dict_update_common(PyObject *self, PyObject *args, PyObject *kwds, char *methname)
+dict_update_common(PyObject *self, PyObject *args, PyObject *kwds,
+		char *methname, int newfrozen)
 {
 	PyObject *arg = NULL;
 	int result = 0;
@@ -1234,19 +1362,19 @@ dict_update_common(PyObject *self, PyObject *args, PyObject *kwds, char *methnam
 
 	else if (arg != NULL) {
 		if (PyObject_HasAttrString(arg, "keys"))
-			result = PyDict_Merge(self, arg, 1);
+			result = _PyDict_Merge(self, arg, 1, newfrozen);
 		else
-			result = PyDict_MergeFromSeq2(self, arg, 1);
+			result = _PyDict_MergeFromSeq2(self, arg, 1, newfrozen);
 	}
 	if (result == 0 && kwds != NULL)
-		result = PyDict_Merge(self, kwds, 1);
+		result = _PyDict_Merge(self, kwds, 1, newfrozen);
 	return result;
 }
 
 static PyObject *
 dict_update(PyObject *self, PyObject *args, PyObject *kwds)
 {
-	if (dict_update_common(self, args, kwds, "update") != -1)
+	if (dict_update_common(self, args, kwds, "update", 0) != -1)
 		Py_RETURN_NONE;
 	return NULL;
 }
@@ -1261,8 +1389,8 @@ dict_update(PyObject *self, PyObject *args, PyObject *kwds)
    producing iterable objects of length 2.
 */
 
-int
-PyDict_MergeFromSeq2(PyObject *d, PyObject *seq2, int override)
+static int
+_PyDict_MergeFromSeq2(PyObject *d, PyObject *seq2, int override, int newfrozen)
 {
 	PyObject *it;	/* iter(seq2) */
 	Py_ssize_t i;	/* index into seq2 of current element */
@@ -1272,6 +1400,9 @@ PyDict_MergeFromSeq2(PyObject *d, PyObject *seq2, int override)
 	assert(d != NULL);
 	assert(PyDict_Check(d));
 	assert(seq2 != NULL);
+
+	if (block_readonlydict(d, newfrozen))
+		return -1;
 
 	it = PyObject_GetIter(seq2);
 	if (it == NULL)
@@ -1312,7 +1443,7 @@ PyDict_MergeFromSeq2(PyObject *d, PyObject *seq2, int override)
 		key = PySequence_Fast_GET_ITEM(fast, 0);
 		value = PySequence_Fast_GET_ITEM(fast, 1);
 		if (override || PyDict_GetItem(d, key) == NULL) {
-			int status = PyDict_SetItem(d, key, value);
+			int status = _PyDict_SetItem(d, key, value, newfrozen);
 			if (status < 0)
 				goto Fail;
 		}
@@ -1332,13 +1463,19 @@ Return:
 }
 
 int
-PyDict_Update(PyObject *a, PyObject *b)
+PyDict_MergeFromSeq2(PyObject *d, PyObject *seq2, int override)
 {
-	return PyDict_Merge(a, b, 1);
+	return _PyDict_MergeFromSeq2(d, seq2, override, 0);
 }
 
 int
-PyDict_Merge(PyObject *a, PyObject *b, int override)
+PyDict_Update(PyObject *a, PyObject *b)
+{
+	return _PyDict_Merge(a, b, 1, 0);
+}
+
+static int
+_PyDict_Merge(PyObject *a, PyObject *b, int override, int newfrozen)
 {
 	register PyDictObject *mp, *other;
 	register Py_ssize_t i;
@@ -1353,6 +1490,8 @@ PyDict_Merge(PyObject *a, PyObject *b, int override)
 		PyErr_BadInternalCall();
 		return -1;
 	}
+	if (block_readonlydict(a, newfrozen))
+		return -1;
 	mp = (dictobject*)a;
 	if (PyDict_CheckExact(b)) {
 		other = (dictobject*)b;
@@ -1378,6 +1517,10 @@ PyDict_Merge(PyObject *a, PyObject *b, int override)
 			if (entry->me_value != NULL &&
 			    (override ||
 			     PyDict_GetItem(a, entry->me_key) == NULL)) {
+				if (block_unshareable_keyvalue(a, entry->me_key))
+					return -1;
+				if (block_unshareable_keyvalue(a, entry->me_value))
+					return -1;
 				Py_INCREF(entry->me_key);
 				Py_INCREF(entry->me_value);
 				if (insertdict(mp, entry->me_key,
@@ -1418,7 +1561,7 @@ PyDict_Merge(PyObject *a, PyObject *b, int override)
 				Py_DECREF(key);
 				return -1;
 			}
-			status = PyDict_SetItem(a, key, value);
+			status = _PyDict_SetItem(a, key, value, newfrozen);
 			Py_DECREF(key);
 			Py_DECREF(value);
 			if (status < 0) {
@@ -1432,6 +1575,12 @@ PyDict_Merge(PyObject *a, PyObject *b, int override)
 			return -1;
 	}
 	return 0;
+}
+
+int
+PyDict_Merge(PyObject *a, PyObject *b, int override)
+{
+	return _PyDict_Merge(a, b, override, 0);
 }
 
 static PyObject *
@@ -1452,7 +1601,7 @@ PyDict_Copy(PyObject *o)
 	copy = PyDict_New();
 	if (copy == NULL)
 		return NULL;
-	if (PyDict_Merge(copy, o, 1) == 0)
+	if (_PyDict_Merge(copy, o, 1, 0) == 0)
 		return copy;
 	Py_DECREF(copy);
 	return NULL;
@@ -1626,13 +1775,19 @@ dict_setdefault(register dictobject *mp, PyObject *args)
 		if (hash == -1)
 			return NULL;
 	}
+	if (block_readonlydict((PyObject *)mp, 0))
+		return NULL;
+	if (block_unshareable_keyvalue((PyObject *)mp, key))
+		return NULL;
+	if (block_unshareable_keyvalue((PyObject *)mp, val))
+		return NULL;
 	ep = (mp->ma_lookup)(mp, key, hash);
 	if (ep == NULL)
 		return NULL;
 	val = ep->me_value;
 	if (val == NULL) {
 		val = failobj;
-		if (PyDict_SetItem((PyObject*)mp, key, failobj))
+		if (_PyDict_SetItem((PyObject*)mp, key, failobj, 0))
 			val = NULL;
 	}
 	Py_XINCREF(val);
@@ -1643,6 +1798,9 @@ dict_setdefault(register dictobject *mp, PyObject *args)
 static PyObject *
 dict_clear(register dictobject *mp)
 {
+	/* PyDict_Clear does this check too, but it can't raise an exception */
+	if (block_readonlydict((PyObject *)mp, 0))
+		return NULL;
 	PyDict_Clear((PyObject *)mp);
 	Py_RETURN_NONE;
 }
@@ -1656,6 +1814,8 @@ dict_pop(dictobject *mp, PyObject *args)
 	PyObject *key, *deflt = NULL;
 
 	if(!PyArg_UnpackTuple(args, "pop", 1, 2, &key, &deflt))
+		return NULL;
+	if (block_readonlydict((PyObject *)mp, 0))
 		return NULL;
 	if (mp->ma_used == 0) {
 		if (deflt) {
@@ -1700,6 +1860,8 @@ dict_popitem(dictobject *mp)
 	dictentry *ep;
 	PyObject *res;
 
+	if (block_readonlydict((PyObject *)mp, 0))
+		return NULL;
 	/* Allocate the result tuple before checking the size.  Believe it
 	 * or not, this allocation could trigger a garbage collection which
 	 * could empty the dict, so if we checked the size first and that
@@ -1768,6 +1930,10 @@ dict_traverse(PyObject *op, visitproc visit, void *arg)
 static int
 dict_tp_clear(PyObject *op)
 {
+	/* XXX FIXME should force clearing.  This is only called by the cycle GC */
+	/* PyDict_Clear does this check too, but it can't raise an exception */
+	if (block_readonlydict(op, 0))
+		return -1;
 	PyDict_Clear(op);
 	return 0;
 }
@@ -1902,12 +2068,11 @@ dict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
 	PyObject *self;
 
-	assert(type != NULL && type->tp_alloc != NULL);
-	self = type->tp_alloc(type, 0);
+	assert(type != NULL);
+	self = PyObject_New(type);
 	if (self != NULL) {
+		const size_t size = _PyObject_SIZE(type);
 		PyDictObject *d = (PyDictObject *)self;
-		/* It's guaranteed that tp->alloc zeroed out the struct. */
-		assert(d->ma_table == NULL && d->ma_fill == 0 && d->ma_used == 0);
 		INIT_NONZERO_DICT_SLOTS(d);
 		d->ma_lookup = lookdict_unicode;
 #ifdef SHOW_CONVERSION_COUNTS
@@ -1917,16 +2082,50 @@ dict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	return self;
 }
 
+static PyObject *
+frozendict_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+	PyObject *self;
+	int result;
+
+	/* XXX this should return the input frozendict when nothing is changed */
+	/* XXX it should also return an empty frozendict() singleton when possible */
+	self = dict_new(type, args, kwds);
+	if (self == NULL)
+		return NULL;
+
+	result = dict_update_common(self, args, kwds, "frozendict", 1);
+	if (result == -1) {
+		Py_DECREF(self);
+		return NULL;
+	}
+
+	return self;
+}
+
 static int
 dict_init(PyObject *self, PyObject *args, PyObject *kwds)
 {
-	return dict_update_common(self, args, kwds, "dict");
+	return dict_update_common(self, args, kwds, "dict", 0);
+}
+
+static int
+frozendict_init(PyObject *self, PyObject *args, PyObject *kwds)
+{
+	return 0;
 }
 
 static PyObject *
 dict_iter(dictobject *dict)
 {
 	return dictiter_new(dict, &PyDictIterKey_Type);
+}
+
+/* Also used by shareddict */
+static int
+frozendict_isshareable (PyObject *self)
+{
+	return 1;
 }
 
 PyDoc_STRVAR(dictionary_doc,
@@ -1961,7 +2160,8 @@ PyTypeObject PyDict_Type = {
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-		Py_TPFLAGS_BASETYPE | Py_TPFLAGS_DICT_SUBCLASS,	/* tp_flags */
+		Py_TPFLAGS_BASETYPE | Py_TPFLAGS_DICT_SUBCLASS |
+		Py_TPFLAGS_SHAREABLE, /* tp_flags */
 	dictionary_doc,				/* tp_doc */
 	dict_traverse,				/* tp_traverse */
 	dict_tp_clear,				/* tp_clear */
@@ -1978,9 +2178,105 @@ PyTypeObject PyDict_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	dict_init,				/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	dict_new,				/* tp_new */
-	PyObject_GC_Del,        		/* tp_free */
+};
+
+PyTypeObject PyFrozenDict_Type = {
+	PyVarObject_HEAD_INIT(&PyType_Type, 0)
+	"frozendict",
+	sizeof(dictobject),
+	0,
+	0,					/* tp_dealloc */
+	0,					/* tp_print */
+	0,					/* tp_getattr */
+	0,					/* tp_setattr */
+	0,					/* tp_compare */
+	(reprfunc)frozendict_repr,		/* tp_repr */
+	0,					/* tp_as_number */
+	0,					/* tp_as_sequence */
+	0,					/* tp_as_mapping */
+	0,					/* tp_hash */
+	0,					/* tp_call */
+	0,					/* tp_str */
+	0,					/* tp_getattro */
+	0,					/* tp_setattro */
+	0,					/* tp_as_buffer */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
+		Py_TPFLAGS_DICT_SUBCLASS |
+		Py_TPFLAGS_SHAREABLE,		/* tp_flags */
+	dictionary_doc,				/* tp_doc */
+	dict_traverse,				/* tp_traverse */
+	dict_tp_clear,				/* tp_clear */
+	0,					/* tp_richcompare */
+	0,					/* tp_weaklistoffset */
+	0,					/* tp_iter */
+	0,					/* tp_iternext */
+	0,					/* tp_methods */
+	0,					/* tp_members */
+	0,					/* tp_getset */
+	0,					/* tp_base */
+	0,					/* tp_dict */
+	0,					/* tp_descr_get */
+	0,					/* tp_descr_set */
+	0,					/* tp_dictoffset */
+	frozendict_init,			/* tp_init */
+	frozendict_new,				/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	frozendict_isshareable,			/* tp_isshareable */
+};
+
+PyTypeObject PySharedDict_Type = {
+	PyVarObject_HEAD_INIT(&PyType_Type, 0)
+	"shareddict",
+	sizeof(dictobject),
+	0,
+	0,					/* tp_dealloc */
+	0,					/* tp_print */
+	0,					/* tp_getattr */
+	0,					/* tp_setattr */
+	0,					/* tp_compare */
+	(reprfunc)frozendict_repr,		/* tp_repr */
+	0,					/* tp_as_number */
+	0,					/* tp_as_sequence */
+	0,					/* tp_as_mapping */
+	0,					/* tp_hash */
+	0,					/* tp_call */
+	0,					/* tp_str */
+	0,					/* tp_getattro */
+	0,					/* tp_setattro */
+	0,					/* tp_as_buffer */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
+		Py_TPFLAGS_DICT_SUBCLASS |
+		Py_TPFLAGS_SHAREABLE,		/* tp_flags */
+	dictionary_doc,				/* tp_doc */
+	dict_traverse,				/* tp_traverse */
+	dict_tp_clear,				/* tp_clear */
+	0,					/* tp_richcompare */
+	0,					/* tp_weaklistoffset */
+	0,					/* tp_iter */
+	0,					/* tp_iternext */
+	0,					/* tp_methods */
+	0,					/* tp_members */
+	0,					/* tp_getset */
+	0,					/* tp_base */
+	0,					/* tp_dict */
+	0,					/* tp_descr_get */
+	0,					/* tp_descr_set */
+	0,					/* tp_dictoffset */
+	dict_init,				/* tp_init */
+	dict_new,				/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	frozendict_isshareable,			/* tp_isshareable */
 };
 
 /* For backward compatibility with old dictionary interface */
@@ -2006,7 +2302,7 @@ PyDict_SetItemString(PyObject *v, const char *key, PyObject *item)
 	if (kv == NULL)
 		return -1;
 	PyUnicode_InternInPlace(&kv); /* XXX Should we really? */
-	err = PyDict_SetItem(v, kv, item);
+	err = _PyDict_SetItem(v, kv, item, 0);
 	Py_DECREF(kv);
 	return err;
 }
@@ -2039,7 +2335,7 @@ static PyObject *
 dictiter_new(dictobject *dict, PyTypeObject *itertype)
 {
 	dictiterobject *di;
-	di = PyObject_New(dictiterobject, itertype);
+	di = PyObject_NEW(dictiterobject, itertype);
 	if (di == NULL)
 		return NULL;
 	Py_INCREF(dict);
@@ -2064,7 +2360,7 @@ dictiter_dealloc(dictiterobject *di)
 {
 	Py_XDECREF(di->di_dict);
 	Py_XDECREF(di->di_result);
-	PyObject_Del(di);
+	PyObject_DEL(di);
 }
 
 static PyObject *
@@ -2258,7 +2554,7 @@ static PyObject *dictiter_iternextitem(dictiterobject *di)
 	if (i > mask)
 		goto fail;
 
-	if (result->ob_refcnt == 1) {
+	if (Py_RefcntMatches(result, 1)) {
 		Py_INCREF(result);
 		Py_DECREF(PyTuple_GET_ITEM(result, 0));
 		Py_DECREF(PyTuple_GET_ITEM(result, 1));
@@ -2332,7 +2628,7 @@ static void
 dictview_dealloc(dictviewobject *dv)
 {
 	Py_XDECREF(dv->dv_dict);
-	PyObject_Del(dv);
+	PyObject_DEL(dv);
 }
 
 static Py_ssize_t
@@ -2359,7 +2655,7 @@ dictview_new(PyObject *dict, PyTypeObject *type)
 			     type->tp_name, dict->ob_type->tp_name);
 		return NULL;
 	}
-	dv = PyObject_New(dictviewobject, type);
+	dv = PyObject_NEW(dictviewobject, type);
 	if (dv == NULL)
 		return NULL;
 	Py_INCREF(dict);
@@ -2788,4 +3084,25 @@ static PyObject *
 dictvalues_new(PyObject *dict)
 {
 	return dictview_new(dict, &PyDictValues_Type);
+}
+
+/* Even type and object's initialization calls us, so we need a bare
+ * minimum of functionality to be ready even before them. */
+void
+_PyDict_PreInit(void)
+{
+#ifdef USE_DICT_FREELIST
+	free_dicts_lock = PyThread_lock_allocate();
+	if (!free_dicts_lock)
+		Py_FatalError("unable to allocate lock");
+#endif
+}
+
+void
+PyDict_Fini(void)
+{
+#ifdef USE_DICT_FREELIST
+	PyThread_lock_free(free_dicts_lock);
+	free_dicts_lock = NULL;
+#endif
 }

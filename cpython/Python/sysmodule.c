@@ -48,7 +48,7 @@ extern const char *PyWin_DLLVersionString;
 PyObject *
 PySys_GetObject(const char *name)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyThreadState *tstate = PyThreadState_Get();
 	PyObject *sd = tstate->interp->sysdict;
 	if (sd == NULL)
 		return NULL;
@@ -58,7 +58,7 @@ PySys_GetObject(const char *name)
 int
 PySys_SetObject(const char *name, PyObject *v)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyThreadState *tstate = PyThreadState_Get();
 	PyObject *sd = tstate->interp->sysdict;
 	if (v == NULL) {
 		if (PyDict_GetItemString(sd, name) == NULL)
@@ -74,12 +74,10 @@ static PyObject *
 sys_displayhook(PyObject *self, PyObject *o)
 {
 	PyObject *outf;
-	PyInterpreterState *interp = PyThreadState_GET()->interp;
-	PyObject *modules = interp->modules;
-	PyObject *builtins = PyDict_GetItemString(modules, "__builtin__");
+	PyObject *globals = PyEval_GetGlobals();
 
-	if (builtins == NULL) {
-		PyErr_SetString(PyExc_RuntimeError, "lost __builtin__");
+	if (globals == NULL) {
+		PyErr_SetString(PyExc_RuntimeError, "lost globals");
 		return NULL;
 	}
 
@@ -90,7 +88,7 @@ sys_displayhook(PyObject *self, PyObject *o)
 		Py_INCREF(Py_None);
 		return Py_None;
 	}
-	if (PyObject_SetAttrString(builtins, "_", Py_None) != 0)
+	if (PyDict_SetItemString(globals, "_", Py_None) != 0)
 		return NULL;
 	outf = PySys_GetObject("stdout");
 	if (outf == NULL) {
@@ -101,7 +99,7 @@ sys_displayhook(PyObject *self, PyObject *o)
 		return NULL;
 	if (PyFile_WriteString("\n", outf) != 0)
 		return NULL;
-	if (PyObject_SetAttrString(builtins, "_", o) != 0)
+	if (PyDict_SetItemString(globals, "_", o) != 0)
 		return NULL;
 	Py_INCREF(Py_None);
 	return Py_None;
@@ -134,7 +132,7 @@ static PyObject *
 sys_exc_info(PyObject *self, PyObject *noargs)
 {
 	PyThreadState *tstate;
-	tstate = PyThreadState_GET();
+	tstate = PyThreadState_Get();
 	return Py_BuildValue(
 		"(OOO)",
 		tstate->exc_type != NULL ? tstate->exc_type : Py_None,
@@ -526,7 +524,7 @@ static PyObject *
 sys_setdlopenflags(PyObject *self, PyObject *args)
 {
 	int new_val;
-        PyThreadState *tstate = PyThreadState_GET();
+        PyThreadState *tstate = PyThreadState_Get();
 	if (!PyArg_ParseTuple(args, "i:setdlopenflags", &new_val))
 		return NULL;
         if (!tstate)
@@ -549,7 +547,7 @@ sys.setdlopenflags(dl.RTLD_NOW|dl.RTLD_GLOBAL)"
 static PyObject *
 sys_getdlopenflags(PyObject *self, PyObject *args)
 {
-        PyThreadState *tstate = PyThreadState_GET();
+        PyThreadState *tstate = PyThreadState_Get();
         if (!tstate)
 		return NULL;
         return PyInt_FromLong(tstate->interp->dlopenflags);
@@ -582,7 +580,7 @@ sys_mdebug(PyObject *self, PyObject *args)
 static PyObject *
 sys_getrefcount(PyObject *self, PyObject *arg)
 {
-	return PyInt_FromSsize_t(arg->ob_refcnt);
+	return PyInt_FromSsize_t(Py_RefcntSnoop(arg));
 }
 
 #ifdef Py_REF_DEBUG
@@ -626,7 +624,7 @@ purposes only."
 static PyObject *
 sys_getframe(PyObject *self, PyObject *args)
 {
-	PyFrameObject *f = PyThreadState_GET()->frame;
+	PyFrameObject *f = PyThreadState_Get()->frame;
 	int depth = -1;
 
 	if (!PyArg_ParseTuple(args, "|i:_getframe", &depth))

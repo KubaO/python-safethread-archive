@@ -1,6 +1,7 @@
 /* List object implementation */
 
 #include "Python.h"
+#include "pythread.h"
 
 #ifdef STDC_HEADERS
 #include <stddef.h>
@@ -67,6 +68,15 @@ list_resize(PyListObject *self, Py_ssize_t newsize)
 #define MAXFREELISTS 80
 static PyListObject *free_lists[MAXFREELISTS];
 static int num_free_lists = 0;
+static PyThread_type_lock free_lists_lock;
+
+void
+_PyList_Init(void)
+{
+	free_lists_lock = PyThread_lock_allocate();
+	if (!free_lists_lock)
+		Py_FatalError("unable to allocate lock");
+}
 
 void
 PyList_Fini(void)
@@ -77,8 +87,11 @@ PyList_Fini(void)
 		num_free_lists--;
 		op = free_lists[num_free_lists]; 
 		assert(PyList_CheckExact(op));
-		PyObject_GC_Del(op);
+		PyObject_DEL(op);
 	}
+
+	PyThread_lock_free(free_lists_lock);
+	free_lists_lock = NULL;
 }
 
 PyObject *
@@ -95,14 +108,18 @@ PyList_New(Py_ssize_t size)
 	/* Check for overflow */
 	if (nbytes / sizeof(PyObject *) != (size_t)size)
 		return PyErr_NoMemory();
+	PyThread_lock_acquire(free_lists_lock);
 	if (num_free_lists) {
 		num_free_lists--;
 		op = free_lists[num_free_lists];
-		_Py_NewReference((PyObject *)op);
+		PyThread_lock_release(free_lists_lock);
+		//_Py_NewReference((PyObject *)op);
 	} else {
-		op = PyObject_GC_New(PyListObject, &PyList_Type);
+		PyThread_lock_release(free_lists_lock);
+		op = PyObject_NEW(PyListObject, &PyList_Type);
 		if (op == NULL)
 			return NULL;
+		_PyObject_GC_UNTRACK(op); /* XXX FIXME Hack */
 	}
 	if (size <= 0)
 		op->ob_item = NULL;
@@ -265,10 +282,14 @@ list_dealloc(PyListObject *op)
 		}
 		PyMem_FREE(op->ob_item);
 	}
-	if (num_free_lists < MAXFREELISTS && PyList_CheckExact(op))
+	PyThread_lock_acquire(free_lists_lock);
+	if (num_free_lists < MAXFREELISTS && PyList_CheckExact(op)) {
 		free_lists[num_free_lists++] = op;
-	else
-		Py_Type(op)->tp_free((PyObject *)op);
+		PyThread_lock_release(free_lists_lock);
+	} else {
+		PyThread_lock_release(free_lists_lock);
+		PyObject_DEL(op);
+	}
 	Py_TRASHCAN_SAFE_END(op)
 }
 
@@ -1832,7 +1853,7 @@ sortwrapper_dealloc(sortwrapperobject *so)
 {
 	Py_XDECREF(so->key);
 	Py_XDECREF(so->value);
-	PyObject_Del(so);
+	PyObject_DEL(so);
 }
 
 /* Returns a new reference to a sortwrapper.
@@ -1843,7 +1864,7 @@ build_sortwrapper(PyObject *key, PyObject *value)
 {
 	sortwrapperobject *so;
 
-	so = PyObject_New(sortwrapperobject, &sortwrapper_type);
+	so = PyObject_NEW(sortwrapperobject, &sortwrapper_type);
 	if (so == NULL)
 		return NULL;
 	so->key = key;
@@ -1880,7 +1901,7 @@ static void
 cmpwrapper_dealloc(cmpwrapperobject *co)
 {
 	Py_XDECREF(co->func);
-	PyObject_Del(co);
+	PyObject_DEL(co);
 }
 
 static PyObject *
@@ -1933,7 +1954,7 @@ build_cmpwrapper(PyObject *cmpfunc)
 {
 	cmpwrapperobject *co;
 
-	co = PyObject_New(cmpwrapperobject, &cmpwrapper_type);
+	co = PyObject_NEW(cmpwrapperobject, &cmpwrapper_type);
 	if (co == NULL)
 		return NULL;
 	Py_INCREF(cmpfunc);
@@ -2358,7 +2379,7 @@ list_init(PyListObject *self, PyObject *args, PyObject *kw)
 	if (!PyArg_ParseTupleAndKeywords(args, kw, "|O:list", kwlist, &arg))
 		return -1;
 
-	/* Verify list invariants established by PyType_GenericAlloc() */
+	/* Verify list invariants established by PyObject_New() */
 	assert(0 <= Py_Size(self));
 	assert(Py_Size(self) <= self->allocated || self->allocated == -1);
 	assert(self->ob_item != NULL ||
@@ -2677,7 +2698,8 @@ PyTypeObject PyList_Type = {
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-		Py_TPFLAGS_BASETYPE | Py_TPFLAGS_LIST_SUBCLASS,	/* tp_flags */
+		Py_TPFLAGS_BASETYPE | Py_TPFLAGS_LIST_SUBCLASS |
+		Py_TPFLAGS_SHAREABLE,		/* tp_flags */
  	list_doc,				/* tp_doc */
  	(traverseproc)list_traverse,		/* tp_traverse */
  	(inquiry)list_clear,			/* tp_clear */
@@ -2694,9 +2716,7 @@ PyTypeObject PyList_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	(initproc)list_init,			/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	PyType_GenericNew,			/* tp_new */
-	PyObject_GC_Del,			/* tp_free */
 };
 
 
@@ -2764,13 +2784,12 @@ list_iter(PyObject *seq)
 		PyErr_BadInternalCall();
 		return NULL;
 	}
-	it = PyObject_GC_New(listiterobject, &PyListIter_Type);
+	it = PyObject_NEW(listiterobject, &PyListIter_Type);
 	if (it == NULL)
 		return NULL;
 	it->it_index = 0;
 	Py_INCREF(seq);
 	it->it_seq = (PyListObject *)seq;
-	_PyObject_GC_TRACK(it);
 	return (PyObject *)it;
 }
 
@@ -2779,7 +2798,7 @@ listiter_dealloc(listiterobject *it)
 {
 	_PyObject_GC_UNTRACK(it);
 	Py_XDECREF(it->it_seq);
-	PyObject_GC_Del(it);
+	PyObject_DEL(it);
 }
 
 static int
@@ -2880,14 +2899,13 @@ list_reversed(PyListObject *seq, PyObject *unused)
 {
 	listreviterobject *it;
 
-	it = PyObject_GC_New(listreviterobject, &PyListRevIter_Type);
+	it = PyObject_NEW(listreviterobject, &PyListRevIter_Type);
 	if (it == NULL)
 		return NULL;
 	assert(PyList_Check(seq));
 	it->it_index = PyList_GET_SIZE(seq) - 1;
 	Py_INCREF(seq);
 	it->it_seq = seq;
-	PyObject_GC_Track(it);
 	return (PyObject *)it;
 }
 
@@ -2896,7 +2914,7 @@ listreviter_dealloc(listreviterobject *it)
 {
 	PyObject_GC_UnTrack(it);
 	Py_XDECREF(it->it_seq);
-	PyObject_GC_Del(it);
+	PyObject_DEL(it);
 }
 
 static int

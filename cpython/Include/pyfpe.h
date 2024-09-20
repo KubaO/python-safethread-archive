@@ -126,6 +126,7 @@ extern "C" {
  */
 
 #ifdef WANT_SIGFPE_HANDLER
+#error FPE currently broken.  Needs to be made thread-safe
 #include <signal.h>
 #include <setjmp.h>
 #include <math.h>

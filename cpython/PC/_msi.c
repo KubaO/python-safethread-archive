@@ -454,9 +454,7 @@ static PyTypeObject record_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         0,                      /*tp_init*/
-        0,                      /*tp_alloc*/
         0,                      /*tp_new*/
-        0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
 
@@ -620,9 +618,7 @@ static PyTypeObject summary_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         0,                      /*tp_init*/
-        0,                      /*tp_alloc*/
         0,                      /*tp_new*/
-        0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
 
@@ -768,9 +764,7 @@ static PyTypeObject msiview_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         0,                      /*tp_init*/
-        0,                      /*tp_alloc*/
         0,                      /*tp_new*/
-        0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
 
@@ -885,9 +879,7 @@ static PyTypeObject msidb_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         0,                      /*tp_init*/
-        0,                      /*tp_alloc*/
         0,                      /*tp_new*/
-        0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
 

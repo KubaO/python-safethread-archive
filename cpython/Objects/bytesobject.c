@@ -21,7 +21,7 @@ PyBytes_Fini(void)
 int
 PyBytes_Init(void)
 {
-    nullbytes = PyObject_New(PyBytesObject, &PyBytes_Type);
+    nullbytes = PyObject_NEW(PyBytesObject, &PyBytes_Type);
     if (nullbytes == NULL)
         return 0;
     nullbytes->ob_bytes = NULL;
@@ -112,7 +112,7 @@ PyBytes_FromStringAndSize(const char *bytes, Py_ssize_t size)
 
     assert(size >= 0);
 
-    new = PyObject_New(PyBytesObject, &PyBytes_Type);
+    new = PyObject_NEW(PyBytesObject, &PyBytes_Type);
     if (new == NULL)
         return NULL;
 
@@ -1025,7 +1025,7 @@ bytes_dealloc(PyBytesObject *self)
     if (self->ob_bytes != 0) {
         PyMem_Free(self->ob_bytes);
     }
-    Py_Type(self)->tp_free((PyObject *)self);
+    PyObject_DEL(self);
 }
 
 
@@ -3005,7 +3005,7 @@ PyTypeObject PyBytes_Type = {
     0,                                  /* tp_setattro */
     &bytes_as_buffer,                   /* tp_as_buffer */
     /* bytes is 'final' or 'sealed' */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_SHAREABLE,  /* tp_flags */
     bytes_doc,                          /* tp_doc */
     0,                                  /* tp_traverse */
     0,                                  /* tp_clear */
@@ -3022,7 +3022,5 @@ PyTypeObject PyBytes_Type = {
     0,                                  /* tp_descr_set */
     0,                                  /* tp_dictoffset */
     (initproc)bytes_init,               /* tp_init */
-    PyType_GenericAlloc,                /* tp_alloc */
     PyType_GenericNew,                  /* tp_new */
-    PyObject_Del,                       /* tp_free */
 };

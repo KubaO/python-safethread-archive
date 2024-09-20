@@ -484,7 +484,7 @@ random_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	if (type == &Random_Type && !_PyArg_NoKeywords("Random()", kwds))
 		return NULL;
 
-	self = (RandomObject *)type->tp_alloc(type, 0);
+	self = PyObject_NEW(RandomObject, type);
 	if (self == NULL)
 		return NULL;
 	tmp = random_seed(self, args);
@@ -555,9 +555,7 @@ static PyTypeObject Random_Type = {
 	0,				/*tp_descr_set*/
 	0,				/*tp_dictoffset*/
 	0,				/*tp_init*/
-	0,				/*tp_alloc*/
 	random_new,			/*tp_new*/
-	PyObject_Free,			/*tp_free*/
 	0,				/*tp_is_gc*/
 };
 

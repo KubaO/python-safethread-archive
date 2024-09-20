@@ -80,6 +80,12 @@ bool_xor(PyObject *a, PyObject *b)
 	return PyBool_FromLong((a == Py_True) ^ (b == Py_True));
 }
 
+static int
+bool_isshareable (PyObject *self)
+{
+	return 1;
+}
+
 /* Doc string */
 
 PyDoc_STRVAR(bool_doc,
@@ -153,7 +159,7 @@ PyTypeObject PyBool_Type = {
 	0,					/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT,			/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	bool_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -170,8 +176,14 @@ PyTypeObject PyBool_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	bool_new,				/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	bool_isshareable,			/* tp_isshareable */
 };
 
 /* The objects representing bool values False and True */

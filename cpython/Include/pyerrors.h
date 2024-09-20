@@ -69,7 +69,7 @@ PyAPI_FUNC(void) PyErr_Restore(PyObject *, PyObject *, PyObject *);
 #ifdef Py_DEBUG
 #define _PyErr_OCCURRED() PyErr_Occurred()
 #else
-#define _PyErr_OCCURRED() (_PyThreadState_Current->curexc_type)
+#define _PyErr_OCCURRED() (PyThreadState_Get()->curexc_type)
 #endif
 
 /* Error testing and normalization */
@@ -126,6 +126,8 @@ PyAPI_DATA(PyObject *) PyExc_IndexError;
 PyAPI_DATA(PyObject *) PyExc_KeyError;
 PyAPI_DATA(PyObject *) PyExc_KeyboardInterrupt;
 PyAPI_DATA(PyObject *) PyExc_MemoryError;
+PyAPI_DATA(PyObject *) PyExc_MultipleError;
+PyAPI_DATA(PyObject *) PyExc_Interrupted;
 PyAPI_DATA(PyObject *) PyExc_NameError;
 PyAPI_DATA(PyObject *) PyExc_OverflowError;
 PyAPI_DATA(PyObject *) PyExc_RuntimeError;

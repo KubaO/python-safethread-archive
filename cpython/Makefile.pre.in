@@ -291,6 +291,7 @@ OBJECT_OBJS=	\
 		Objects/classobject.o \
 		Objects/cobject.o \
 		Objects/codeobject.o \
+		Objects/collateobject.o \
 		Objects/complexobject.o \
 		Objects/descrobject.o \
 		Objects/enumobject.o \
@@ -300,6 +301,7 @@ OBJECT_OBJS=	\
 		Objects/floatobject.o \
 		Objects/frameobject.o \
 		Objects/funcobject.o \
+		Objects/interruptobject.o \
 		Objects/iterobject.o \
 		Objects/listobject.o \
 		Objects/longobject.o \
@@ -307,6 +309,7 @@ OBJECT_OBJS=	\
 		Objects/memoryobject.o \
 		Objects/methodobject.o \
 		Objects/moduleobject.o \
+		Objects/monitorobject.o \
 		Objects/object.o \
 		Objects/obmalloc.o \
 		Objects/rangeobject.o \
@@ -537,6 +540,7 @@ PYTHON_HEADERS= \
 		Include/cobject.h \
 		Include/code.h \
 		Include/codecs.h \
+		Include/collateobject.h \
 		Include/compile.h \
 		Include/complexobject.h \
 		Include/descrobject.h \
@@ -548,6 +552,7 @@ PYTHON_HEADERS= \
 		Include/formatter_unicode.h \
 		Include/funcobject.h \
 		Include/import.h \
+		Include/interruptobject.h \
 		Include/intobject.h \
 		Include/intrcheck.h \
 		Include/iterobject.h \
@@ -557,6 +562,7 @@ PYTHON_HEADERS= \
 		Include/methodobject.h \
 		Include/modsupport.h \
 		Include/moduleobject.h \
+		Include/monitorobject.h \
 		Include/object.h \
 		Include/objimpl.h \
 		Include/parsetok.h \

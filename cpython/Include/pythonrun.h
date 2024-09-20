@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define PyCF_MASK 0
+#define PyCF_MASK CO_FUTURE_SHARED_MODULE
 #define PyCF_MASK_OBSOLETE 0
 #define PyCF_SOURCE_IS_UTF8  0x0100
 #define PyCF_DONT_IMPLY_DEDENT 0x0200
@@ -120,6 +120,7 @@ PyAPI_FUNC(const char *) Py_SubversionShortBranch(void);
 
 /* Internal -- various one-time initializations */
 PyAPI_FUNC(PyObject *) _PyBuiltin_Init(void);
+PyAPI_FUNC(void) _Py_ThreadTools_Init(void);
 PyAPI_FUNC(PyObject *) _PySys_Init(void);
 PyAPI_FUNC(void) _PyImport_Init(void);
 PyAPI_FUNC(void) _PyExc_Init(void);
@@ -128,6 +129,12 @@ PyAPI_FUNC(int) _PyFrame_Init(void);
 PyAPI_FUNC(int) _PyInt_Init(void);
 PyAPI_FUNC(void) _PyFloat_Init(void);
 PyAPI_FUNC(int) PyBytes_Init(void);
+PyAPI_FUNC(void) _PyMethod_Init(void);
+PyAPI_FUNC(void) _PyTuple_Init(void);
+PyAPI_FUNC(void) _PyList_Init(void);
+PyAPI_FUNC(void) _PySet_Init(void);
+PyAPI_FUNC(void) _PyString_Init(void);
+PyAPI_FUNC(void) _PyCFunction_Init(void);
 
 /* Various internal finalizers */
 PyAPI_FUNC(void) _PyExc_Fini(void);
@@ -142,6 +149,7 @@ PyAPI_FUNC(void) PyString_Fini(void);
 PyAPI_FUNC(void) PyBytes_Fini(void);
 PyAPI_FUNC(void) PyInt_Fini(void);
 PyAPI_FUNC(void) PyFloat_Fini(void);
+PyAPI_FUNC(void) PyDict_Fini(void);
 PyAPI_FUNC(void) PyOS_FiniInterrupts(void);
 
 /* Stuff with no proper home (yet) */

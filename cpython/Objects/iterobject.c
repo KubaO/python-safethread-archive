@@ -17,13 +17,12 @@ PySeqIter_New(PyObject *seq)
 		PyErr_BadInternalCall();
 		return NULL;
 	}	
-	it = PyObject_GC_New(seqiterobject, &PySeqIter_Type);
+	it = PyObject_NEW(seqiterobject, &PySeqIter_Type);
 	if (it == NULL)
 		return NULL;
 	it->it_index = 0;
 	Py_INCREF(seq);
 	it->it_seq = seq;
-	_PyObject_GC_TRACK(it);
 	return (PyObject *)it;
 }
 
@@ -32,7 +31,7 @@ iter_dealloc(seqiterobject *it)
 {
 	_PyObject_GC_UNTRACK(it);
 	Py_XDECREF(it->it_seq);
-	PyObject_GC_Del(it);
+	PyObject_DEL(it);
 }
 
 static int
@@ -138,14 +137,13 @@ PyObject *
 PyCallIter_New(PyObject *callable, PyObject *sentinel)
 {
 	calliterobject *it;
-	it = PyObject_GC_New(calliterobject, &PyCallIter_Type);
+	it = PyObject_NEW(calliterobject, &PyCallIter_Type);
 	if (it == NULL)
 		return NULL;
 	Py_INCREF(callable);
 	it->it_callable = callable;
 	Py_INCREF(sentinel);
 	it->it_sentinel = sentinel;
-	_PyObject_GC_TRACK(it);
 	return (PyObject *)it;
 }
 static void
@@ -154,7 +152,7 @@ calliter_dealloc(calliterobject *it)
 	_PyObject_GC_UNTRACK(it);
 	Py_XDECREF(it->it_callable);
 	Py_XDECREF(it->it_sentinel);
-	PyObject_GC_Del(it);
+	PyObject_DEL(it);
 }
 
 static int
@@ -291,7 +289,7 @@ _PyZip_CreateIter(PyObject* args)
                 PyTuple_SET_ITEM(result, i, Py_None);
         }
 	
-	zipiter = PyObject_GC_New(zipiterobject, &PyZipIter_Type);
+	zipiter = PyObject_NEW(zipiterobject, &PyZipIter_Type);
 	if (zipiter == NULL) {
 		Py_DECREF(ziptuple);
 		Py_DECREF(result);
@@ -301,7 +299,6 @@ _PyZip_CreateIter(PyObject* args)
 	zipiter->result = (PyTupleObject*) result;
         zipiter->resultsize = tuplesize;
 	zipiter->it_tuple = (PyTupleObject *) ziptuple;
-	_PyObject_GC_TRACK(zipiter);
 	return (PyObject *)zipiter;
 }
 
@@ -311,7 +308,7 @@ zipiter_dealloc(zipiterobject *it)
 	_PyObject_GC_UNTRACK(it);
 	Py_XDECREF(it->it_tuple);
 	Py_XDECREF(it->result);
-	PyObject_GC_Del(it);
+	PyObject_DEL(it);
 }
 
 static int
@@ -333,7 +330,7 @@ zipiter_next(zipiterobject *zit)
         if (tuplesize == 0)
                 return NULL;
 
-        if (result->ob_refcnt == 1) {
+        if (Py_RefcntMatches(result, 1)) {
 		Py_INCREF(result);
 		for (i = 0; i < tuplesize; i++) {
 			PyObject *it = PyTuple_GET_ITEM(zit->it_tuple, i);

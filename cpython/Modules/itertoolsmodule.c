@@ -34,7 +34,7 @@ groupby_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 					 &it, &keyfunc))
 		return NULL;
 
-	gbo = (groupbyobject *)type->tp_alloc(type, 0);
+	gbo = PyObject_NEW(groupbyobject, type);
 	if (gbo == NULL)
 		return NULL;
 	gbo->tgtkey = NULL;
@@ -59,7 +59,7 @@ groupby_dealloc(groupbyobject *gbo)
 	Py_XDECREF(gbo->tgtkey);
 	Py_XDECREF(gbo->currkey);
 	Py_XDECREF(gbo->currvalue);
-	Py_Type(gbo)->tp_free(gbo);
+	PyObject_DEL(gbo);
 }
 
 static int
@@ -177,9 +177,7 @@ static PyTypeObject groupby_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	groupby_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -198,7 +196,7 @@ _grouper_create(groupbyobject *parent, PyObject *tgtkey)
 {
 	_grouperobject *igo;
 
-	igo = PyObject_New(_grouperobject, &_grouper_type);
+	igo = PyObject_NEW(_grouperobject, &_grouper_type);
 	if (igo == NULL)
 		return NULL;
 	igo->parent = (PyObject *)parent;
@@ -214,7 +212,7 @@ _grouper_dealloc(_grouperobject *igo)
 {
 	Py_DECREF(igo->parent);
 	Py_DECREF(igo->tgtkey);
-	PyObject_Del(igo);
+	PyObject_DEL(igo);
 }
 
 static PyObject *
@@ -297,9 +295,7 @@ static PyTypeObject _grouper_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	0,				/* tp_new */
-	PyObject_Del,			/* tp_free */
 };
 
  
@@ -338,7 +334,7 @@ teedataobject_new(PyObject *it)
 {
 	teedataobject *tdo;
 
-	tdo = PyObject_GC_New(teedataobject, &teedataobject_type);
+	tdo = PyObject_NEW(teedataobject, &teedataobject_type);
 	if (tdo == NULL)
 		return NULL;
 
@@ -346,7 +342,6 @@ teedataobject_new(PyObject *it)
 	tdo->nextlink = NULL;
 	Py_INCREF(it);
 	tdo->it = it;
-	PyObject_GC_Track(tdo);
 	return (PyObject *)tdo;
 }
 
@@ -407,7 +402,7 @@ teedataobject_dealloc(teedataobject *tdo)
 {
 	PyObject_GC_UnTrack(tdo);
 	teedataobject_clear(tdo);
-	PyObject_GC_Del(tdo);
+	PyObject_DEL(tdo);
 }
 
 PyDoc_STRVAR(teedataobject_doc, "Data container common to multiple tee objects.");
@@ -450,9 +445,7 @@ static PyTypeObject teedataobject_type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	0,					/* tp_new */
-	PyObject_GC_Del,			/* tp_free */
 };
 
 
@@ -488,14 +481,13 @@ tee_copy(teeobject *to)
 {
 	teeobject *newto;
 
-	newto = PyObject_GC_New(teeobject, &tee_type);
+	newto = PyObject_NEW(teeobject, &tee_type);
 	if (newto == NULL)
 		return NULL;
 	Py_INCREF(to->dataobj);
 	newto->dataobj = to->dataobj;
 	newto->index = to->index;
 	newto->weakreflist = NULL;
-	PyObject_GC_Track(newto);
 	return (PyObject *)newto;
 }
 
@@ -515,19 +507,18 @@ tee_fromiterable(PyObject *iterable)
 		goto done;
 	}
 
-	to = PyObject_GC_New(teeobject, &tee_type);
+	to = PyObject_NEW(teeobject, &tee_type);
 	if (to == NULL) 
 		goto done;
 	to->dataobj = (teedataobject *)teedataobject_new(it);
 	if (!to->dataobj) {
-		PyObject_GC_Del(to);
+		PyObject_DEL(to);
 		to = NULL;
 		goto done;
 	}
 
 	to->index = 0;
 	to->weakreflist = NULL;
-	PyObject_GC_Track(to);
 done:
 	Py_XDECREF(it);
 	return (PyObject *)to;
@@ -546,8 +537,6 @@ tee_new(PyTypeObject *type, PyObject *args, PyObject *kw)
 static int
 tee_clear(teeobject *to)
 {
-	if (to->weakreflist != NULL)
-		PyObject_ClearWeakRefs((PyObject *) to);
 	Py_CLEAR(to->dataobj);
 	return 0;
 }
@@ -557,7 +546,7 @@ tee_dealloc(teeobject *to)
 {
 	PyObject_GC_UnTrack(to);
 	tee_clear(to);
-	PyObject_GC_Del(to);
+	PyObject_DEL(to);
 }
 
 PyDoc_STRVAR(teeobject_doc,
@@ -606,9 +595,7 @@ static PyTypeObject tee_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	tee_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 static PyObject *
@@ -695,7 +682,7 @@ cycle_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 
 	/* create cycleobject structure */
-	lz = (cycleobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(cycleobject, type);
 	if (lz == NULL) {
 		Py_DECREF(it);
 		Py_DECREF(saved);
@@ -714,7 +701,7 @@ cycle_dealloc(cycleobject *lz)
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->saved);
 	Py_XDECREF(lz->it);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -802,9 +789,7 @@ static PyTypeObject cycle_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	cycle_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -838,7 +823,7 @@ dropwhile_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 
 	/* create dropwhileobject structure */
-	lz = (dropwhileobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(dropwhileobject, type);
 	if (lz == NULL) {
 		Py_DECREF(it);
 		return NULL;
@@ -857,7 +842,7 @@ dropwhile_dealloc(dropwhileobject *lz)
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->func);
 	Py_XDECREF(lz->it);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -945,9 +930,7 @@ static PyTypeObject dropwhile_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	dropwhile_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -981,7 +964,7 @@ takewhile_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 
 	/* create takewhileobject structure */
-	lz = (takewhileobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(takewhileobject, type);
 	if (lz == NULL) {
 		Py_DECREF(it);
 		return NULL;
@@ -1000,7 +983,7 @@ takewhile_dealloc(takewhileobject *lz)
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->func);
 	Py_XDECREF(lz->it);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -1085,9 +1068,7 @@ static PyTypeObject takewhile_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	takewhile_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -1171,7 +1152,7 @@ islice_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 
 	/* create isliceobject structure */
-	lz = (isliceobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(isliceobject, type);
 	if (lz == NULL) {
 		Py_DECREF(it);
 		return NULL;
@@ -1190,7 +1171,7 @@ islice_dealloc(isliceobject *lz)
 {
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->it);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -1280,9 +1261,7 @@ static PyTypeObject islice_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	islice_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -1315,7 +1294,7 @@ starmap_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 
 	/* create starmapobject structure */
-	lz = (starmapobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(starmapobject, type);
 	if (lz == NULL) {
 		Py_DECREF(it);
 		return NULL;
@@ -1333,7 +1312,7 @@ starmap_dealloc(starmapobject *lz)
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->func);
 	Py_XDECREF(lz->it);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -1411,9 +1390,7 @@ static PyTypeObject starmap_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	starmap_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -1459,7 +1436,7 @@ imap_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 
 	/* create imapobject structure */
-	lz = (imapobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(imapobject, type);
 	if (lz == NULL) {
 		Py_DECREF(iters);
 		return NULL;
@@ -1478,7 +1455,7 @@ imap_dealloc(imapobject *lz)
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->iters);
 	Py_XDECREF(lz->func);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -1590,9 +1567,7 @@ static PyTypeObject imap_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	imap_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -1638,7 +1613,7 @@ chain_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 
 	/* create chainobject structure */
-	lz = (chainobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(chainobject, type);
 	if (lz == NULL) {
 		Py_DECREF(ittuple);
 		return NULL;
@@ -1656,7 +1631,7 @@ chain_dealloc(chainobject *lz)
 {
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->ittuple);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -1734,9 +1709,7 @@ static PyTypeObject chain_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	chain_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -1769,7 +1742,7 @@ ifilter_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 
 	/* create ifilterobject structure */
-	lz = (ifilterobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(ifilterobject, type);
 	if (lz == NULL) {
 		Py_DECREF(it);
 		return NULL;
@@ -1787,7 +1760,7 @@ ifilter_dealloc(ifilterobject *lz)
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->func);
 	Py_XDECREF(lz->it);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -1877,9 +1850,7 @@ static PyTypeObject ifilter_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	ifilter_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -1913,7 +1884,7 @@ ifilterfalse_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 
 	/* create ifilterfalseobject structure */
-	lz = (ifilterfalseobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(ifilterfalseobject, type);
 	if (lz == NULL) {
 		Py_DECREF(it);
 		return NULL;
@@ -1931,7 +1902,7 @@ ifilterfalse_dealloc(ifilterfalseobject *lz)
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->func);
 	Py_XDECREF(lz->it);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -2021,9 +1992,7 @@ static PyTypeObject ifilterfalse_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	ifilterfalse_new,		/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -2049,7 +2018,7 @@ count_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 
 	/* create countobject structure */
-	lz = (countobject *)PyObject_New(countobject, &count_type);
+	lz = PyObject_NEW(countobject, &count_type);
 	if (lz == NULL)
 		return NULL;
 	lz->cnt = cnt;
@@ -2086,7 +2055,7 @@ static PyTypeObject count_type = {
 	sizeof(countobject),		/* tp_basicsize */
 	0,				/* tp_itemsize */
 	/* methods */
-	(destructor)PyObject_Del,	/* tp_dealloc */
+	0,				/* tp_dealloc */
 	0,				/* tp_print */
 	0,				/* tp_getattr */
 	0,				/* tp_setattr */
@@ -2118,7 +2087,6 @@ static PyTypeObject count_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	count_new,			/* tp_new */
 };
 
@@ -2181,7 +2149,7 @@ izip_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 
 	/* create izipobject structure */
-	lz = (izipobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(izipobject, type);
 	if (lz == NULL) {
 		Py_DECREF(ittuple);
 		Py_DECREF(result);
@@ -2200,7 +2168,7 @@ izip_dealloc(izipobject *lz)
 	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->ittuple);
 	Py_XDECREF(lz->result);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -2223,7 +2191,7 @@ izip_next(izipobject *lz)
 
 	if (tuplesize == 0)
 		return NULL;
-	if (Py_Refcnt(result) == 1) {
+	if (Py_RefcntMatches(result, 1)) {
 		Py_INCREF(result);
 		for (i=0 ; i < tuplesize ; i++) {
 			it = PyTuple_GET_ITEM(lz->ittuple, i);
@@ -2304,9 +2272,7 @@ static PyTypeObject izip_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	izip_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -2336,7 +2302,7 @@ repeat_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	if (PyTuple_Size(args) == 2 && cnt < 0)
 		cnt = 0;
 
-	ro = (repeatobject *)type->tp_alloc(type, 0);
+	ro = PyObject_NEW(repeatobject, type);
 	if (ro == NULL)
 		return NULL;
 	Py_INCREF(element);
@@ -2350,7 +2316,7 @@ repeat_dealloc(repeatobject *ro)
 {
 	PyObject_GC_UnTrack(ro);
 	Py_XDECREF(ro->element);
-	Py_Type(ro)->tp_free(ro);
+	PyObject_DEL(ro);
 }
 
 static int
@@ -2441,9 +2407,7 @@ static PyTypeObject repeat_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	repeat_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 /* iziplongest object ************************************************************/
@@ -2513,7 +2477,7 @@ izip_longest_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 
 	/* create iziplongestobject structure */
-	lz = (iziplongestobject *)type->tp_alloc(type, 0);
+	lz = PyObject_NEW(iziplongestobject, type);
 	if (lz == NULL) {
 		Py_DECREF(ittuple);
 		Py_DECREF(result);
@@ -2535,7 +2499,7 @@ izip_longest_dealloc(iziplongestobject *lz)
 	Py_XDECREF(lz->ittuple);
 	Py_XDECREF(lz->result);
 	Py_XDECREF(lz->fillvalue);
-	Py_Type(lz)->tp_free(lz);
+	PyObject_DEL(lz);
 }
 
 static int
@@ -2561,7 +2525,7 @@ izip_longest_next(iziplongestobject *lz)
 		return NULL;
         if (lz->numactive == 0)
                 return NULL;
-	if (Py_Refcnt(result) == 1) {
+	if (Py_RefcntMatches(result, 1)) {
 		Py_INCREF(result);
 		for (i=0 ; i < tuplesize ; i++) {
 			it = PyTuple_GET_ITEM(lz->ittuple, i);
@@ -2669,9 +2633,7 @@ static PyTypeObject iziplongest_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	izip_longest_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 /* module level code ********************************************************/

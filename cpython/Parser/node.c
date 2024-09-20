@@ -13,6 +13,7 @@ PyNode_New(int type)
 	n->n_type = type;
 	n->n_str = NULL;
 	n->n_lineno = 0;
+    n->n_col_offset = 42424242;
 	n->n_nchildren = 0;
 	n->n_child = NULL;
 	return n;
@@ -102,6 +103,8 @@ PyNode_AddChild(register node *n1, int type, char *str, int lineno, int col_offs
 	n = &n1->n_child[n1->n_nchildren++];
 	n->n_type = type;
 	n->n_str = str;
+    //if (str != NULL)
+        //printf("New %p '%s'\n", str, str);
 	n->n_lineno = lineno;
 	n->n_col_offset = col_offset;
 	n->n_nchildren = 0;
@@ -130,6 +133,8 @@ freechildren(node *n)
 		freechildren(CHILD(n, i));
 	if (n->n_child != NULL)
 		PyObject_FREE(n->n_child);
-	if (STR(n) != NULL)
+	if (STR(n) != NULL) {
+        //printf("Delete %p '%s'\n", STR(n), STR(n));
 		PyObject_FREE(STR(n));
+    }
 }

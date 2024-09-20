@@ -35,7 +35,7 @@ functions should be applied to nil objects.
 typedef struct {
     PyObject_VAR_HEAD
     long ob_shash;
-    int ob_sstate;
+    AO_t ob_sstate;
     char ob_sval[1];
 
     /* Invariants:
@@ -76,12 +76,10 @@ PyAPI_FUNC(PyObject *) PyString_DecodeEscape(const char *, Py_ssize_t,
 						   const char *);
 
 PyAPI_FUNC(void) PyString_InternInPlace(PyObject **);
-PyAPI_FUNC(void) PyString_InternImmortal(PyObject **);
 PyAPI_FUNC(PyObject *) PyString_InternFromString(const char *);
 PyAPI_FUNC(void) _Py_ReleaseInternedStrings(void);
 
-/* Use only if you know it's a string */
-#define PyString_CHECK_INTERNED(op) (((PyStringObject *)(op))->ob_sstate)
+PyAPI_FUNC(int) _PyString_SnoopState(PyStringObject *op);
 
 /* Macro, trading safety for speed */
 #define PyString_AS_STRING(op) (assert(PyString_Check(op)),(((PyStringObject *)(op))->ob_sval))

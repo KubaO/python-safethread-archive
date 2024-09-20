@@ -171,7 +171,6 @@ PyBuffer_FromReadWriteMemory(void *ptr, Py_ssize_t size)
 PyObject *
 PyBuffer_New(Py_ssize_t size)
 {
-	PyObject *o;
 	PyBufferObject * b;
 
 	if (size < 0) {
@@ -181,10 +180,13 @@ PyBuffer_New(Py_ssize_t size)
 	}
 	/* XXX: check for overflow in multiply */
 	/* Inline PyObject_New */
-	o = (PyObject *)PyObject_MALLOC(sizeof(*b) + size);
-	if (o == NULL)
-		return PyErr_NoMemory();
-	b = (PyBufferObject *) PyObject_INIT(o, &PyBuffer_Type);
+	//o = (PyObject *)PyObject_MALLOC(sizeof(*b) + size);
+	//if (o == NULL)
+	//	return PyErr_NoMemory();
+	//b = (PyBufferObject *) PyObject_INIT(o, &PyBuffer_Type);
+	b = PyObject_NEWVAR(PyBufferObject, &PyBuffer_Type, size);
+	if (b == NULL)
+		return NULL;
 
 	b->b_base = NULL;
 	b->b_ptr = (void *)(b + 1);
@@ -193,7 +195,7 @@ PyBuffer_New(Py_ssize_t size)
 	b->b_readonly = 0;
 	b->b_hash = -1;
 
-	return o;
+	return (PyObject *)b;
 }
 
 /* Methods */
@@ -702,7 +704,7 @@ PyTypeObject PyBuffer_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	&buffer_as_buffer,			/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT,			/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	buffer_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -719,6 +721,5 @@ PyTypeObject PyBuffer_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	buffer_new,				/* tp_new */
 };

@@ -120,9 +120,10 @@ typedef int Py_ssize_t;
 /* and these are for calling C --> Python */
 #if defined(MYDB_USE_GILSTATE)
 #define MYDB_BEGIN_BLOCK_THREADS \
-		PyGILState_STATE __savestate = PyGILState_Ensure();
+		PyState_EnterTag __entertag = PyState_Enter(); \
+		if (!__entertag) Py_FatalError("PyState_Enter failed");
 #define MYDB_END_BLOCK_THREADS \
-		PyGILState_Release(__savestate);
+		PyState_Exit(__entertag);
 #else /* MYDB_USE_GILSTATE */
 /* Pre GILState API - do it the long old way */
 static PyInterpreterState* _db_interpreterState = NULL;
@@ -950,11 +951,6 @@ DB_dealloc(DBObject* self)
         }
         self->db = NULL;
     }
-#ifdef HAVE_WEAKREF
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-#endif
     if (self->myenvobj) {
         Py_DECREF(self->myenvobj);
         self->myenvobj = NULL;
@@ -994,12 +990,6 @@ static void
 DBCursor_dealloc(DBCursorObject* self)
 {
     int err;
-
-#ifdef HAVE_WEAKREF
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-#endif
 
     if (self->dbc != NULL) {
         MYDB_BEGIN_ALLOW_THREADS;
@@ -1053,12 +1043,6 @@ newDBEnvObject(int flags)
 static void
 DBEnv_dealloc(DBEnvObject* self)
 {
-#ifdef HAVE_WEAKREF
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-#endif
-
     if (self->db_env && !self->closed) {
         MYDB_BEGIN_ALLOW_THREADS;
         self->db_env->close(self->db_env, 0);
@@ -1100,12 +1084,6 @@ newDBTxnObject(DBEnvObject* myenv, DB_TXN *parent, int flags)
 static void
 DBTxn_dealloc(DBTxnObject* self)
 {
-#ifdef HAVE_WEAKREF
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-#endif
-
 #ifdef HAVE_WARNINGS
     if (self->txn) {
         /* it hasn't been finalized, abort it! */
@@ -1160,11 +1138,6 @@ newDBLockObject(DBEnvObject* myenv, u_int32_t locker, DBT* obj,
 static void
 DBLock_dealloc(DBLockObject* self)
 {
-#ifdef HAVE_WEAKREF
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-#endif
     /* TODO: is this lock held? should we release it? */
 
     PyObject_Del(self);
@@ -1202,12 +1175,6 @@ newDBSequenceObject(DBObject* mydb,  int flags)
 static void
 DBSequence_dealloc(DBSequenceObject* self)
 {
-#ifdef HAVE_WEAKREF
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-#endif
-
     Py_DECREF(self->mydb);
     PyObject_Del(self);
 }
@@ -1384,7 +1351,7 @@ DB_associate(DBObject* self, PyObject* args, PyObject* kwargs)
      *  (see pybsddb-users mailing list post on 2002-08-07)
      */
 #ifdef WITH_THREAD
-    PyEval_InitThreads();
+    //PyState_InitThreads();
 #endif
     MYDB_BEGIN_ALLOW_THREADS;
 #if (DBVER >= 41)
@@ -2326,7 +2293,7 @@ DB_set_bt_compare(DBObject* self, PyObject* args)
     /* This is to workaround a problem with un-initialized threads (see
        comment in DB_associate) */
 #ifdef WITH_THREAD
-    PyEval_InitThreads();
+    //PyState_InitThreads();
 #endif
 
     err = self->db->set_bt_compare(self->db, _db_compareCallback);

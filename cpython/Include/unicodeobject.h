@@ -404,7 +404,7 @@ typedef struct {
     Py_ssize_t length;		/* Length of raw Unicode data in buffer */
     Py_UNICODE *str;		/* Raw Unicode buffer */
     long hash;			/* Hash value; -1 if not set */
-    int state;			/* != 0 if interned. In this case the two
+    AO_t state;			/* != 0 if interned. In this case the two
     				 * references from the dictionary to this object
     				 * are *not* counted in ob_refcnt. */
     PyObject *defenc;		/* (Default) Encoded version as Python
@@ -415,8 +415,7 @@ typedef struct {
 PyAPI_DATA(PyTypeObject) PyUnicode_Type;
 
 #define SSTATE_NOT_INTERNED 0
-#define SSTATE_INTERNED_MORTAL 1
-#define SSTATE_INTERNED_IMMORTAL 2
+#define SSTATE_INTERNED 1
 
 #define PyUnicode_Check(op) \
                  PyType_FastSubclass(Py_Type(op), Py_TPFLAGS_UNICODE_SUBCLASS)
@@ -551,12 +550,8 @@ PyAPI_FUNC(PyObject *) PyUnicode_FromFormatV(const char*, va_list);
 PyAPI_FUNC(PyObject *) PyUnicode_FromFormat(const char*, ...);
 
 PyAPI_FUNC(void) PyUnicode_InternInPlace(PyObject **);
-PyAPI_FUNC(void) PyUnicode_InternImmortal(PyObject **);
 PyAPI_FUNC(PyObject *) PyUnicode_InternFromString(const char *);
 PyAPI_FUNC(void) _Py_ReleaseInternedUnicodeStrings(void);
-
-/* Use only if you know it's a string */
-#define PyUnicode_CHECK_INTERNED(op) (((PyUnicodeObject *)(op))->state)
 
 /* --- wchar_t support for platforms which support it --------------------- */
 

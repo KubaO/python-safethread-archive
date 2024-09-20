@@ -42,7 +42,7 @@ partial_new(PyTypeObject *type, PyObject *args, PyObject *kw)
 	}
 
 	/* create partialobject structure */
-	pto = (partialobject *)type->tp_alloc(type, 0);
+	pto = PyObject_NEW(partialobject, type);
 	if (pto == NULL)
 		return NULL;
 
@@ -75,13 +75,11 @@ static void
 partial_dealloc(partialobject *pto)
 {
 	PyObject_GC_UnTrack(pto);
-	if (pto->weakreflist != NULL)
-		PyObject_ClearWeakRefs((PyObject *) pto);
 	Py_XDECREF(pto->fn);
 	Py_XDECREF(pto->args);
 	Py_XDECREF(pto->kw);
 	Py_XDECREF(pto->dict);
-	Py_Type(pto)->tp_free(pto);
+	PyObject_DEL(pto);
 }
 
 static PyObject *
@@ -235,9 +233,7 @@ static PyTypeObject partial_type = {
 	0,				/* tp_descr_set */
 	offsetof(partialobject, dict),	/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	partial_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -267,7 +263,7 @@ functools_reduce(PyObject *self, PyObject *args)
 	for (;;) {
 		PyObject *op2;
 
-		if (args->ob_refcnt > 1) {
+		if (Py_RefcntSnoop(args) > 1) {
 			Py_DECREF(args);
 			if ((args = PyTuple_New(2)) == NULL)
 				goto Fail;

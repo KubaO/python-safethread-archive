@@ -13,6 +13,7 @@ PyAPI_DATA(PyTypeObject) PyModule_Type;
 #define PyModule_CheckExact(op) (Py_Type(op) == &PyModule_Type)
 
 PyAPI_FUNC(PyObject *) PyModule_New(const char *);
+PyAPI_FUNC(PyObject *) PyModule_NewEx(const char *, int);
 PyAPI_FUNC(PyObject *) PyModule_GetDict(PyObject *);
 PyAPI_FUNC(const char *) PyModule_GetName(PyObject *);
 PyAPI_FUNC(const char *) PyModule_GetFilename(PyObject *);

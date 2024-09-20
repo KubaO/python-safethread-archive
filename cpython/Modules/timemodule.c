@@ -790,7 +790,7 @@ static PyMethodDef time_methods[] = {
 #ifdef HAVE_CLOCK
 	{"clock",	time_clock, METH_NOARGS, clock_doc},
 #endif
-	{"sleep",	time_sleep, METH_VARARGS, sleep_doc},
+	{"sleep",	time_sleep, METH_VARARGS|METH_SHARED, sleep_doc},
 	{"gmtime",	time_gmtime, METH_VARARGS, gmtime_doc},
 	{"localtime",	time_localtime, METH_VARARGS, localtime_doc},
 	{"asctime",	time_asctime, METH_VARARGS, asctime_doc},

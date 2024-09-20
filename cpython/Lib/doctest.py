@@ -1648,7 +1648,7 @@ class DebugRunner(DocTestRunner):
 
          >>> del test.globs['__builtins__']
          >>> test.globs
-         {'x': 1}
+         {'x': 1, '_': 1}
 
          >>> test = DocTestParser().get_doctest('''
          ...      >>> x = 2

@@ -23,7 +23,7 @@ BaseException_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     PyBaseExceptionObject *self;
 
-    self = (PyBaseExceptionObject *)type->tp_alloc(type, 0);
+    self = PyObject_NEW(PyBaseExceptionObject, type);
     if (!self)
         return NULL;
     /* the dict is created on the fly in PyObject_GenericSetAttr */
@@ -68,7 +68,7 @@ BaseException_dealloc(PyBaseExceptionObject *self)
 {
     _PyObject_GC_UNTRACK(self);
     BaseException_clear(self);
-    Py_Type(self)->tp_free((PyObject *)self);
+    PyObject_DEL(self);
 }
 
 static int
@@ -327,7 +327,7 @@ static PyTypeObject _PyExc_BaseException = {
     PyObject_GenericSetAttr,    /*tp_setattro*/
     0,                          /*tp_as_buffer*/
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC |
-    	Py_TPFLAGS_BASE_EXC_SUBCLASS,  /*tp_flags*/
+    	Py_TPFLAGS_BASE_EXC_SUBCLASS | Py_TPFLAGS_SHAREABLE,  /*tp_flags*/
     PyDoc_STR("Common base class for all exceptions"), /* tp_doc */
     (traverseproc)BaseException_traverse, /* tp_traverse */
     (inquiry)BaseException_clear, /* tp_clear */
@@ -344,7 +344,6 @@ static PyTypeObject _PyExc_BaseException = {
     0,                          /* tp_descr_set */
     offsetof(PyBaseExceptionObject, dict), /* tp_dictoffset */
     (initproc)BaseException_init, /* tp_init */
-    0,                          /* tp_alloc */
     BaseException_new,          /* tp_new */
 };
 /* the CPython API expects exceptions to be (PyObject *) - both a hold-over
@@ -362,11 +361,11 @@ static PyTypeObject _PyExc_ ## EXCNAME = { \
     sizeof(PyBaseExceptionObject), \
     0, (destructor)BaseException_dealloc, 0, 0, 0, 0, 0, 0, 0, \
     0, 0, 0, 0, 0, 0, 0, \
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC, \
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SHAREABLE, \
     PyDoc_STR(EXCDOC), (traverseproc)BaseException_traverse, \
     (inquiry)BaseException_clear, 0, 0, 0, 0, 0, 0, 0, &_ ## EXCBASE, \
     0, 0, 0, offsetof(PyBaseExceptionObject, dict), \
-    (initproc)BaseException_init, 0, BaseException_new,\
+    (initproc)BaseException_init, BaseException_new,\
 }; \
 PyObject *PyExc_ ## EXCNAME = (PyObject *)&_PyExc_ ## EXCNAME
 
@@ -377,11 +376,11 @@ static PyTypeObject _PyExc_ ## EXCNAME = { \
     sizeof(Py ## EXCSTORE ## Object), \
     0, (destructor)EXCSTORE ## _dealloc, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
     0, 0, 0, 0, 0, \
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC, \
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SHAREABLE, \
     PyDoc_STR(EXCDOC), (traverseproc)EXCSTORE ## _traverse, \
     (inquiry)EXCSTORE ## _clear, 0, 0, 0, 0, 0, 0, 0, &_ ## EXCBASE, \
     0, 0, 0, offsetof(Py ## EXCSTORE ## Object, dict), \
-    (initproc)EXCSTORE ## _init, 0, BaseException_new,\
+    (initproc)EXCSTORE ## _init, BaseException_new,\
 }; \
 PyObject *PyExc_ ## EXCNAME = (PyObject *)&_PyExc_ ## EXCNAME
 
@@ -392,12 +391,12 @@ static PyTypeObject _PyExc_ ## EXCNAME = { \
     sizeof(Py ## EXCSTORE ## Object), 0, \
     (destructor)EXCSTORE ## _dealloc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
     (reprfunc)EXCSTR, 0, 0, 0, \
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC, \
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SHAREABLE, \
     PyDoc_STR(EXCDOC), (traverseproc)EXCSTORE ## _traverse, \
     (inquiry)EXCSTORE ## _clear, 0, 0, 0, 0, EXCMETHODS, \
     EXCMEMBERS, 0, &_ ## EXCBASE, \
     0, 0, 0, offsetof(Py ## EXCSTORE ## Object, dict), \
-    (initproc)EXCSTORE ## _init, 0, BaseException_new,\
+    (initproc)EXCSTORE ## _init, BaseException_new,\
 }; \
 PyObject *PyExc_ ## EXCNAME = (PyObject *)&_PyExc_ ## EXCNAME
 
@@ -465,7 +464,7 @@ SystemExit_dealloc(PySystemExitObject *self)
 {
     _PyObject_GC_UNTRACK(self);
     SystemExit_clear(self);
-    Py_Type(self)->tp_free((PyObject *)self);
+    PyObject_DEL(self);
 }
 
 static int
@@ -570,7 +569,7 @@ EnvironmentError_dealloc(PyEnvironmentErrorObject *self)
 {
     _PyObject_GC_UNTRACK(self);
     EnvironmentError_clear(self);
-    Py_Type(self)->tp_free((PyObject *)self);
+    PyObject_DEL(self);
 }
 
 static int
@@ -691,7 +690,7 @@ WindowsError_dealloc(PyWindowsErrorObject *self)
 {
     _PyObject_GC_UNTRACK(self);
     WindowsError_clear(self);
-    Py_Type(self)->tp_free((PyObject *)self);
+    PyObject_DEL(self);
 }
 
 static int
@@ -889,7 +888,7 @@ SyntaxError_dealloc(PySyntaxErrorObject *self)
 {
     _PyObject_GC_UNTRACK(self);
     SyntaxError_clear(self);
-    Py_Type(self)->tp_free((PyObject *)self);
+    PyObject_DEL(self);
 }
 
 static int
@@ -1337,7 +1336,7 @@ UnicodeError_dealloc(PyUnicodeErrorObject *self)
 {
     _PyObject_GC_UNTRACK(self);
     UnicodeError_clear(self);
-    Py_Type(self)->tp_free((PyObject *)self);
+    PyObject_DEL(self);
 }
 
 static int
@@ -1414,11 +1413,11 @@ static PyTypeObject _PyExc_UnicodeEncodeError = {
     sizeof(PyUnicodeErrorObject), 0,
     (destructor)UnicodeError_dealloc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     (reprfunc)UnicodeEncodeError_str, 0, 0, 0,
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SHAREABLE,
     PyDoc_STR("Unicode encoding error."), (traverseproc)UnicodeError_traverse,
     (inquiry)UnicodeError_clear, 0, 0, 0, 0, 0, UnicodeError_members,
     0, &_PyExc_UnicodeError, 0, 0, 0, offsetof(PyUnicodeErrorObject, dict),
-    (initproc)UnicodeEncodeError_init, 0, BaseException_new,
+    (initproc)UnicodeEncodeError_init, BaseException_new,
 };
 PyObject *PyExc_UnicodeEncodeError = (PyObject *)&_PyExc_UnicodeEncodeError;
 
@@ -1475,11 +1474,11 @@ static PyTypeObject _PyExc_UnicodeDecodeError = {
     sizeof(PyUnicodeErrorObject), 0,
     (destructor)UnicodeError_dealloc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     (reprfunc)UnicodeDecodeError_str, 0, 0, 0,
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SHAREABLE,
     PyDoc_STR("Unicode decoding error."), (traverseproc)UnicodeError_traverse,
     (inquiry)UnicodeError_clear, 0, 0, 0, 0, 0, UnicodeError_members,
     0, &_PyExc_UnicodeError, 0, 0, 0, offsetof(PyUnicodeErrorObject, dict),
-    (initproc)UnicodeDecodeError_init, 0, BaseException_new,
+    (initproc)UnicodeDecodeError_init, BaseException_new,
 };
 PyObject *PyExc_UnicodeDecodeError = (PyObject *)&_PyExc_UnicodeDecodeError;
 
@@ -1561,11 +1560,11 @@ static PyTypeObject _PyExc_UnicodeTranslateError = {
     sizeof(PyUnicodeErrorObject), 0,
     (destructor)UnicodeError_dealloc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     (reprfunc)UnicodeTranslateError_str, 0, 0, 0,
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SHAREABLE,
     PyDoc_STR("Unicode translation error."), (traverseproc)UnicodeError_traverse,
     (inquiry)UnicodeError_clear, 0, 0, 0, 0, 0, UnicodeError_members,
     0, &_PyExc_UnicodeError, 0, 0, 0, offsetof(PyUnicodeErrorObject, dict),
-    (initproc)UnicodeTranslateError_init, 0, BaseException_new,
+    (initproc)UnicodeTranslateError_init, BaseException_new,
 };
 PyObject *PyExc_UnicodeTranslateError = (PyObject *)&_PyExc_UnicodeTranslateError;
 
@@ -1640,6 +1639,16 @@ SimpleExtendsException(PyExc_Exception, MemoryError, "Out of memory.");
  *    BufferError extends Exception
  */
 SimpleExtendsException(PyExc_Exception, BufferError, "Buffer error.");
+
+/*
+ *    MultipleError extends Exception
+ */
+SimpleExtendsException(PyExc_Exception, MultipleError, "Multiple errors.");
+
+/*
+ *    Interrupted extends Exception
+ */
+SimpleExtendsException(PyExc_Exception, Interrupted, "Thread interrupted by parent.");
 
 
 /* Warning category docstrings */
@@ -1799,6 +1808,8 @@ _PyExc_Init(void)
     PRE_INIT(ReferenceError)
     PRE_INIT(BufferError)
     PRE_INIT(MemoryError)
+    PRE_INIT(MultipleError)
+    PRE_INIT(Interrupted)
     PRE_INIT(Warning)
     PRE_INIT(UserWarning)
     PRE_INIT(DeprecationWarning)
@@ -1859,6 +1870,8 @@ _PyExc_Init(void)
     POST_INIT(ReferenceError)
     POST_INIT(BufferError)
     POST_INIT(MemoryError)
+    POST_INIT(MultipleError)
+    POST_INIT(Interrupted)
     POST_INIT(Warning)
     POST_INIT(UserWarning)
     POST_INIT(DeprecationWarning)

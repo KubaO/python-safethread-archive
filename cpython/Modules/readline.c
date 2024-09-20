@@ -619,9 +619,11 @@ on_hook(PyObject *func)
 {
 	int result = 0;
 	if (func != NULL) {
-		PyObject *r;
+		PyObject *r = NULL;
 #ifdef WITH_THREAD	      
-		PyGILState_STATE gilstate = PyGILState_Ensure();
+		PyState_EnterTag entertag = PyState_Enter();
+		if (!entertag)
+			goto error;
 #endif
 		r = PyObject_CallFunction(func, NULL);
 		if (r == NULL)
@@ -640,7 +642,7 @@ on_hook(PyObject *func)
 		Py_XDECREF(r);
 	  done:
 #ifdef WITH_THREAD	      
-		PyGILState_Release(gilstate);
+		PyState_Exit(entertag);
 #endif
 		return result;
 	}
@@ -671,9 +673,11 @@ on_completion_display_matches_hook(char **matches,
 	if (completion_display_matches_hook != NULL) {
 	        int i;
 	        PyObject *m, *s;
-	        PyObject *r;
+	        PyObject *r = NULL;
 #ifdef WITH_THREAD	      
-		PyGILState_STATE gilstate = PyGILState_Ensure();
+		PyState_EnterTag entertag = PyState_Enter();
+		if (!entertag)
+			goto error;
 #endif
 		m = PyList_New(num_matches);
 		for (i = 0; i < num_matches; i++) {
@@ -697,8 +701,8 @@ on_completion_display_matches_hook(char **matches,
 		PyErr_Clear();
 		Py_XDECREF(r);
 	  done:
-#ifdef WITH_THREAD	      
-		PyGILState_Release(gilstate);
+#ifdef WITH_THREAD
+		PyState_Exit(entertag);
 #endif
 	}
 }
@@ -711,9 +715,11 @@ on_completion(const char *text, int state)
 {
 	char *result = NULL;
 	if (completer != NULL) {
-		PyObject *r;
+		PyObject *r = NULL;
 #ifdef WITH_THREAD	      
-		PyGILState_STATE gilstate = PyGILState_Ensure();
+		PyState_EnterTag entertag = PyState_Enter();
+		if (!entertag)
+			Py_FatalError("PyState_Enter failed");
 #endif
 		rl_attempted_completion_over = 1;
 		r = PyObject_CallFunction(completer, "si", text, state);
@@ -735,7 +741,7 @@ on_completion(const char *text, int state)
 		Py_XDECREF(r);
 	  done:
 #ifdef WITH_THREAD	      
-		PyGILState_Release(gilstate);
+		PyState_Exit(entertag);
 #endif
 		return result;
 	}
@@ -866,11 +872,13 @@ readline_until_enter_or_signal(char *prompt, int *signal)
 		else if (errno == EINTR) {
 			int s;
 #ifdef WITH_THREAD
-			PyEval_RestoreThread(_PyOS_ReadlineTState);
+			//PyEval_RestoreThread(_PyOS_ReadlineTState);
+			PyState_Resume();
 #endif
 			s = PyErr_CheckSignals();
 #ifdef WITH_THREAD
-			PyEval_SaveThread();	
+			//PyEval_SaveThread();
+			PyState_Suspend();
 #endif
 			if (s < 0) {
 				rl_free_line_state();

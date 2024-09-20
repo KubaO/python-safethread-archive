@@ -13,6 +13,7 @@ PyAPI_FUNC(PyObject *) PyImport_ExecCodeModuleEx(
 	char *name, PyObject *co, char *pathname);
 PyAPI_FUNC(PyObject *) PyImport_GetModuleDict(void);
 PyAPI_FUNC(PyObject *) PyImport_AddModule(const char *name);
+PyAPI_FUNC(PyObject *) PyImport_AddModuleEx(const char *name, int shared);
 PyAPI_FUNC(PyObject *) PyImport_ImportModule(const char *name);
 PyAPI_FUNC(PyObject *) PyImport_ImportModuleLevel(char *name,
 	PyObject *globals, PyObject *locals, PyObject *fromlist, int level);

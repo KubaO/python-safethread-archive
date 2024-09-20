@@ -2,6 +2,7 @@
 
 #include "Python.h"
 #include "structmember.h" /* Why is this not included in Python.h? */
+#include "monitorobject.h"
 
 static void
 descr_dealloc(PyDescrObject *descr)
@@ -9,7 +10,7 @@ descr_dealloc(PyDescrObject *descr)
 	_PyObject_GC_UNTRACK(descr);
 	Py_XDECREF(descr->d_type);
 	Py_XDECREF(descr->d_name);
-	PyObject_GC_Del(descr);
+	PyObject_DEL(descr);
 }
 
 static PyObject *
@@ -134,6 +135,12 @@ member_get(PyMemberDescrObject *descr, PyObject *obj, PyObject *type)
 
 	if (descr_check((PyDescrObject *)descr, obj, &res))
 		return res;
+	if (PyMonitor_Check(obj) &&
+			!PyMonitorSpace_IsCurrent(PyMonitor_GetMonitorSpace(obj))) {
+		PyErr_SetString(PyExc_AttributeError,
+			descr->d_member->name);
+		return NULL;
+	}
 	return PyMember_GetOne((char *)obj, descr->d_member);
 }
 
@@ -188,6 +195,15 @@ member_set(PyMemberDescrObject *descr, PyObject *obj, PyObject *value)
 
 	if (descr_setcheck((PyDescrObject *)descr, obj, value, &res))
 		return res;
+	if (PyMonitor_Check(obj) &&
+			!PyMonitorSpace_IsCurrent(PyMonitor_GetMonitorSpace(obj))) {
+		PyErr_Format(PyExc_AttributeError,
+			"descriptor '%.200s' for '%.100s' objects "
+			"can't be applied from outside of Monitor",
+			descr->d_member->name,
+			descr->d_type->tp_name);
+		return -1;
+	}
 	return PyMember_SetOne((char *)obj, descr->d_member, value);
 }
 
@@ -383,6 +399,13 @@ descr_traverse(PyObject *self, visitproc visit, void *arg)
 	return 0;
 }
 
+static int
+descr_isshareable(PyObject *self)
+{
+	/* XXX FIXME Pure hack */
+	return 1;
+}
+
 static PyTypeObject PyMethodDescr_Type = {
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
 	"method_descriptor",
@@ -403,7 +426,7 @@ static PyTypeObject PyMethodDescr_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SKIPWIPE, /* tp_flags */
 	0,					/* tp_doc */
 	descr_traverse,				/* tp_traverse */
 	0,					/* tp_clear */
@@ -441,7 +464,7 @@ static PyTypeObject PyClassMethodDescr_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SKIPWIPE, /* tp_flags */
 	0,					/* tp_doc */
 	descr_traverse,				/* tp_traverse */
 	0,					/* tp_clear */
@@ -478,7 +501,7 @@ static PyTypeObject PyMemberDescr_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SKIPWIPE, /* tp_flags */
 	0,					/* tp_doc */
 	descr_traverse,				/* tp_traverse */
 	0,					/* tp_clear */
@@ -493,6 +516,16 @@ static PyTypeObject PyMemberDescr_Type = {
 	0,					/* tp_dict */
 	(descrgetfunc)member_get,		/* tp_descr_get */
 	(descrsetfunc)member_set,		/* tp_descr_set */
+	0,					/* tp_dictoffset */
+	0,					/* tp_init */
+	0,					/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	descr_isshareable,			/* tp_isshareable */
 };
 
 static PyTypeObject PyGetSetDescr_Type = {
@@ -515,7 +548,7 @@ static PyTypeObject PyGetSetDescr_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SKIPWIPE, /* tp_flags */
 	0,					/* tp_doc */
 	descr_traverse,				/* tp_traverse */
 	0,					/* tp_clear */
@@ -530,6 +563,16 @@ static PyTypeObject PyGetSetDescr_Type = {
 	0,					/* tp_dict */
 	(descrgetfunc)getset_get,		/* tp_descr_get */
 	(descrsetfunc)getset_set,		/* tp_descr_set */
+	0,					/* tp_dictoffset */
+	0,					/* tp_init */
+	0,					/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	descr_isshareable,			/* tp_isshareable */
 };
 
 PyTypeObject PyWrapperDescr_Type = {
@@ -552,7 +595,7 @@ PyTypeObject PyWrapperDescr_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SKIPWIPE, /* tp_flags */
 	0,					/* tp_doc */
 	descr_traverse,				/* tp_traverse */
 	0,					/* tp_clear */
@@ -567,6 +610,16 @@ PyTypeObject PyWrapperDescr_Type = {
 	0,					/* tp_dict */
 	(descrgetfunc)wrapperdescr_get,		/* tp_descr_get */
 	0,					/* tp_descr_set */
+	0,					/* tp_dictoffset */
+	0,					/* tp_init */
+	0,					/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	descr_isshareable,			/* tp_isshareable */
 };
 
 static PyDescrObject *
@@ -574,7 +627,7 @@ descr_new(PyTypeObject *descrtype, PyTypeObject *type, const char *name)
 {
 	PyDescrObject *descr;
 
-	descr = (PyDescrObject *)PyType_GenericAlloc(descrtype, 0);
+	descr = PyObject_NEW(PyDescrObject, descrtype);
 	if (descr != NULL) {
 		Py_XINCREF(type);
 		descr->d_type = type;
@@ -594,8 +647,10 @@ PyDescr_NewMethod(PyTypeObject *type, PyMethodDef *method)
 
 	descr = (PyMethodDescrObject *)descr_new(&PyMethodDescr_Type,
 						 type, method->ml_name);
-	if (descr != NULL)
-		descr->d_method = method;
+	if (descr == NULL)
+		return NULL;
+	descr->d_method = method;
+	PyObject_COMPLETE(descr);
 	return (PyObject *)descr;
 }
 
@@ -606,8 +661,10 @@ PyDescr_NewClassMethod(PyTypeObject *type, PyMethodDef *method)
 
 	descr = (PyMethodDescrObject *)descr_new(&PyClassMethodDescr_Type,
 						 type, method->ml_name);
-	if (descr != NULL)
-		descr->d_method = method;
+	if (descr == NULL)
+		return NULL;
+	descr->d_method = method;
+	PyObject_COMPLETE(descr);
 	return (PyObject *)descr;
 }
 
@@ -618,8 +675,10 @@ PyDescr_NewMember(PyTypeObject *type, PyMemberDef *member)
 
 	descr = (PyMemberDescrObject *)descr_new(&PyMemberDescr_Type,
 						 type, member->name);
-	if (descr != NULL)
-		descr->d_member = member;
+	if (descr == NULL)
+		return NULL;
+	descr->d_member = member;
+	PyObject_COMPLETE(descr);
 	return (PyObject *)descr;
 }
 
@@ -630,8 +689,10 @@ PyDescr_NewGetSet(PyTypeObject *type, PyGetSetDef *getset)
 
 	descr = (PyGetSetDescrObject *)descr_new(&PyGetSetDescr_Type,
 						 type, getset->name);
-	if (descr != NULL)
-		descr->d_getset = getset;
+	if (descr == NULL)
+		return NULL;
+	descr->d_getset = getset;
+	PyObject_COMPLETE(descr);
 	return (PyObject *)descr;
 }
 
@@ -642,10 +703,11 @@ PyDescr_NewWrapper(PyTypeObject *type, struct wrapperbase *base, void *wrapped)
 
 	descr = (PyWrapperDescrObject *)descr_new(&PyWrapperDescr_Type,
 						 type, base->name);
-	if (descr != NULL) {
-		descr->d_base = base;
-		descr->d_wrapped = wrapped;
-	}
+	if (descr == NULL)
+		return NULL;
+	descr->d_base = base;
+	descr->d_wrapped = wrapped;
+	PyObject_COMPLETE(descr);
 	return (PyObject *)descr;
 }
 
@@ -775,7 +837,7 @@ proxy_dealloc(proxyobject *pp)
 {
 	_PyObject_GC_UNTRACK(pp);
 	Py_DECREF(pp->dict);
-	PyObject_GC_Del(pp);
+	PyObject_DEL(pp);
 }
 
 static PyObject *
@@ -831,7 +893,7 @@ static PyTypeObject proxytype = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SKIPWIPE, /* tp_flags */
  	0,					/* tp_doc */
 	proxy_traverse,				/* tp_traverse */
  	0,					/* tp_clear */
@@ -853,11 +915,11 @@ PyDictProxy_New(PyObject *dict)
 {
 	proxyobject *pp;
 
-	pp = PyObject_GC_New(proxyobject, &proxytype);
+	pp = PyObject_NEW(proxyobject, &proxytype);
 	if (pp != NULL) {
 		Py_INCREF(dict);
 		pp->dict = dict;
-		_PyObject_GC_TRACK(pp);
+		PyObject_COMPLETE(pp);
 	}
 	return (PyObject *)pp;
 }
@@ -881,7 +943,7 @@ wrapper_dealloc(wrapperobject *wp)
 	Py_TRASHCAN_SAFE_BEGIN(wp)
 	Py_XDECREF(wp->descr);
 	Py_XDECREF(wp->self);
-	PyObject_GC_Del(wp);
+	PyObject_DEL(wp);
 	Py_TRASHCAN_SAFE_END(wp)
 }
 
@@ -991,6 +1053,14 @@ wrapper_traverse(PyObject *self, visitproc visit, void *arg)
 	return 0;
 }
 
+static int
+wrapper_isshareable(wrapperobject *wp)
+{
+	/* XXX FIXME I doubt this is sufficiently strict */
+	return PyObject_IsShareable((PyObject *)wp->descr->d_type) &&
+		PyObject_IsShareable(wp->self);
+}
+
 static PyTypeObject wrappertype = {
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
 	"method-wrapper",			/* tp_name */
@@ -1012,7 +1082,7 @@ static PyTypeObject wrappertype = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SKIPWIPE, /* tp_flags */
  	0,					/* tp_doc */
 	wrapper_traverse,			/* tp_traverse */
  	0,					/* tp_clear */
@@ -1027,6 +1097,16 @@ static PyTypeObject wrappertype = {
 	0,					/* tp_dict */
 	0,					/* tp_descr_get */
 	0,					/* tp_descr_set */
+	0,					/* tp_dictoffset */
+	0,					/* tp_init */
+	0,					/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	(isshareablefunc)wrapper_isshareable,	/* tp_isshareable */
 };
 
 PyObject *
@@ -1039,13 +1119,13 @@ PyWrapper_New(PyObject *d, PyObject *self)
 	descr = (PyWrapperDescrObject *)d;
 	assert(PyObject_IsInstance(self, (PyObject *)(descr->d_type)));
 
-	wp = PyObject_GC_New(wrapperobject, &wrappertype);
+	wp = PyObject_NEW(wrapperobject, &wrappertype);
 	if (wp != NULL) {
 		Py_INCREF(descr);
 		wp->descr = descr;
 		Py_INCREF(self);
 		wp->self = self;
-		_PyObject_GC_TRACK(wp);
+		PyObject_COMPLETE(wp);
 	}
 	return (PyObject *)wp;
 }
@@ -1110,7 +1190,7 @@ property_dealloc(PyObject *self)
 	Py_XDECREF(gs->prop_set);
 	Py_XDECREF(gs->prop_del);
 	Py_XDECREF(gs->prop_doc);
-	self->ob_type->tp_free(self);
+	PyObject_Del(self);
 }
 
 static PyObject *
@@ -1243,7 +1323,7 @@ PyTypeObject PyProperty_Type = {
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-		Py_TPFLAGS_BASETYPE,		/* tp_flags */
+		Py_TPFLAGS_BASETYPE | Py_TPFLAGS_SHAREABLE,	/* tp_flags */
  	property_doc,				/* tp_doc */
 	property_traverse,			/* tp_traverse */
  	0,					/* tp_clear */
@@ -1260,7 +1340,5 @@ PyTypeObject PyProperty_Type = {
 	property_descr_set,			/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	property_init,				/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	PyType_GenericNew,			/* tp_new */
-	PyObject_GC_Del,               		/* tp_free */
 };

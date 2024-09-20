@@ -17,11 +17,10 @@
 #ifdef WITH_THREAD
 #include "pythread.h"
 #define PySSL_BEGIN_ALLOW_THREADS { \
-			PyThreadState *_save;  \
-			if (_ssl_locks_count>0) {_save = PyEval_SaveThread();}
-#define PySSL_BLOCK_THREADS	if (_ssl_locks_count>0){PyEval_RestoreThread(_save)};
-#define PySSL_UNBLOCK_THREADS	if (_ssl_locks_count>0){_save = PyEval_SaveThread()};
-#define PySSL_END_ALLOW_THREADS	if (_ssl_locks_count>0){PyEval_RestoreThread(_save);} \
+			if (_ssl_locks_count>0) {PyState_Suspend();}
+#define PySSL_BLOCK_THREADS	if (_ssl_locks_count>0){PyState_Resume();};
+#define PySSL_UNBLOCK_THREADS	if (_ssl_locks_count>0){PyState_Suspend();};
+#define PySSL_END_ALLOW_THREADS	if (_ssl_locks_count>0){PyState_Resume();} \
 		 }
 
 #else	/* no WITH_THREAD */
@@ -269,7 +268,7 @@ newPySSLObject(PySocketSockObject *Sock, char *key_file, char *cert_file,
 	int sockstate;
 	int verification_mode;
 
-	self = PyObject_New(PySSLObject, &PySSL_Type); /* Create new object */
+	self = PyObject_NEW(PySSLObject, &PySSL_Type); /* Create new object */
 	if (self == NULL)
 		return NULL;
 	memset(self->server, '\0', sizeof(char) * X509_NAME_MAXLEN);
@@ -1062,7 +1061,7 @@ static void PySSL_dealloc(PySSLObject *self)
 	if (self->ctx)
 		SSL_CTX_free(self->ctx);
 	Py_XDECREF(self->Socket);
-	PyObject_Del(self);
+	PyObject_DEL(self);
 }
 
 /* If the socket has a timeout, do a select()/poll() on the socket.
@@ -1438,9 +1437,9 @@ static void _ssl_thread_locking_function (int mode, int n, const char *file, int
 		return;
 
 	if (mode & CRYPTO_LOCK) {
-		PyThread_acquire_lock(_ssl_locks[n], 1);
+		PyThread_lock_acquire(_ssl_locks[n]);
 	} else {
-		PyThread_release_lock(_ssl_locks[n]);
+		PyThread_lock_release(_ssl_locks[n]);
 	}
 }
 
@@ -1456,11 +1455,11 @@ static int _setup_ssl_threads(void) {
 			return 0;
 		memset(_ssl_locks, 0, sizeof(PyThread_type_lock) * _ssl_locks_count);
 		for (i = 0;  i < _ssl_locks_count;  i++) {
-			_ssl_locks[i] = PyThread_allocate_lock();
+			_ssl_locks[i] = PyThread_lock_allocate();
 			if (_ssl_locks[i] == NULL) {
 				int j;
 				for (j = 0;  j < i;  j++) {
-					PyThread_free_lock(_ssl_locks[j]);
+					PyThread_lock_free(_ssl_locks[j]);
 				}
 				free(_ssl_locks);
 				return 0;

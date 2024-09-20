@@ -28,9 +28,9 @@ PyMemoryView_FromMemory(Py_buffer *info)
 {
 	PyMemoryViewObject *mview;
 
-	mview = (PyMemoryViewObject *)PyObject_New(PyMemoryViewObject,
-						   &PyMemoryView_Type);
-	if (mview == NULL) return NULL;
+	mview = PyObject_NEW(PyMemoryViewObject, &PyMemoryView_Type);
+	if (mview == NULL)
+		return NULL;
 	mview->base = NULL;
 	mview->view = *info;
 	return (PyObject *)mview;
@@ -48,7 +48,7 @@ PyMemoryView_FromObject(PyObject *base)
                 return NULL;
         }
 
-        mview = (PyMemoryViewObject *)PyObject_New(PyMemoryViewObject,
+        mview = (PyMemoryViewObject *)PyObject_NEW(PyMemoryViewObject,
                                                    &PyMemoryView_Type);
         if (mview == NULL) return NULL;
 
@@ -211,7 +211,7 @@ PyMemoryView_GetContiguous(PyObject *obj, int buffertype, char fort)
                 return NULL;
         }
 
-        mem = PyObject_New(PyMemoryViewObject, &PyMemoryView_Type);
+        mem = PyObject_NEW(PyMemoryViewObject, &PyMemoryView_Type);
         if (mem == NULL) return NULL;
 
         view = &PyMemoryView(mem);
@@ -564,7 +564,7 @@ PyTypeObject PyMemoryView_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	&memory_as_buffer,			/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT,			/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	memory_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -581,6 +581,5 @@ PyTypeObject PyMemoryView_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	memory_new,				/* tp_new */
 };
