@@ -68,6 +68,8 @@ class UnicodeTest(
         self.assertRaises(SyntaxError, eval, '\'\\Ufffffffe\'')
         self.assertRaises(SyntaxError, eval, '\'\\Uffffffff\'')
         self.assertRaises(SyntaxError, eval, '\'\\U%08x\'' % 0x110000)
+        # raw strings should not have unicode escapes
+        self.assertNotEquals(r"\u0020", " ")
 
     def test_repr(self):
         if not sys.platform.startswith('java'):
@@ -973,11 +975,25 @@ class UnicodeTest(
         print('def\n', file=out)
 
     def test_ucs4(self):
-        if sys.maxunicode == 0xFFFF:
-            return
         x = '\U00100000'
         y = x.encode("raw-unicode-escape").decode("raw-unicode-escape")
         self.assertEqual(x, y)
+
+        # FIXME
+        #y = r'\U00100000'
+        #x = y.encode("raw-unicode-escape").decode("raw-unicode-escape")
+        #self.assertEqual(x, y)
+        #y = r'\U00010000'
+        #x = y.encode("raw-unicode-escape").decode("raw-unicode-escape")
+        #self.assertEqual(x, y)
+
+        #try:
+        #    '\U11111111'.decode("raw-unicode-escape")
+        #except UnicodeDecodeError as e:
+        #    self.assertEqual(e.start, 0)
+        #    self.assertEqual(e.end, 10)
+        #else:
+        #    self.fail("Should have raised UnicodeDecodeError")
 
     def test_conversion(self):
         # Make sure __unicode__() works properly

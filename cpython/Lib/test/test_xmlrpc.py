@@ -238,9 +238,17 @@ def http_server(evt, numrequests):
         '''This is my function'''
         return True
 
+    class MyXMLRPCServer(SimpleXMLRPCServer.SimpleXMLRPCServer):
+        def get_request(self):
+            # Ensure the socket is always non-blocking.  On Linux, socket
+            # attributes are not inherited like they are on *BSD and Windows.
+            s, port = self.socket.accept()
+            s.setblocking(True)
+            return s, port
+
     try:
-        serv = SimpleXMLRPCServer.SimpleXMLRPCServer(("localhost", 0),
-                        logRequests=False, bind_and_activate=False)
+        serv = MyXMLRPCServer(("localhost", 0),
+                              logRequests=False, bind_and_activate=False)
         serv.server_bind()
         global PORT
         PORT = serv.socket.getsockname()[1]
@@ -408,18 +416,28 @@ class SimpleServerTestCase(unittest.TestCase):
             result = multicall()
 
             # result.results contains;
-            # [{'faultCode': 1, 'faultString': '<type \'exceptions.Exception\'>:'
+            # [{'faultCode': 1, 'faultString': '<class \'exceptions.Exception\'>:'
             #   'method "this_is_not_exists" is not supported'>}]
 
             self.assertEqual(result.results[0]['faultCode'], 1)
             self.assertEqual(result.results[0]['faultString'],
-                '<type \'Exception\'>:method "this_is_not_exists" '
+                '<class \'Exception\'>:method "this_is_not_exists" '
                 'is not supported')
         except (xmlrpclib.ProtocolError, socket.error) as e:
             # ignore failures due to non-blocking socket 'unavailable' errors
             if not is_unavailable_exception(e):
                 # protocol error; provide additional information in test output
                 self.fail("%s\n%s" % (e, getattr(e, "headers", "")))
+
+    def test_dotted_attribute(self):
+        # Raises an AttributeError because private methods are not allowed.
+        self.assertRaises(AttributeError,
+                          SimpleXMLRPCServer.resolve_dotted_attribute, str, '__add')
+
+        self.assert_(SimpleXMLRPCServer.resolve_dotted_attribute(str, 'title'))
+        # Get the test to run faster by sending a request with test_simple1.
+        # This avoids waiting for the socket timeout.
+        self.test_simple1()
 
 # This is a contrived way to make a failure occur on the server side
 # in order to test the _send_traceback_header flag on the server

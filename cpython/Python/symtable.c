@@ -33,8 +33,9 @@ PySTEntry_New(struct symtable *st, identifier name, _Py_block_ty block,
 	k = PyLong_FromVoidPtr(key);
 	if (k == NULL)
 		goto fail;
-	ste = (PySTEntryObject *)PyObject_New(PySTEntryObject,
-					      &PySTEntry_Type);
+	ste = PyObject_New(PySTEntryObject, &PySTEntry_Type);
+	if (ste == NULL)
+		goto fail;
 	ste->ste_table = st;
 	ste->ste_id = k;
 	ste->ste_tmpname = 0;
@@ -1430,12 +1431,12 @@ symtable_visit_arguments(struct symtable *st, arguments_ty a)
 static int 
 symtable_visit_excepthandler(struct symtable *st, excepthandler_ty eh)
 {
-	if (eh->type)
-		VISIT(st, expr, eh->type);
-	if (eh->name)
-        if (!symtable_add_def(st, eh->name, DEF_LOCAL))
+	if (eh->v.ExceptHandler.type)
+		VISIT(st, expr, eh->v.ExceptHandler.type);
+	if (eh->v.ExceptHandler.name)
+		if (!symtable_add_def(st, eh->v.ExceptHandler.name, DEF_LOCAL))
 			return 0;
-	VISIT_SEQ(st, stmt, eh->body);
+	VISIT_SEQ(st, stmt, eh->v.ExceptHandler.body);
 	return 1;
 }
 

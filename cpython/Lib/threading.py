@@ -391,6 +391,9 @@ class Thread(_Verbose):
     # shutdown and thus raises an exception about trying to perform some
     # operation on/with a NoneType
     __exc_info = _sys.exc_info
+    # Keep sys.exc_clear too to clear the exception just before
+    # allowing .join() to return.
+    #XXX __exc_clear = _sys.exc_clear
 
     def __init__(self, group=None, target=None, name=None,
                  args=(), kwargs=None, verbose=None):
@@ -527,6 +530,13 @@ class Thread(_Verbose):
             else:
                 if __debug__:
                     self._note("%s._bootstrap(): normal return", self)
+            finally:
+                # Prevent a race in
+                # test_threading.test_no_refcycle_through_target when
+                # the exception keeps the target alive past when we
+                # assert that it's dead.
+                #XXX self.__exc_clear()
+                pass
         finally:
             with _active_limbo_lock:
                 self._stop()
@@ -567,15 +577,16 @@ class Thread(_Verbose):
         # since it isn't if dummy_threading is *not* being used then don't
         # hide the exception.
 
-        _active_limbo_lock.acquire()
         try:
-            try:
+            with _active_limbo_lock:
                 del _active[_get_ident()]
-            except KeyError:
-                if 'dummy_threading' not in _sys.modules:
-                    raise
-        finally:
-            _active_limbo_lock.release()
+                # There must not be any python code between the previous line
+                # and after the lock is released.  Otherwise a tracing function
+                # could try to acquire the lock again in the same thread, (in
+                # currentThread()), and would block.
+        except KeyError:
+            if 'dummy_threading' not in _sys.modules:
+                raise
 
     def join(self, timeout=None):
         if not self._initialized:

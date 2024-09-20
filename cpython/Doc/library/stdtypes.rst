@@ -601,7 +601,7 @@ Notes:
    Values of *n* less than ``0`` are treated as ``0`` (which yields an empty
    sequence of the same type as *s*).  Note also that the copies are shallow;
    nested structures are not copied.  This often haunts new Python programmers;
-   consider::
+   consider:
 
       >>> lists = [[]] * 3
       >>> lists
@@ -611,9 +611,9 @@ Notes:
       [[3], [3], [3]]
 
    What has happened is that ``[[]]`` is a one-element list containing an empty
-   list, so all three elements of ``[[]] * 3`` are (pointers to) this single
-   empty list.  Modifying any of the elements of ``lists`` modifies this single
-   list.  You can create a list of different lists this way::
+   list, so all three elements of ``[[]] * 3`` are (pointers to) this single empty
+   list.  Modifying any of the elements of ``lists`` modifies this single list.
+   You can create a list of different lists this way:
 
       >>> lists = [[] for i in range(3)]
       >>> lists[0].append(3)
@@ -819,7 +819,7 @@ functions based on regular expressions.
    Return a copy of the string with leading characters removed.  The *chars*
    argument is a string specifying the set of characters to be removed.  If omitted
    or ``None``, the *chars* argument defaults to removing whitespace.  The *chars*
-   argument is not a prefix; rather, all combinations of its values are stripped::
+   argument is not a prefix; rather, all combinations of its values are stripped:
 
       >>> '   spacious   '.lstrip()
       'spacious   '
@@ -899,7 +899,7 @@ functions based on regular expressions.
    Return a copy of the string with trailing characters removed.  The *chars*
    argument is a string specifying the set of characters to be removed.  If omitted
    or ``None``, the *chars* argument defaults to removing whitespace.  The *chars*
-   argument is not a suffix; rather, all combinations of its values are stripped::
+   argument is not a suffix; rather, all combinations of its values are stripped:
 
       >>> '   spacious   '.rstrip()
       '   spacious'
@@ -953,7 +953,7 @@ functions based on regular expressions.
    The *chars* argument is a string specifying the set of characters to be removed.
    If omitted or ``None``, the *chars* argument defaults to removing whitespace.
    The *chars* argument is not a prefix or suffix; rather, all combinations of its
-   values are stripped::
+   values are stripped:
 
       >>> '   spacious   '.strip()
       'spacious'
@@ -983,6 +983,10 @@ functions based on regular expressions.
    A *map* for :meth:`translate` is usually best created by
    :meth:`str.maketrans`.
 
+   You can use the :func:`maketrans` helper function in the :mod:`string` module to
+   create a translation table. For string objects, set the *table* argument to
+   ``None`` for translations that only delete characters:
+
    .. note::
 
       An even more flexible approach is to create a custom character mapping
@@ -1000,6 +1004,22 @@ functions based on regular expressions.
    Return the numeric string left filled with zeros in a string of length
    *width*.  A sign prefix is handled correctly.  The original string is
    returned if *width* is less than ``len(s)``.
+
+
+.. method:: str.isnumeric()
+
+   Return ``True`` if there are only numeric characters in S, ``False``
+   otherwise. Numeric characters include digit characters, and all characters
+   that have the Unicode numeric value property, e.g. U+2155,
+   VULGAR FRACTION ONE FIFTH.
+
+   
+.. method:: str.isdecimal()
+
+   Return ``True`` if there are only decimal characters in S, ``False``
+   otherwise. Decimal characters include digit characters, and all characters
+   that that can be used to form decimal-radix numbers, e.g. U+0660,
+   ARABIC-INDIC DIGIT ZERO.
    
 
 
@@ -1063,10 +1083,11 @@ components, which must occur in this order:
 When the right argument is a dictionary (or other mapping type), then the
 formats in the string *must* include a parenthesised mapping key into that
 dictionary inserted immediately after the ``'%'`` character. The mapping key
-selects the value to be formatted from the mapping.  For example::
+selects the value to be formatted from the mapping.  For example:
 
-   >>> print('%(language)s has %(#)03d quote types.' %
-             {'language': "Python", "#": 2})
+
+   >>> print('%(language)s has %(#)03d quote types.' % \
+   ...       {'language': "Python", "#": 2})
    Python has 002 quote types.
 
 In this case no ``*`` specifiers may occur in a format (since they require a
@@ -2039,9 +2060,13 @@ Files have the following methods:
 
 .. method:: file.write(str)
 
-   Write a string to the file.  There is no return value.  Due to buffering, the
-   string may not actually show up in the file until the :meth:`flush` or
-   :meth:`close` method is called.
+   Write a string to the file.  Due to buffering, the string may not actually
+   show up in the file until the :meth:`flush` or :meth:`close` method is
+   called.
+
+   The meaning of the return value is not defined for every file-like object.
+   Some (mostly low-level) file-like objects may return the number of bytes
+   actually written, others return ``None``.
 
 
 .. method:: file.writelines(sequence)
@@ -2320,7 +2345,7 @@ by the built-in function :func:`type`.  There are no special operations on
 types.  The standard module :mod:`types` defines names for all standard built-in
 types.
 
-Types are written like this: ``<type 'int'>``.
+Types are written like this: ``<class 'int'>``.
 
 
 .. _bltin-null-object:

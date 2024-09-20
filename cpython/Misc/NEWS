@@ -4,6 +4,98 @@ Python News
 
 (editors: check NEWS.help for information about editing NEWS using ReST.)
 
+What's New in Python 3.0a5?
+===========================
+
+*Release date: XX-XXX-2008*
+
+Core and Builtins
+-----------------
+
+- Issue #2221: Corrected a SystemError "error return without exception set",
+  when the code executed by exec() raises an exception, and sys.stdout.flush()
+  also raises an error.
+
+- Bug #2565: The repr() of type objects now calls them 'class', 
+  not 'type' - whether they are builtin types or not.
+
+- The command line processing was converted to pass Unicode strings
+  through as unmodified as possible; as a consequence, the C API
+  related to command line arguments was changed to use wchar_t.
+
+Extension Modules
+-----------------
+
+Library
+-------
+
+- Bug #2606: Avoid calling .sort() on a dict_keys object.
+
+- The bundled libffi copy is now in sync with the recently released
+  libffi3.0.5 version, apart from some small changes to
+  Modules/_ctypes/libffi/configure.ac.
+
+Build
+-----
+
+- "make install" is now an alias for "make altinstall", to prevent
+  accidentally overwriting a Python 2.x installation.
+  Use "make fullinstall" to force Python 3.0 to be installed as
+  "python".
+
+- Issue #2544: On HP-UX systems, use 'gcc -shared' for linking when
+  gcc is used as compiler.
+
+What's New in Python 3.0a4?
+===========================
+
+*Release date: 02-Apr-2008*
+
+Core and Builtins
+-----------------
+
+- Bug #2301: Don't try decoding the source code into the original
+  encoding for syntax errors.
+
+Extension Modules
+-----------------
+
+- The dl module was removed, use the ctypes module instead.
+
+- Use wchar_t functions in _locale module.
+
+Library
+-------
+
+- The class distutils.commands.build_py.build_py_2to3 can be used
+  as a build_py replacement to automatically run 2to3 on modules
+  that are going to be installed.
+
+- A new pickle protocol (protocol 3) is added with explicit support
+  for bytes.  This is the default protocol.  It intentionally cannot
+  be unpickled by Python 2.x.
+
+- When a pickle written by Python 2.x contains an (8-bit) str
+  instance, this is now decoded to a (Unicode) str instance.  The
+  encoding used to do this defaults to ASCII, but can be overridden
+  via two new keyword arguments to the Unpickler class.  Previously
+  this would create bytes instances, which is usually wrong: str
+  instances are often used to pickle attribute names etc., and text is
+  more common than binary data anyway.
+
+- Default to ASCII as the locale.getpreferredencoding, if the POSIX
+  system doesn't support CODESET and LANG isn't set or doesn't
+  allow deduction of an encoding.
+
+- Issue #1202: zlib.crc32 and zlib.adler32 now return an unsigned value.
+
+- Issue #719888: Updated tokenize to use a bytes API. generate_tokens has been
+  renamed tokenize and now works with bytes rather than strings. A new
+  detect_encoding function has been added for determining source file encoding
+  according to PEP-0263. Token sequences returned by tokenize always start
+  with an ENCODING token which specifies the encoding used to decode the file.
+  This token is used to encode the output of untokenize back to bytes.
+
 What's New in Python 3.0a3?
 ===========================
 
@@ -11,6 +103,8 @@ What's New in Python 3.0a3?
 
 Core and Builtins
 -----------------
+
+- Issue #2282: io.TextIOWrapper was not overriding seekable() from io.IOBase.
 
 - Issue #2115: Important speedup in setting __slot__ attributes.  Also 
   prevent a possible crash: an Abstract Base Class would try to access a slot 
@@ -54,7 +148,7 @@ Core and Builtins
 
 - Issue #1969: split and rsplit in bytearray are inconsistent
 
-- map() and itertools.imap() no longer accept None for the first argument.
+- map() and no longer accepts None for the first argument.
   Use zip() instead.
 
 - Issue #1769: Now int("- 1") is not allowed any more.
@@ -105,6 +199,10 @@ Core and Builtins
 Extension Modules
 -----------------
 
+- Code for itertools ifilter(), imap(), and izip() moved to bultins and
+  renamed to filter(), map(), and zip().  Also, renamed izip_longest()
+  to zip_longest() and ifilterfalse() to filterfalse().
+
 - Issue #1762972: Readded the reload() function as imp.reload()
 
 - Bug #2111: mmap segfaults when trying to write a block opened with PROT_READ
@@ -130,7 +228,6 @@ Library
 - Issue #1585: IDLE uses non-existent xrange() function.
 
 - Issue #1578: Problems in win_getpass.
-
 
 Build
 -----
@@ -455,6 +552,9 @@ C API
 
 Tests
 -----
+
+- Removed test.testall as test.regrtest replaces it.
+
 
 Documentation
 -------------

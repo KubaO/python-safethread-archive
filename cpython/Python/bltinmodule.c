@@ -1,6 +1,7 @@
 /* Built-in functions */
 
 #include "Python.h"
+#include "Python-ast.h"
 
 #include "node.h"
 #include "code.h"
@@ -277,29 +278,146 @@ PyDoc_STRVAR(bin_doc,
 Return the binary representation of an integer or long integer.");
 
 
+typedef struct {
+	PyObject_HEAD
+	PyObject *func;
+	PyObject *it;
+} filterobject;
+
+PyTypeObject PyFilter_Type;
+
 static PyObject *
-builtin_filter(PyObject *self, PyObject *args)
+filter_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-	PyObject *itertools, *ifilter, *result;
-	itertools = PyImport_ImportModuleNoBlock("itertools");
-	if (itertools == NULL)
+	PyObject *func, *seq;
+	PyObject *it;
+	filterobject *lz;
+
+	if (type == &PyFilter_Type && !_PyArg_NoKeywords("filter()", kwds))
 		return NULL;
-	ifilter = PyObject_GetAttrString(itertools, "ifilter");
-	Py_DECREF(itertools);
-	if (ifilter == NULL)
+
+	if (!PyArg_UnpackTuple(args, "filter", 2, 2, &func, &seq))
 		return NULL;
-	result = PyObject_Call(ifilter, args, NULL);
-	Py_DECREF(ifilter);
-	return result;
+
+	/* Get iterator. */
+	it = PyObject_GetIter(seq);
+	if (it == NULL)
+		return NULL;
+
+	/* create filterobject structure */
+	lz = (filterobject *)type->tp_alloc(type, 0);
+	if (lz == NULL) {
+		Py_DECREF(it);
+		return NULL;
+	}
+	Py_INCREF(func);
+	lz->func = func;
+	lz->it = it;
+
+	return (PyObject *)lz;
+}
+
+static void
+filter_dealloc(filterobject *lz)
+{
+	PyObject_GC_UnTrack(lz);
+	Py_XDECREF(lz->func);
+	Py_XDECREF(lz->it);
+	Py_TYPE(lz)->tp_free(lz);
+}
+
+static int
+filter_traverse(filterobject *lz, visitproc visit, void *arg)
+{
+	Py_VISIT(lz->it);
+	Py_VISIT(lz->func);
+	return 0;
+}
+
+static PyObject *
+filter_next(filterobject *lz)
+{
+	PyObject *item;
+	PyObject *it = lz->it;
+	long ok;
+	PyObject *(*iternext)(PyObject *);
+
+	assert(PyIter_Check(it));
+	iternext = *Py_TYPE(it)->tp_iternext;
+	for (;;) {
+		item = iternext(it);
+		if (item == NULL)
+			return NULL;
+
+		if (lz->func == Py_None || lz->func == (PyObject *)&PyBool_Type) {
+			ok = PyObject_IsTrue(item);
+		} else {
+			PyObject *good;
+			good = PyObject_CallFunctionObjArgs(lz->func,
+							    item, NULL);
+			if (good == NULL) {
+				Py_DECREF(item);
+				return NULL;
+			}
+			ok = PyObject_IsTrue(good);
+			Py_DECREF(good);
+		}
+		if (ok)
+			return item;
+		Py_DECREF(item);
+	}
 }
 
 PyDoc_STRVAR(filter_doc,
-"filter(predicate, iterable) -> iterator\n\
+"filter(function or None, sequence) --> filter object\n\
 \n\
-Return an iterator yielding only those elements of the input iterable\n\
-for which the predicate (a Boolean function) returns true.\n\
-If the predicate is None, 'lambda x: bool(x)' is assumed.\n\
-(This is identical to itertools.ifilter().)");
+Return an iterator yielding those items of sequence for which function(item)\n\
+is true. If function is None, return the items that are true.");
+
+PyTypeObject PyFilter_Type = {
+	PyVarObject_HEAD_INIT(&PyType_Type, 0)
+	"filter",			/* tp_name */
+	sizeof(filterobject),		/* tp_basicsize */
+	0,				/* tp_itemsize */
+	/* methods */
+	(destructor)filter_dealloc,	/* tp_dealloc */
+	0,				/* tp_print */
+	0,				/* tp_getattr */
+	0,				/* tp_setattr */
+	0,				/* tp_compare */
+	0,				/* tp_repr */
+	0,				/* tp_as_number */
+	0,				/* tp_as_sequence */
+	0,				/* tp_as_mapping */
+	0,				/* tp_hash */
+	0,				/* tp_call */
+	0,				/* tp_str */
+	PyObject_GenericGetAttr,	/* tp_getattro */
+	0,				/* tp_setattro */
+	0,				/* tp_as_buffer */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
+		Py_TPFLAGS_BASETYPE,	/* tp_flags */
+	filter_doc,			/* tp_doc */
+	(traverseproc)filter_traverse,	/* tp_traverse */
+	0,				/* tp_clear */
+	0,				/* tp_richcompare */
+	0,				/* tp_weaklistoffset */
+	PyObject_SelfIter,		/* tp_iter */
+	(iternextfunc)filter_next,	/* tp_iternext */
+	0,				/* tp_methods */
+	0,				/* tp_members */
+	0,				/* tp_getset */
+	0,				/* tp_base */
+	0,				/* tp_dict */
+	0,				/* tp_descr_get */
+	0,				/* tp_descr_set */
+	0,				/* tp_dictoffset */
+	0,				/* tp_init */
+	PyType_GenericAlloc,		/* tp_alloc */
+	filter_new,			/* tp_new */
+	PyObject_GC_Del,		/* tp_free */
+};
+
 
 static PyObject *
 builtin_format(PyObject *self, PyObject *args)
@@ -395,13 +513,14 @@ builtin_compile(PyObject *self, PyObject *args, PyObject *kwds)
 	char *str;
 	char *filename;
 	char *startstr;
-	int start;
+	int mode = -1;
 	int dont_inherit = 0;
 	int supplied_flags = 0;
 	PyCompilerFlags cf;
 	PyObject *cmd;
 	static char *kwlist[] = {"source", "filename", "mode", "flags",
 				 "dont_inherit", NULL};
+	int start[] = {Py_file_input, Py_eval_input, Py_single_input};
 
 	if (!PyArg_ParseTupleAndKeywords(args, kwds, "Oss|ii:compile",
 					 kwlist, &cmd, &filename, &startstr,
@@ -409,22 +528,6 @@ builtin_compile(PyObject *self, PyObject *args, PyObject *kwds)
 		return NULL;
 
 	cf.cf_flags = supplied_flags | PyCF_SOURCE_IS_UTF8;
-
-	str = source_as_string(cmd);
-	if (str == NULL)
-		return NULL;
-
-	if (strcmp(startstr, "exec") == 0)
-		start = Py_file_input;
-	else if (strcmp(startstr, "eval") == 0)
-		start = Py_eval_input;
-	else if (strcmp(startstr, "single") == 0)
-		start = Py_single_input;
-	else {
-		PyErr_SetString(PyExc_ValueError,
-		   "compile() arg 3 must be 'exec' or 'eval' or 'single'");
-		return NULL;
-	}
 
 	if (supplied_flags &
 	    ~(PyCF_MASK | PyCF_MASK_OBSOLETE | PyCF_DONT_IMPLY_DEDENT | PyCF_ONLY_AST))
@@ -438,7 +541,47 @@ builtin_compile(PyObject *self, PyObject *args, PyObject *kwds)
 	if (!dont_inherit) {
 		PyEval_MergeCompilerFlags(&cf);
 	}
-	return Py_CompileStringFlags(str, filename, start, &cf);
+
+	if (strcmp(startstr, "exec") == 0)
+		mode = 0;
+	else if (strcmp(startstr, "eval") == 0)
+		mode = 1;
+	else if (strcmp(startstr, "single") == 0)
+		mode = 2;
+	else {
+		PyErr_SetString(PyExc_ValueError,
+				"compile() arg 3 must be 'exec', 'eval' or 'single'");
+		return NULL;
+	}
+
+	if (PyAST_Check(cmd)) {
+		PyObject *result;
+		if (supplied_flags & PyCF_ONLY_AST) {
+			Py_INCREF(cmd);
+			result = cmd;
+		}
+		else {
+			PyArena *arena;
+			mod_ty mod;
+
+			arena = PyArena_New();
+			mod = PyAST_obj2mod(cmd, arena, mode);
+			if (mod == NULL) {
+				PyArena_Free(arena);
+				return NULL;
+			}
+			result = (PyObject*)PyAST_Compile(mod, filename,
+							  &cf, arena);
+			PyArena_Free(arena);
+		}
+		return result;
+	}
+
+	str = source_as_string(cmd);
+	if (str == NULL)
+		return NULL;
+
+	return Py_CompileStringFlags(str, filename, start[mode], &cf);
 }
 
 PyDoc_STRVAR(compile_doc,
@@ -747,31 +890,153 @@ Return the identity of an object.  This is guaranteed to be unique among\n\
 simultaneously existing objects.  (Hint: it's the object's memory address.)");
 
 
+/* map object ************************************************************/
+
+typedef struct {
+	PyObject_HEAD
+	PyObject *iters;
+	PyObject *func;
+} mapobject;
+
+PyTypeObject PyMap_Type;
+
 static PyObject *
-builtin_map(PyObject *self, PyObject *args)
+map_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-	PyObject *itertools, *imap, *result;
-	itertools = PyImport_ImportModuleNoBlock("itertools");
-	if (itertools == NULL)
+	PyObject *it, *iters, *func;
+	mapobject *lz;
+	Py_ssize_t numargs, i;
+
+	if (type == &PyMap_Type && !_PyArg_NoKeywords("map()", kwds))
 		return NULL;
-	imap = PyObject_GetAttrString(itertools, "imap");
-	Py_DECREF(itertools);
-	if (imap == NULL)
+
+	numargs = PyTuple_Size(args);
+	if (numargs < 2) {
+		PyErr_SetString(PyExc_TypeError,
+		   "map() must have at least two arguments.");
 		return NULL;
-	result = PyObject_Call(imap, args, NULL);
-	Py_DECREF(imap);
+	}
+
+	iters = PyTuple_New(numargs-1);
+	if (iters == NULL)
+		return NULL;
+
+	for (i=1 ; i<numargs ; i++) {
+		/* Get iterator. */
+		it = PyObject_GetIter(PyTuple_GET_ITEM(args, i));
+		if (it == NULL) {
+			Py_DECREF(iters);
+			return NULL;
+		}
+		PyTuple_SET_ITEM(iters, i-1, it);
+	}
+
+	/* create mapobject structure */
+	lz = (mapobject *)type->tp_alloc(type, 0);
+	if (lz == NULL) {
+		Py_DECREF(iters);
+		return NULL;
+	}
+	lz->iters = iters;
+	func = PyTuple_GET_ITEM(args, 0);
+	Py_INCREF(func);
+	lz->func = func;
+
+	return (PyObject *)lz;
+}
+
+static void
+map_dealloc(mapobject *lz)
+{
+	PyObject_GC_UnTrack(lz);
+	Py_XDECREF(lz->iters);
+	Py_XDECREF(lz->func);
+	Py_TYPE(lz)->tp_free(lz);
+}
+
+static int
+map_traverse(mapobject *lz, visitproc visit, void *arg)
+{
+	Py_VISIT(lz->iters);
+	Py_VISIT(lz->func);
+	return 0;
+}
+
+static PyObject *
+map_next(mapobject *lz)
+{
+	PyObject *val;
+	PyObject *argtuple;
+	PyObject *result;
+	Py_ssize_t numargs, i;
+
+	numargs = PyTuple_Size(lz->iters);
+	argtuple = PyTuple_New(numargs);
+	if (argtuple == NULL)
+		return NULL;
+
+	for (i=0 ; i<numargs ; i++) {
+		val = PyIter_Next(PyTuple_GET_ITEM(lz->iters, i));
+		if (val == NULL) {
+			Py_DECREF(argtuple);
+			return NULL;
+		}
+		PyTuple_SET_ITEM(argtuple, i, val);
+	}
+	result = PyObject_Call(lz->func, argtuple, NULL);
+	Py_DECREF(argtuple);
 	return result;
 }
 
 PyDoc_STRVAR(map_doc,
-"map(function, iterable[, iterable, ...]) -> iterator\n\
+"map(func, *iterables) --> map object\n\
 \n\
-Return an iterator yielding the results of applying the function to the\n\
-items of the argument iterables(s).  If more than one iterable is given,\n\
-the function is called with an argument list consisting of the\n\
-corresponding item of each iterable, until an iterable is exhausted.\n\
-(This is identical to itertools.imap().)");
+Make an iterator that computes the function using arguments from\n\
+each of the iterables.	Stops when the shortest iterable is exhausted.");
 
+PyTypeObject PyMap_Type = {
+	PyVarObject_HEAD_INIT(&PyType_Type, 0)
+	"map",				/* tp_name */
+	sizeof(mapobject),		/* tp_basicsize */
+	0,				/* tp_itemsize */
+	/* methods */
+	(destructor)map_dealloc,	/* tp_dealloc */
+	0,				/* tp_print */
+	0,				/* tp_getattr */
+	0,				/* tp_setattr */
+	0,				/* tp_compare */
+	0,				/* tp_repr */
+	0,				/* tp_as_number */
+	0,				/* tp_as_sequence */
+	0,				/* tp_as_mapping */
+	0,				/* tp_hash */
+	0,				/* tp_call */
+	0,				/* tp_str */
+	PyObject_GenericGetAttr,	/* tp_getattro */
+	0,				/* tp_setattro */
+	0,				/* tp_as_buffer */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
+		Py_TPFLAGS_BASETYPE,	/* tp_flags */
+	map_doc,			/* tp_doc */
+	(traverseproc)map_traverse,	/* tp_traverse */
+	0,				/* tp_clear */
+	0,				/* tp_richcompare */
+	0,				/* tp_weaklistoffset */
+	PyObject_SelfIter,		/* tp_iter */
+	(iternextfunc)map_next,	/* tp_iternext */
+	0,				/* tp_methods */
+	0,				/* tp_members */
+	0,				/* tp_getset */
+	0,				/* tp_base */
+	0,				/* tp_dict */
+	0,				/* tp_descr_get */
+	0,				/* tp_descr_set */
+	0,				/* tp_dictoffset */
+	0,				/* tp_init */
+	PyType_GenericAlloc,		/* tp_alloc */
+	map_new,			/* tp_new */
+	PyObject_GC_Del,		/* tp_free */
+};
 
 static PyObject *
 builtin_next(PyObject *self, PyObject *args)
@@ -1728,23 +1993,187 @@ When using a tuple as the second argument issubclass(X, (A, B, ...)),\n\
 is a shortcut for issubclass(X, A) or issubclass(X, B) or ... (etc.).");
 
 
-static PyObject*
-builtin_zip(PyObject *self, PyObject *args)
+typedef struct {
+	PyObject_HEAD
+	Py_ssize_t	tuplesize;
+	PyObject *ittuple;		/* tuple of iterators */
+	PyObject *result;
+} zipobject;
+
+PyTypeObject PyZip_Type;
+
+static PyObject *
+zip_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
+	zipobject *lz;
+	Py_ssize_t i;
+	PyObject *ittuple;  /* tuple of iterators */
+	PyObject *result;
+	Py_ssize_t tuplesize = PySequence_Length(args);
+
+	if (type == &PyZip_Type && !_PyArg_NoKeywords("zip()", kwds))
+		return NULL;
+
 	/* args must be a tuple */
 	assert(PyTuple_Check(args));
 
-	return _PyZip_CreateIter(args);
+	/* obtain iterators */
+	ittuple = PyTuple_New(tuplesize);
+	if (ittuple == NULL)
+		return NULL;
+	for (i=0; i < tuplesize; ++i) {
+		PyObject *item = PyTuple_GET_ITEM(args, i);
+		PyObject *it = PyObject_GetIter(item);
+		if (it == NULL) {
+			if (PyErr_ExceptionMatches(PyExc_TypeError))
+				PyErr_Format(PyExc_TypeError,
+				    "zip argument #%zd must support iteration",
+				    i+1);
+			Py_DECREF(ittuple);
+			return NULL;
+		}
+		PyTuple_SET_ITEM(ittuple, i, it);
+	}
+
+	/* create a result holder */
+	result = PyTuple_New(tuplesize);
+	if (result == NULL) {
+		Py_DECREF(ittuple);
+		return NULL;
+	}
+	for (i=0 ; i < tuplesize ; i++) {
+		Py_INCREF(Py_None);
+		PyTuple_SET_ITEM(result, i, Py_None);
+	}
+
+	/* create zipobject structure */
+	lz = (zipobject *)type->tp_alloc(type, 0);
+	if (lz == NULL) {
+		Py_DECREF(ittuple);
+		Py_DECREF(result);
+		return NULL;
+	}
+	lz->ittuple = ittuple;
+	lz->tuplesize = tuplesize;
+	lz->result = result;
+
+	return (PyObject *)lz;
 }
 
+static void
+zip_dealloc(zipobject *lz)
+{
+	PyObject_GC_UnTrack(lz);
+	Py_XDECREF(lz->ittuple);
+	Py_XDECREF(lz->result);
+	Py_TYPE(lz)->tp_free(lz);
+}
+
+static int
+zip_traverse(zipobject *lz, visitproc visit, void *arg)
+{
+	Py_VISIT(lz->ittuple);
+	Py_VISIT(lz->result);
+	return 0;
+}
+
+static PyObject *
+zip_next(zipobject *lz)
+{
+	Py_ssize_t i;
+	Py_ssize_t tuplesize = lz->tuplesize;
+	PyObject *result = lz->result;
+	PyObject *it;
+	PyObject *item;
+	PyObject *olditem;
+
+	if (tuplesize == 0)
+		return NULL;
+	if (Py_REFCNT(result) == 1) {
+		Py_INCREF(result);
+		for (i=0 ; i < tuplesize ; i++) {
+			it = PyTuple_GET_ITEM(lz->ittuple, i);
+			assert(PyIter_Check(it));
+			item = (*Py_TYPE(it)->tp_iternext)(it);
+			if (item == NULL) {
+				Py_DECREF(result);
+				return NULL;
+			}
+			olditem = PyTuple_GET_ITEM(result, i);
+			PyTuple_SET_ITEM(result, i, item);
+			Py_DECREF(olditem);
+		}
+	} else {
+		result = PyTuple_New(tuplesize);
+		if (result == NULL)
+			return NULL;
+		for (i=0 ; i < tuplesize ; i++) {
+			it = PyTuple_GET_ITEM(lz->ittuple, i);
+			assert(PyIter_Check(it));
+			item = (*Py_TYPE(it)->tp_iternext)(it);
+			if (item == NULL) {
+				Py_DECREF(result);
+				return NULL;
+			}
+			PyTuple_SET_ITEM(result, i, item);
+		}
+	}
+	return result;
+}
 
 PyDoc_STRVAR(zip_doc,
-"zip(it1 [, it2 [...]]) -> iter([(it1[0], it2[0] ...), ...])\n\
+"zip(iter1 [,iter2 [...]]) --> zip object\n\
 \n\
-Return an iterator yielding tuples, where each tuple contains the\n\
-corresponding element from each of the argument iterables.\n\
-The returned iterator ends when the shortest argument iterable is exhausted.\n\
-(This is identical to itertools.izip().)");
+Return a zip object whose .__next__() method returns a tuple where\n\
+the i-th element comes from the i-th iterable argument.  The .__next__()\n\
+method continues until the shortest iterable in the argument sequence\n\
+is exhausted and then it raises StopIteration.  Works like the zip()\n\
+function but consumes less memory by returning an iterator instead of\n\
+a list.");
+
+PyTypeObject PyZip_Type = {
+	PyVarObject_HEAD_INIT(&PyType_Type, 0)
+	"zip",				/* tp_name */
+	sizeof(zipobject),		/* tp_basicsize */
+	0,				/* tp_itemsize */
+	/* methods */
+	(destructor)zip_dealloc,	/* tp_dealloc */
+	0,				/* tp_print */
+	0,				/* tp_getattr */
+	0,				/* tp_setattr */
+	0,				/* tp_compare */
+	0,				/* tp_repr */
+	0,				/* tp_as_number */
+	0,				/* tp_as_sequence */
+	0,				/* tp_as_mapping */
+	0,				/* tp_hash */
+	0,				/* tp_call */
+	0,				/* tp_str */
+	PyObject_GenericGetAttr,	/* tp_getattro */
+	0,				/* tp_setattro */
+	0,				/* tp_as_buffer */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
+		Py_TPFLAGS_BASETYPE,	/* tp_flags */
+	zip_doc,			/* tp_doc */
+	(traverseproc)zip_traverse,    /* tp_traverse */
+	0,				/* tp_clear */
+	0,				/* tp_richcompare */
+	0,				/* tp_weaklistoffset */
+	PyObject_SelfIter,		/* tp_iter */
+	(iternextfunc)zip_next,	/* tp_iternext */
+	0,				/* tp_methods */
+	0,				/* tp_members */
+	0,				/* tp_getset */
+	0,				/* tp_base */
+	0,				/* tp_dict */
+	0,				/* tp_descr_get */
+	0,				/* tp_descr_set */
+	0,				/* tp_dictoffset */
+	0,				/* tp_init */
+	PyType_GenericAlloc,		/* tp_alloc */
+	zip_new,			/* tp_new */
+	PyObject_GC_Del,		/* tp_free */
+};
 
 
 static PyMethodDef builtin_methods[] = {
@@ -1763,7 +2192,6 @@ static PyMethodDef builtin_methods[] = {
  	{"divmod",	builtin_divmod,     METH_VARARGS, divmod_doc},
  	{"eval",	builtin_eval,       METH_VARARGS, eval_doc},
 	{"exec",        builtin_exec,       METH_VARARGS, exec_doc},
- 	{"filter",	builtin_filter,     METH_VARARGS, filter_doc},
  	{"format",	builtin_format,     METH_VARARGS, format_doc},
  	{"getattr",	builtin_getattr,    METH_VARARGS, getattr_doc},
  	{"globals",	(PyCFunction)builtin_globals,    METH_NOARGS, globals_doc},
@@ -1777,7 +2205,6 @@ static PyMethodDef builtin_methods[] = {
  	{"iter",	builtin_iter,       METH_VARARGS, iter_doc},
  	{"len",		builtin_len,        METH_O, len_doc},
  	{"locals",	(PyCFunction)builtin_locals,     METH_NOARGS, locals_doc},
- 	{"map",		builtin_map,        METH_VARARGS, map_doc},
  	{"max",		(PyCFunction)builtin_max,        METH_VARARGS | METH_KEYWORDS, max_doc},
  	{"min",		(PyCFunction)builtin_min,        METH_VARARGS | METH_KEYWORDS, min_doc},
 	{"next",	(PyCFunction)builtin_next,       METH_VARARGS, next_doc},
@@ -1791,7 +2218,6 @@ static PyMethodDef builtin_methods[] = {
  	{"sorted",	(PyCFunction)builtin_sorted,     METH_VARARGS | METH_KEYWORDS, sorted_doc},
  	{"sum",		builtin_sum,        METH_VARARGS, sum_doc},
  	{"vars",	builtin_vars,       METH_VARARGS, vars_doc},
-  	{"zip",         builtin_zip,        METH_VARARGS, zip_doc},
 	{NULL,		NULL},
 };
 
@@ -1843,11 +2269,13 @@ _PyBuiltin_Init(void)
 #endif
 	SETBUILTIN("dict",		&PyDict_Type);
  	SETBUILTIN("enumerate",		&PyEnum_Type);
+ 	SETBUILTIN("filter",		&PyFilter_Type);
 	SETBUILTIN("float",		&PyFloat_Type);
 	SETBUILTIN("frozenset",		&PyFrozenSet_Type);
 	SETBUILTIN("property",		&PyProperty_Type);
 	SETBUILTIN("int",		&PyLong_Type);
 	SETBUILTIN("list",		&PyList_Type);
+	SETBUILTIN("map",		&PyMap_Type);
 	SETBUILTIN("object",		&PyBaseObject_Type);
 	SETBUILTIN("range",		&PyRange_Type);
 	SETBUILTIN("reversed",		&PyReversed_Type);
@@ -1858,6 +2286,7 @@ _PyBuiltin_Init(void)
 	SETBUILTIN("super",		&PySuper_Type);
 	SETBUILTIN("tuple",		&PyTuple_Type);
 	SETBUILTIN("type",		&PyType_Type);
+	SETBUILTIN("zip",		&PyZip_Type);
 	debug = PyBool_FromLong(Py_OptimizeFlag == 0);
 	if (PyDict_SetItemString(dict, "__debug__", debug) < 0) {
 		Py_XDECREF(debug);

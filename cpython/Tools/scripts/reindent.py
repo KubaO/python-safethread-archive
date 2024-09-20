@@ -130,9 +130,11 @@ def check(file):
             f.close()
             if verbose:
                 print("wrote new", file)
+        return True
     else:
         if verbose:
             print("unchanged.")
+        return False
 
 def _rstrip(line, JUNK='\n \t'):
     """Return line stripped of trailing spaces, tabs, newlines.
@@ -171,7 +173,9 @@ class Reindenter:
         self.stats = []
 
     def run(self):
-        tokenize.tokenize(self.getline, self.tokeneater)
+        tokens = tokenize.generate_tokens(self.getline)
+        for _token in tokens:
+            self.tokeneater(*_token)
         # Remove trailing empty lines.
         lines = self.lines
         while lines and lines[-1] == "\n":

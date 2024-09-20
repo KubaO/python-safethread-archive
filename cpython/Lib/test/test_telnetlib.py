@@ -6,12 +6,9 @@ import time
 from unittest import TestCase
 from test import test_support
 
+HOST = test_support.HOST
 
-def server(evt):
-    serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    serv.settimeout(3)
-    serv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    serv.bind(("", 9091))
+def server(evt, serv):
     serv.listen(5)
     evt.set()
     try:
@@ -26,7 +23,10 @@ class GeneralTests(TestCase):
 
     def setUp(self):
         self.evt = threading.Event()
-        threading.Thread(target=server, args=(self.evt,)).start()
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.settimeout(3)
+        self.port = test_support.bind_port(self.sock)
+        threading.Thread(target=server, args=(self.evt,self.sock)).start()
         self.evt.wait()
         self.evt.clear()
         time.sleep(.1)
@@ -36,24 +36,24 @@ class GeneralTests(TestCase):
 
     def testBasic(self):
         # connects
-        telnet = telnetlib.Telnet("localhost", 9091)
+        telnet = telnetlib.Telnet(HOST, self.port)
         telnet.sock.close()
 
     def testTimeoutDefault(self):
         # default
-        telnet = telnetlib.Telnet("localhost", 9091)
+        telnet = telnetlib.Telnet(HOST, self.port)
         self.assertTrue(telnet.sock.gettimeout() is None)
         telnet.sock.close()
 
     def testTimeoutValue(self):
         # a value
-        telnet = telnetlib.Telnet("localhost", 9091, timeout=30)
+        telnet = telnetlib.Telnet(HOST, self.port, timeout=30)
         self.assertEqual(telnet.sock.gettimeout(), 30)
         telnet.sock.close()
 
     def testTimeoutDifferentOrder(self):
         telnet = telnetlib.Telnet(timeout=30)
-        telnet.open("localhost", 9091)
+        telnet.open(HOST, self.port)
         self.assertEqual(telnet.sock.gettimeout(), 30)
         telnet.sock.close()
 
@@ -62,7 +62,7 @@ class GeneralTests(TestCase):
         previous = socket.getdefaulttimeout()
         socket.setdefaulttimeout(30)
         try:
-            telnet = telnetlib.Telnet("localhost", 9091, timeout=None)
+            telnet = telnetlib.Telnet(HOST, self.port, timeout=None)
         finally:
             socket.setdefaulttimeout(previous)
         self.assertEqual(telnet.sock.gettimeout(), 30)

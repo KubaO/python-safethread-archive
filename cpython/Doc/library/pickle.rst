@@ -110,7 +110,7 @@ advantage of using printable ASCII (and of some other characteristics of
 :mod:`pickle`'s representation) is that for debugging or recovery purposes it is
 possible for a human to read the pickled file with a standard text editor.
 
-There are currently 3 different protocols which can be used for pickling.
+There are currently 4 different protocols which can be used for pickling.
 
 * Protocol version 0 is the original ASCII protocol and is backwards compatible
   with earlier versions of Python.
@@ -121,11 +121,14 @@ There are currently 3 different protocols which can be used for pickling.
 * Protocol version 2 was introduced in Python 2.3.  It provides much more
   efficient pickling of :term:`new-style class`\es.
 
+* Protocol version 3 was added in Python 3.0.  It has explicit support for
+  bytes and cannot be unpickled by Python 2.x pickle modules.
+
 Refer to :pep:`307` for more information.
 
-If a *protocol* is not specified, protocol 0 is used. If *protocol* is specified
-as a negative value or :const:`HIGHEST_PROTOCOL`, the highest protocol version
-available will be used.
+If a *protocol* is not specified, protocol 3 is used.  If *protocol* is 
+specified as a negative value or :const:`HIGHEST_PROTOCOL`, the highest
+protocol version available will be used.
 
 A binary format, which is slightly more efficient, can be chosen by specifying a
 *protocol* version >= 1.
@@ -164,9 +167,9 @@ process more convenient:
    Write a pickled representation of *obj* to the open file object *file*.  This is
    equivalent to ``Pickler(file, protocol).dump(obj)``.
 
-   If the *protocol* parameter is omitted, protocol 0 is used. If *protocol* is
-   specified as a negative value or :const:`HIGHEST_PROTOCOL`, the highest protocol
-   version will be used.
+   If the *protocol* parameter is omitted, protocol 3 is used.  If *protocol* is
+   specified as a negative value or :const:`HIGHEST_PROTOCOL`, the highest 
+   protocol version will be used.
 
    *file* must have a :meth:`write` method that accepts a single string argument.
    It can thus be a file object opened for writing, a :mod:`StringIO` object, or
@@ -194,9 +197,9 @@ process more convenient:
    Return the pickled representation of the object as a string, instead of writing
    it to a file.
 
-   If the *protocol* parameter is omitted, protocol 0 is used. If *protocol* is
-   specified as a negative value or :const:`HIGHEST_PROTOCOL`, the highest protocol
-   version will be used.
+   If the *protocol* parameter is omitted, protocol 3 is used.  If *protocol* 
+   is specified as a negative value or :const:`HIGHEST_PROTOCOL`, the highest 
+   protocol version will be used.
 
 
 .. function:: loads(string)
@@ -234,7 +237,7 @@ The :mod:`pickle` module also exports two callables [#]_, :class:`Pickler` and
 
    This takes a file-like object to which it will write a pickle data stream.
 
-   If the *protocol* parameter is omitted, protocol 0 is used. If *protocol* is
+   If the *protocol* parameter is omitted, protocol 3 is used.  If *protocol* is
    specified as a negative value or :const:`HIGHEST_PROTOCOL`, the highest
    protocol version will be used.
 
@@ -400,6 +403,7 @@ Pickling and unpickling normal class instances
    single: __init__() (instance constructor)
 
 .. XXX is __getinitargs__ only used with old-style classes?
+.. XXX update w.r.t Py3k's classes
 
 When a pickled class instance is unpickled, its :meth:`__init__` method is
 normally *not* invoked.  If it is desirable that the :meth:`__init__` method be
@@ -444,8 +448,8 @@ can do what they want. [#]_
 
 .. warning::
 
-   For :term:`new-style class`\es, if :meth:`__getstate__` returns a false
-   value, the :meth:`__setstate__` method will not be called.
+   If :meth:`__getstate__` returns a false value, the :meth:`__setstate__`
+   method will not be called.
 
 
 Pickling and unpickling extension types
@@ -468,8 +472,9 @@ local name relative to its module; the pickle module searches the module
 namespace to determine the object's module.
 
 When a tuple is returned, it must be between two and five elements long.
-Optional elements can either be omitted, or ``None`` can be provided  as their
-value.  The semantics of each element are:
+Optional elements can either be omitted, or ``None`` can be provided as their
+value.  The contents of this tuple are pickled as normal and used to
+reconstruct the object at unpickling time.  The semantics of each element are:
 
 * A callable object that will be called to create the initial version of the
   object.  The next element of the tuple will provide arguments for this callable,
@@ -680,8 +685,8 @@ that a self-referencing list is pickled and restored correctly. ::
 
    output = open('data.pkl', 'wb')
 
-   # Pickle dictionary using protocol 0.
-   pickle.dump(data1, output)
+   # Pickle dictionary using protocol 2.
+   pickle.dump(data1, output, 2)
 
    # Pickle the list using the highest protocol available.
    pickle.dump(selfref_list, output, -1)

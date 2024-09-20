@@ -785,8 +785,19 @@ FORMAT_STRING(PyObject* value, PyObject* args)
         break;
     default:
         /* unknown */
-        PyErr_Format(PyExc_ValueError, "Unknown conversion type %c",
-                     format.type);
+	#if STRINGLIB_IS_UNICODE
+	/* If STRINGLIB_CHAR is Py_UNICODE, %c might be out-of-range,
+	   hence the two cases. If it is char, gcc complains that the
+	   condition below is always true, hence the ifdef. */
+        if (format.type > 32 && format.type <128)
+	#endif
+            PyErr_Format(PyExc_ValueError, "Unknown conversion type %c",
+                         (char)format.type);
+	#if STRINGLIB_IS_UNICODE
+	else
+            PyErr_Format(PyExc_ValueError, "Unknown conversion type '\\x%x'",
+                         (unsigned int)format.type);
+	#endif
         goto done;
     }
 
@@ -925,11 +936,16 @@ FORMAT_FLOAT(PyObject *value, PyObject *args)
     }
 
     /* parse the format_spec */
-    if (!parse_internal_render_format_spec(format_spec, &format, 'g'))
+    if (!parse_internal_render_format_spec(format_spec, &format, '\0'))
         goto done;
 
     /* type conversion? */
     switch (format.type) {
+    case '\0':
+	/* 'Z' means like 'g', but with at least one decimal.  See
+	   PyOS_ascii_formatd */
+	format.type = 'Z';
+	/* Deliberate fall through to the next case statement */
     case 'e':
     case 'E':
     case 'f':

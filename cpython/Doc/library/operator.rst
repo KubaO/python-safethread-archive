@@ -6,6 +6,11 @@
 .. sectionauthor:: Skip Montanaro <skip@automatrix.com>
 
 
+.. testsetup::
+   
+   import operator
+   from operator import itemgetter
+
 
 The :mod:`operator` module exports a set of functions implemented in C
 corresponding to the intrinsic operators of Python.  For example,
@@ -346,7 +351,7 @@ objects.
 
    Be careful not to misinterpret the results of these functions; none have any
    measure of reliability with instance objects.
-   For example::
+   For example:
 
       >>> class C:
       ...     pass
@@ -399,13 +404,12 @@ objects.
       useful than it otherwise might be.
 
 Example: Build a dictionary that maps the ordinals from ``0`` to ``255`` to
-their character equivalents. ::
+their character equivalents.
 
-   >>> import operator
    >>> d = {}
    >>> keys = range(256)
    >>> vals = map(chr, keys)
-   >>> map(operator.setitem, [d]*len(keys), keys, vals)
+   >>> map(operator.setitem, [d]*len(keys), keys, vals)   # doctest: +SKIP
 
 .. XXX: find a better, readable, example
 
@@ -428,21 +432,42 @@ expect a function argument.
 
 .. function:: itemgetter(item[, args...])
 
-   Return a callable object that fetches *item* from its operand. If more than one
-   item is requested, returns a tuple of items. After, ``f=itemgetter(2)``, the
-   call ``f(b)`` returns ``b[2]``. After, ``f=itemgetter(2,5,3)``, the call
-   ``f(b)`` returns ``(b[2], b[5], b[3])``.
+   Return a callable object that fetches *item* from its operand using the
+   operand's :meth:`__getitem__` method.  If multiple items are specified,
+   returns a tuple of lookup values.  Equivalent to::
 
+        def itemgetter(*items):
+            if len(items) == 1:
+                item = items[0]
+                def g(obj):
+                    return obj[item]
+            else:
+                def g(obj):
+                    return tuple(obj[item] for item in items)
+            return g
+   
+   The items can be any type accepted by the operand's :meth:`__getitem__` 
+   method.  Dictionaries accept any hashable value.  Lists, tuples, and 
+   strings accept an index or a slice:
 
-Examples::
+      >>> itemgetter(1)('ABCDEFG')
+      'B'
+      >>> itemgetter(1,3,5)('ABCDEFG')
+      ('B', 'D', 'F')
+      >>> itemgetter(slice(2,None))('ABCDEFG')
+      'CDEFG'
 
-   >>> from operator import itemgetter
-   >>> inventory = [('apple', 3), ('banana', 2), ('pear', 5), ('orange', 1)]
-   >>> getcount = itemgetter(1)
-   >>> map(getcount, inventory)
-   [3, 2, 5, 1]
-   >>> sorted(inventory, key=getcount)
-   [('orange', 1), ('banana', 2), ('apple', 3), ('pear', 5)]
+   .. versionadded:: 2.4
+
+   Example of using :func:`itemgetter` to retrieve specific fields from a
+   tuple record:
+
+       >>> inventory = [('apple', 3), ('banana', 2), ('pear', 5), ('orange', 1)]
+       >>> getcount = itemgetter(1)
+       >>> map(getcount, inventory)
+       [3, 2, 5, 1]
+       >>> sorted(inventory, key=getcount)
+       [('orange', 1), ('banana', 2), ('apple', 3), ('pear', 5)]
 
 
 .. function:: methodcaller(name[, args...])

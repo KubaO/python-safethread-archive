@@ -1,4 +1,4 @@
-
+.. XXX document all delegations to __special__ methods
 .. _built-in-funcs:
 
 Built-in Functions
@@ -193,21 +193,21 @@ available.  They are listed here in alphabetical order.
 
 .. function:: compile(source, filename, mode[, flags[, dont_inherit]])
 
-   Compile the *source* into a code object.  Code objects can be executed by a call
-   to :func:`exec` or evaluated by a call to :func:`eval`.  The *filename* argument
-   should give the file from which the code was read; pass some recognizable value
-   if it wasn't read from a file (``'<string>'`` is commonly used). The *mode*
-   argument specifies what kind of code must be compiled; it can be ``'exec'`` if
-   *source* consists of a sequence of statements, ``'eval'`` if it consists of a
-   single expression, or ``'single'`` if it consists of a single interactive
-   statement (in the latter case, expression statements that evaluate to something
-   else than ``None`` will be printed).
+   Compile the *source* into a code object.  Code objects can be
+   executed by a call to :func:`exec` or evaluated by a call to
+   :func:`eval`. *source* can either be a string or an AST object.
+   Refer to the :mod:`_ast` module documentation for information on
+   how to compile into and from AST objects.
 
-   When compiling multi-line statements, two caveats apply: line endings must be
-   represented by a single newline character (``'\n'``), and the input must be
-   terminated by at least one newline character.  If line endings are represented
-   by ``'\r\n'``, use the string :meth:`replace` method to change them into
-   ``'\n'``.
+   The *filename* argument should give the file from
+   which the code was read; pass some recognizable value if it wasn't
+   read from a file (``'<string>'`` is commonly used). The *mode*
+   argument specifies what kind of code must be compiled; it can be
+   ``'exec'`` if *source* consists of a sequence of statements,
+   ``'eval'`` if it consists of a single expression, or ``'single'``
+   if it consists of a single interactive statement (in the latter
+   case, expression statements that evaluate to something else than
+   ``None`` will be printed).
 
    The optional arguments *flags* and *dont_inherit* (which are new in Python 2.2)
    control which future statements (see :pep:`236`) affect the compilation of
@@ -226,6 +226,9 @@ available.  They are listed here in alphabetical order.
 
    This function raises :exc:`SyntaxError` if the compiled source is invalid,
    and :exc:`TypeError` if the source contains null bytes.
+
+   .. versionadded:: 2.6
+      Support for compiling AST objects.
 
 
 .. function:: complex([real[, imag]])
@@ -288,7 +291,22 @@ available.  They are listed here in alphabetical order.
      class's attributes, and recursively of the attributes of its class's base
      classes.
 
-   The resulting list is sorted alphabetically. 
+   The resulting list is sorted alphabetically.  For example:
+
+      >>> import struct
+      >>> dir()   # doctest: +SKIP
+      ['__builtins__', '__doc__', '__name__', 'struct']
+      >>> dir(struct)   # doctest: +NORMALIZE_WHITESPACE
+      ['Struct', '__builtins__', '__doc__', '__file__', '__name__',
+       '__package__', '_clearcache', 'calcsize', 'error', 'pack', 'pack_into',
+       'unpack', 'unpack_from']
+      >>> class Foo(object):
+      ...     def __dir__(self):
+      ...         return ["kan", "ga", "roo"]
+      ...
+      >>> f = Foo()
+      >>> dir(f)
+      ['ga', 'kan', 'roo']
 
    .. note::
 
@@ -318,10 +336,10 @@ available.  They are listed here in alphabetical order.
    iterator returned by :func:`enumerate` returns a tuple containing a count (from
    zero) and the corresponding value obtained from iterating over *iterable*.
    :func:`enumerate` is useful for obtaining an indexed series: ``(0, seq[0])``,
-   ``(1, seq[1])``, ``(2, seq[2])``, .... For example::
+   ``(1, seq[1])``, ``(2, seq[2])``, .... For example:
 
       >>> for i, season in enumerate(['Spring', 'Summer', 'Fall', 'Winter')]:
-      >>>     print(i, season)
+      ...     print(i, season)
       0 Spring
       1 Summer
       2 Fall
@@ -343,7 +361,7 @@ available.  They are listed here in alphabetical order.
    propagated.  If the *locals* dictionary is omitted it defaults to the *globals*
    dictionary.  If both dictionaries are omitted, the expression is executed in the
    environment where :func:`eval` is called.  The return value is the result of
-   the evaluated expression. Syntax errors are reported as exceptions.  Example::
+   the evaluated expression. Syntax errors are reported as exceptions.  Example:
 
       >>> x = 1
       >>> eval('x+1')
@@ -538,18 +556,20 @@ available.  They are listed here in alphabetical order.
    to provide elaborate line editing and history features.
 
 
-.. function:: int([x[, radix]])
+.. function:: int([number | string[, radix]])
 
-   Convert a string or number to an integer.  If the argument is a string, it
-   must contain a possibly signed number of arbitrary size, possibly embedded in
-   whitespace.  The *radix* parameter gives the base for the conversion (which
-   is 10 by default) and may be any integer in the range [2, 36], or zero.  If
-   *radix* is zero, the interpretation is the same as for integer literals.  If
-   *radix* is specified and *x* is not a string, :exc:`TypeError` is raised.
-   Otherwise, the argument may be another integer, a floating point number or
-   any other object that has an :meth:`__int__` method.  Conversion of floating
-   point numbers to integers truncates (towards zero).  If no arguments are
-   given, returns ``0``.
+   Convert a number or string to an integer.  If no arguments are given, return
+   ``0``.  If a number is given, return ``number.__int__()``.  Conversion of
+   floating point numbers to integers truncates towards zero.  A string must be
+   a base-radix integer literal optionally preceded by '+' or '-' (with no space
+   in between) and optionally surrounded by whitespace.  A base-n literal
+   consists of the digits 0 to n-1, with 'a' to 'z' (or 'A' to 'Z') having
+   values 10 to 35.  The default radix is 10. The allowed values are 0 and 2-36.
+   Base-2, -8, and -16 literals can be optionally prefixed with ``0b``/``0B``,
+   ``0o``/``0O``, or ``0x``/``0X``, as with integer literals in code.  Radix 0
+   means to interpret exactly as a code literal, so that the actual radix is 2,
+   8, 10, or 16, and so that ``int('010', 0)`` is not legal, while
+   ``int('010')`` is, as well as ``int('010', 8)``.
 
    The integer type is described in :ref:`typesnumeric`.
 
@@ -678,94 +698,89 @@ available.  They are listed here in alphabetical order.
    :meth:`__index__` method that returns an integer.
 
 
-.. function:: open(filename[, mode='r'[, buffering=None[, encoding=None[, errors=None[, newline=None[, closefd=True]]]]]])
+.. function:: open(file[, mode='r'[, buffering=None[, encoding=None[, errors=None[, newline=None[, closefd=True]]]]]])
 
-   Open a file, returning an object of the :class:`file` type described in
-   section :ref:`bltin-file-objects`.  If the file cannot be opened,
-   :exc:`IOError` is raised.  When opening a file, it's preferable to use
-   :func:`open` instead of invoking the :class:`file` constructor directly.
+   Open a file.  If the file cannot be opened, :exc:`IOError` is raised.
    
-   *filename* is either a string giving the name (and the path if the
-   file isn't in the current working directory) of the file to be
-   opened; or an integer file descriptor of the file to be wrapped. (If
-   a file descriptor is given, it is closed when the returned I/O object
-   is closed, unless *closefd* is set to ``False``.)
+   *file* is either a string giving the name (and the path if the file isn't in
+   the current working directory) of the file to be opened or an integer file
+   descriptor of the file to be wrapped.  (If a file descriptor is given, it is
+   closed when the returned I/O object is closed, unless *closefd* is set to
+   ``False``.)
 
    *mode* is an optional string that specifies the mode in which the file is
-   opened. It defaults to ``'r'`` which means open for reading in text mode.
-   Other common values are ``'w'`` for writing (truncating the file if
-   it already exists), and ``'a'`` for appending (which on *some* Unix
-   systems means that *all* writes append to the end of the file
-   regardless of the current seek position). In text mode, if *encoding*
-   is not specified the encoding used is platform dependent. (For reading
-   and writing raw bytes use binary mode and leave *encoding*
-   unspecified.) The available modes are:
+   opened.  It defaults to ``'r'`` which means open for reading in text mode.
+   Other common values are ``'w'`` for writing (truncating the file if it
+   already exists), and ``'a'`` for appending (which on *some* Unix systems,
+   means that *all* writes append to the end of the file regardless of the
+   current seek position).  In text mode, if *encoding* is not specified the
+   encoding used is platform dependent. (For reading and writing raw bytes use
+   binary mode and leave *encoding* unspecified.)  The available modes are:
 
-   * 'r' open for reading (default)
-   * 'w' open for writing, truncating the file first
-   * 'a' open for writing, appending to the end if the file exists
-   * 'b' binary mode
-   * 't' text mode (default)
-   * '+' open the file for updating (implies both reading and writing)
-   * 'U' universal newline mode (for backwards compatibility;
-     unnecessary in new code)
+   ========= ===============================================================
+   Character Meaning
+   --------- ---------------------------------------------------------------
+   ``'r'``   open for reading (default)
+   ``'w'``   open for writing, truncating the file first
+   ``'a'``   open for writing, appending to the end of the file if it exists
+   ``'b'``   binary mode
+   ``'t'``   text mode (default)
+   ``'+'``   open a disk file for updating (reading and writing)
+   ``'U'``   universal newline mode (for backwards compatibility; unneeded
+             for new code)
+   ========= ===============================================================
 
-   The most commonly-used values of *mode* are ``'r'`` for reading, ``'w'`` for
-   writing (truncating the file if it already exists), and ``'a'`` for appending
-   (which on *some* Unix systems means that *all* writes append to the end of the
-   file regardless of the current seek position).  If *mode* is omitted, it
-   defaults to ``'r'``.  The default is to use text mode, which may convert
-   ``'\n'`` characters to a platform-specific representation on writing and back
-   on reading.  Thus, when opening a binary file, you should append ``'b'`` to
-   the *mode* value to open the file in binary mode, which will improve
-   portability.  (Appending ``'b'`` is useful even on systems that don't treat
-   binary and text files differently, where it serves as documentation.)  See below
-   for more possible values of *mode*.
+   The default mode is ``'rt'`` (open for reading text).  For binary random
+   access, the mode ``'w+b'`` opens and truncates the file to 0 bytes, while
+   ``'r+b'`` opens the file without truncation.
 
    Python distinguishes between files opened in binary and text modes, even
    when the underlying operating system doesn't.  Files opened in binary
    mode (appending ``'b'`` to the *mode* argument) return contents as
-   ``bytes`` objects without any decoding.  In text mode (the default,
-   or when ``'t'`` is appended to the *mode* argument) the contents of
+   ``bytes`` objects without any decoding.  In text mode (the default, or when
+   ``'t'`` is appended to the *mode* argument) the contents of
    the file are returned as strings, the bytes having been first decoded
    using a platform-dependent encoding or using the specified *encoding*
    if given.
 
-   *buffering* is an optional integer used to set the buffering policy. By
-   default full buffering is on. Pass 0 to switch buffering off (only
-   allowed in binary mode), 1 to set line buffering, and an integer > 1
-   for full buffering.
+   *buffering* is an optional integer used to set the buffering policy.  By
+   default full buffering is on. Pass 0 to switch buffering off (only allowed in
+   binary mode), 1 to set line buffering, and an integer > 1 for full buffering.
     
-   *encoding* is an optional string that specifies the file's encoding when
-   reading or writing in text mode---this argument should not be used in
-   binary mode. The default encoding is platform dependent, but any encoding
-   supported by Python can be used. (See the :mod:`codecs` module for
-   the list of supported encodings.)
+   *encoding* is the name of the encoding used to decode or encode the file.
+   This should only be used in text mode.  The default encoding is platform
+   dependent, but any encoding supported by Python can be passed.  See the
+   :mod:`codecs` module for the list of supported encodings.
 
    *errors* is an optional string that specifies how encoding errors are to be
-   handled---this argument should not be used in binary mode. Pass
-   ``'strict'`` to raise a :exc:`ValueError` exception if there is an encoding
-   error (the default of ``None`` has the same effect), or pass ``'ignore'``
-   to ignore errors. (Note that ignoring encoding errors can lead to
-   data loss.) See the documentation for :func:`codecs.register` for a
-   list of the permitted encoding error strings.
+   handled---this argument should not be used in binary mode. Pass ``'strict'``
+   to raise a :exc:`ValueError` exception if there is an encoding error (the
+   default of ``None`` has the same effect), or pass ``'ignore'`` to ignore
+   errors. (Note that ignoring encoding errors can lead to data loss.) See the
+   documentation for :func:`codecs.register` for a list of the permitted
+   encoding error strings.
 
-   *newline* is an optional string that specifies the newline character(s).
-   When reading, if *newline* is ``None``, universal newlines mode is enabled.
-   Lines read in univeral newlines mode can end in ``'\n'``, ``'\r'``,
-   or ``'\r\n'``, and these are translated into ``'\n'``. If *newline*
-   is ``''``, universal newline mode is enabled, but line endings are
-   not translated. If any other string is given, lines are assumed to be
-   terminated by that string, and no translating is done. When writing,
-   if *newline* is ``None``, any ``'\n'`` characters written are
-   translated to the system default line separator, :attr:`os.linesep`.
-   If *newline* is ``''``, no translation takes place. If *newline* is
-   any of the other standard values, any ``'\n'`` characters written are
-   translated to the given string.
+   *newline* controls how universal newlines works (it only applies to text
+   mode).  It can be ``None``, ``''``, ``'\n'``, ``'\r'``, and ``'\r\n'``.  It
+   works as follows:
 
-   *closefd* is an optional Boolean which specifies whether to keep the
-   underlying file descriptor open. It must be ``True`` (the default) if
-   a filename is given.
+   * On input, if *newline* is ``None``, universal newlines mode is enabled.
+     Lines in the input can end in ``'\n'``, ``'\r'``, or ``'\r\n'``, and these
+     are translated into ``'\n'`` before being returned to the caller.  If it is
+     ``''``, universal newline mode is enabled, but line endings are returned to
+     the caller untranslated.  If it has any of the other legal values, input
+     lines are only terminated by the given string, and the line ending is
+     returned to the caller untranslated.
+
+   * On output, if *newline* is ``None``, any ``'\n'`` characters written are
+     translated to the system default line separator, :data:`os.linesep`.  If
+     *newline* is ``''``, no translation takes place.  If *newline* is any of
+     the other legal values, any ``'\n'`` characters written are translated to
+     the given string.
+
+   If *closefd* is ``False``, the underlying file descriptor will be kept open
+   when the file is closed.  This does not work when a file name is given and
+   must be ``True`` in that case.
 
    .. index::
       single: line-buffered I/O
@@ -776,9 +791,9 @@ available.  They are listed here in alphabetical order.
       single: text mode
       module: sys
 
-   See also the file handling modules, such as,
-   :mod:`fileinput`, :mod:`os`, :mod:`os.path`, :mod:`tempfile`, and
-   :mod:`shutil`.
+   See also the file handling modules, such as, :mod:`fileinput`, :mod:`io`
+   (where :func:`open()` is declared), :mod:`os`, :mod:`os.path`,
+   :mod:`tempfile`, and :mod:`shutil`.
 
 
 .. XXX works for bytes too, but should it?
@@ -865,15 +880,15 @@ available.  They are listed here in alphabetical order.
 .. XXX does accept objects with __index__ too
 .. function:: range([start,] stop[, step])
 
-   This is a versatile function to create iterators containing arithmetic
-   progressions.  It is most often used in :keyword:`for` loops.  The arguments
-   must be integers.  If the *step* argument is omitted, it defaults to ``1``.
-   If the *start* argument is omitted, it defaults to ``0``.  The full form
-   returns an iterator of plain integers ``[start, start + step, start + 2 *
-   step, ...]``.  If *step* is positive, the last element is the largest ``start
-   + i * step`` less than *stop*; if *step* is negative, the last element is the
-   smallest ``start + i * step`` greater than *stop*.  *step* must not be zero
-   (or else :exc:`ValueError` is raised).  Example::
+   This is a versatile function to create lists containing arithmetic progressions.
+   It is most often used in :keyword:`for` loops.  The arguments must be plain
+   integers.  If the *step* argument is omitted, it defaults to ``1``.  If the
+   *start* argument is omitted, it defaults to ``0``.  The full form returns a list
+   of plain integers ``[start, start + step, start + 2 * step, ...]``.  If *step*
+   is positive, the last element is the largest ``start + i * step`` less than
+   *stop*; if *step* is negative, the last element is the smallest ``start + i *
+   step`` greater than *stop*.  *step* must not be zero (or else :exc:`ValueError`
+   is raised).  Example:
 
       >>> list(range(10))
       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -893,11 +908,13 @@ available.  They are listed here in alphabetical order.
 
 .. function:: repr(object)
 
-   Return a string containing a printable representation of an object. This is the
-   same value yielded by conversions (reverse quotes). It is sometimes useful to be
-   able to access this operation as an ordinary function.  For many types, this
-   function makes an attempt to return a string that would yield an object with the
-   same value when passed to :func:`eval`.
+   Return a string containing a printable representation of an object.  For many
+   types, this function makes an attempt to return a string that would yield an
+   object with the same value when passed to :func:`eval`, otherwise the
+   representation is a string enclosed in angle brackets that contains the name
+   of the type of the object together with additional information often
+   including the name and address of the object.  A class can control what this
+   function returns for its instances by defining a :meth:`__repr__` method.
 
 
 .. function:: reversed(seq)
@@ -1082,12 +1099,12 @@ available.  They are listed here in alphabetical order.
    :noindex:
 
    Return a new type object.  This is essentially a dynamic form of the
-   :keyword:`class` statement. The *name* string is the class name and becomes
-   the :attr:`__name__` attribute; the *bases* tuple itemizes the base classes
-   and becomes the :attr:`__bases__` attribute; and the *dict* dictionary is the
-   namespace containing definitions for class body and becomes the
-   :attr:`__dict__` attribute.  For example, the following two statements create
-   identical :class:`type` objects::
+   :keyword:`class` statement. The *name* string is the class name and becomes the
+   :attr:`__name__` attribute; the *bases* tuple itemizes the base classes and
+   becomes the :attr:`__bases__` attribute; and the *dict* dictionary is the
+   namespace containing definitions for class body and becomes the :attr:`__dict__`
+   attribute.  For example, the following two statements create identical
+   :class:`type` objects:
 
       >>> class X(object):
       ...     a = 1
@@ -1104,20 +1121,30 @@ available.  They are listed here in alphabetical order.
    the effects on the corresponding symbol table are undefined. [#]_
 
 
-.. function:: zip([iterable, ...])
+.. function:: zip(*iterables)
 
-   This function returns an iterator of tuples, where the *i*-th tuple contains
+   Make an iterator that aggregates elements from each of the iterables. 
+
+   Returns an iterator of tuples, where the *i*-th tuple contains
    the *i*-th element from each of the argument sequences or iterables.  The
-   iterator stops when the shortest argument sequence is exhausted.  When there
-   are multiple arguments which are all of the same length, :func:`zip` is
-   similar to :func:`map` with an initial argument of ``None``.  With a single
-   sequence argument, it returns an iterator of 1-tuples.  With no arguments, it
-   returns an empty iterator.
+   iterator stops when the shortest input iterable is exhausted. With a single
+   iterable argument, it returns an iterator of 1-tuples.  With no arguments, 
+   it returns an empty iterator.  Equivalent to::
+
+      def zip(*iterables):
+          # zip('ABCD', 'xy') --> Ax By
+          iterables = map(iter, iterables)
+          while iterables:
+              result = [it.next() for it in iterables]
+              yield tuple(result)
 
    The left-to-right evaluation order of the iterables is guaranteed. This
    makes possible an idiom for clustering a data series into n-length groups
    using ``zip(*[iter(s)]*n)``.
 
+   :func:`zip` should only be used with unequal length inputs when you don't
+   care about trailing, unmatched values from the longer iterables.  If those
+   values are important, use :func:`itertools.zip_longest` instead.
 
 .. rubric:: Footnotes
 

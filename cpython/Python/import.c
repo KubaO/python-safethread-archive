@@ -72,6 +72,7 @@ extern time_t PyOS_GetLastModificationTime(char *, FILE *);
        			    storing constants that should have been removed)
        Python 2.5c2: 62131 (fix wrong code: for x, in ... in listcomp/genexp)
        Python 2.6a0: 62151 (peephole optimizations and STORE_MAP opcode)
+       Python 2.6a1: 62161 (WITH_CLEANUP optimization)
        Python 3000:   3000
        	              3010 (removed UNARY_CONVERT)
 		      3020 (added BUILD_SET)
@@ -84,9 +85,9 @@ extern time_t PyOS_GetLastModificationTime(char *, FILE *);
 		      3090 (kill str8 interning)
 		      3100 (merge from 2.6a0, see 62151)
 		      3102 (__file__ points to source file)
-.
+       Python 3.0a4: 3110 (WITH_CLEANUP optimization).
 */
-#define MAGIC (3102 | ((long)'\r'<<16) | ((long)'\n'<<24))
+#define MAGIC (3110 | ((long)'\r'<<16) | ((long)'\n'<<24))
 
 /* Magic word as global; note that _PyImport_Init() can change the
    value of this global to accommodate for alterations of how the
@@ -820,12 +821,14 @@ parse_source_module(const char *pathname, FILE *fp)
 {
 	PyCodeObject *co = NULL;
 	mod_ty mod;
+	PyCompilerFlags flags;
 	PyArena *arena = PyArena_New();
 	if (arena == NULL)
 		return NULL;
 
+	flags.cf_flags = 0;
 	mod = PyParser_ASTFromFile(fp, pathname, NULL,
-				   Py_file_input, 0, 0, 0, 
+				   Py_file_input, 0, 0, &flags, 
 				   NULL, arena);
 	if (mod) {
 		co = PyAST_Compile(mod, pathname, NULL, arena);
@@ -996,7 +999,7 @@ get_sourcefile(const char *file)
 	}
 
 	strncpy(py, file, len-1);
-	py[len] = '\0';
+	py[len-1] = '\0';
 	if (stat(py, &statbuf) == 0 &&
 		S_ISREG(statbuf.st_mode)) {
 		u = PyUnicode_DecodeFSDefault(py);

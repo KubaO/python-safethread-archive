@@ -144,6 +144,9 @@
 /* Defined when any dynamic module loading is enabled. */
 #undef HAVE_DYNAMIC_LOADING
 
+/* Define if you have the 'epoll' functions. */
+#undef HAVE_EPOLL
+
 /* Define to 1 if you have the <errno.h> header file. */
 #undef HAVE_ERRNO_H
 
@@ -237,6 +240,9 @@
 /* Define this if you have the 6-arg version of gethostbyname_r(). */
 #undef HAVE_GETHOSTBYNAME_R_6_ARG
 
+/* Define to 1 if you have the `getitimer' function. */
+#undef HAVE_GETITIMER
+
 /* Define to 1 if you have the `getloadavg' function. */
 #undef HAVE_GETLOADAVG
 
@@ -291,6 +297,9 @@
 /* Define to 1 if you have the `hypot' function. */
 #undef HAVE_HYPOT
 
+/* Define to 1 if you have the <ieeefp.h> header file. */
+#undef HAVE_IEEEFP_H
+
 /* Define if you have the 'inet_aton' function. */
 #undef HAVE_INET_ATON
 
@@ -314,6 +323,9 @@
 
 /* Define to 1 if you have the `killpg' function. */
 #undef HAVE_KILLPG
+
+/* Define if you have the 'kqueue' functions. */
+#undef HAVE_KQUEUE
 
 /* Define to 1 if you have the <langinfo.h> header file. */
 #undef HAVE_LANGINFO_H
@@ -495,6 +507,9 @@
 /* Define if you have the 'setgroups' function. */
 #undef HAVE_SETGROUPS
 
+/* Define to 1 if you have the `setitimer' function. */
+#undef HAVE_SETITIMER
+
 /* Define to 1 if you have the `setlocale' function. */
 #undef HAVE_SETLOCALE
 
@@ -571,9 +586,6 @@
 /* Define to 1 if you have the `strdup' function. */
 #undef HAVE_STRDUP
 
-/* Define to 1 if you have the `strerror' function. */
-#undef HAVE_STRERROR
-
 /* Define to 1 if you have the `strftime' function. */
 #undef HAVE_STRFTIME
 
@@ -632,6 +644,12 @@
 /* Define to 1 if you have the <sys/dir.h> header file, and it defines `DIR'.
    */
 #undef HAVE_SYS_DIR_H
+
+/* Define to 1 if you have the <sys/epoll.h> header file. */
+#undef HAVE_SYS_EPOLL_H
+
+/* Define to 1 if you have the <sys/event.h> header file. */
+#undef HAVE_SYS_EVENT_H
 
 /* Define to 1 if you have the <sys/file.h> header file. */
 #undef HAVE_SYS_FILE_H
@@ -775,6 +793,9 @@
 
 /* Define to 1 if you have the `wcscoll' function. */
 #undef HAVE_WCSCOLL
+
+/* Define to 1 if you have the `wcsxfrm' function. */
+#undef HAVE_WCSXFRM
 
 /* Define if tzset() actually switches the local timezone in a meaningful way.
    */

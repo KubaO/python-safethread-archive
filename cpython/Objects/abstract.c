@@ -673,7 +673,7 @@ PyBuffer_FillInfo(Py_buffer *view, void *buf, Py_ssize_t len,
 {
 	if (view == NULL) return 0;
 	if (((flags & PyBUF_LOCK) == PyBUF_LOCK) &&
-	    readonly >= 0) {
+	    readonly != 0) {
 		PyErr_SetString(PyExc_BufferError,
 				"Cannot lock this object.");
 		return -1;
@@ -2598,9 +2598,11 @@ int
 PyObject_IsInstance(PyObject *inst, PyObject *cls)
 {
 	static PyObject *name = NULL;
-	PyObject *t, *v, *tb;
 	PyObject *checker;
-	PyErr_Fetch(&t, &v, &tb);
+
+	/* Quick test for an exact match */
+	if (Py_TYPE(inst) == (PyTypeObject *)cls)
+		return 1;
 
 	if (name == NULL) {
 		name = PyUnicode_InternFromString("__instancecheck__");
@@ -2608,7 +2610,8 @@ PyObject_IsInstance(PyObject *inst, PyObject *cls)
 			return -1;
 	}
 	checker = PyObject_GetAttr(cls, name);
-	PyErr_Restore(t, v, tb);
+	if (checker == NULL && PyErr_Occurred())
+		PyErr_Clear();
 	if (checker != NULL) {
 		PyObject *res;
 		int ok = -1;

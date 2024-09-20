@@ -21,6 +21,7 @@ docs@python.org), and we'll be glad to correct the problem.
    * Chris Barker
    * Don Bashford
    * Anthony Baxter
+   * Alexander Belopolsky
    * Bennett Benson
    * Jonathan Black
    * Robin Boerdijk
@@ -209,3 +210,5 @@ docs@python.org), and we'll be glad to correct the problem.
    * Moshe Zadka
    * Milan Zamazal
    * Cheng Zhang
+   * Trent Nelson
+   * Michael Foord

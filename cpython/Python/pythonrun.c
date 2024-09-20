@@ -17,6 +17,7 @@
 #include "ast.h"
 #include "eval.h"
 #include "marshal.h"
+#include "osdefs.h"
 
 #ifdef HAVE_SIGNAL_H
 #include <signal.h>
@@ -30,6 +31,7 @@
 #ifdef MS_WINDOWS
 #undef BYTE
 #include "windows.h"
+#define PATH_MAX MAXPATHLEN
 #endif
 
 #ifndef Py_REF_DEBUG
@@ -44,7 +46,7 @@
 extern "C" {
 #endif
 
-extern char *Py_GetPath(void);
+extern wchar_t *Py_GetPath(void);
 
 extern grammar _PyParser_Grammar; /* From graminit.c */
 
@@ -52,6 +54,7 @@ extern grammar _PyParser_Grammar; /* From graminit.c */
 static void initmain(void);
 static void initsite(void);
 static int initstdio(void);
+static void flush_io(void);
 static PyObject *run_mod(mod_ty, const char *, PyObject *, PyObject *,
 			  PyCompilerFlags *, PyArena *);
 static PyObject *run_pyc_file(FILE *, const char *, PyObject *, PyObject *,
@@ -512,7 +515,7 @@ Py_Finalize(void)
 	/* reset file system default encoding */
 	if (!Py_HasFileSystemDefaultEncoding) {
 		free((char*)Py_FileSystemDefaultEncoding);
-        	Py_FileSystemDefaultEncoding = NULL;
+		Py_FileSystemDefaultEncoding = NULL;
 	}
 
 	/* XXX Still allocated:
@@ -646,35 +649,43 @@ Py_EndInterpreter(PyThreadState *tstate)
 	PyInterpreterState_Delete(interp);
 }
 
-static char *progname = "python";
+static wchar_t *progname = L"python";
 
 void
-Py_SetProgramName(char *pn)
+Py_SetProgramName(wchar_t *pn)
 {
 	if (pn && *pn)
 		progname = pn;
 }
 
-char *
+wchar_t *
 Py_GetProgramName(void)
 {
 	return progname;
 }
 
-static char *default_home = NULL;
+static wchar_t *default_home = NULL;
+static wchar_t env_home[PATH_MAX+1];
 
 void
-Py_SetPythonHome(char *home)
+Py_SetPythonHome(wchar_t *home)
 {
 	default_home = home;
 }
 
-char *
+wchar_t *
 Py_GetPythonHome(void)
 {
-	char *home = default_home;
-	if (home == NULL && !Py_IgnoreEnvironmentFlag)
-		home = Py_GETENV("PYTHONHOME");
+	wchar_t *home = default_home;
+	if (home == NULL && !Py_IgnoreEnvironmentFlag) {
+		char* chome = Py_GETENV("PYTHONHOME");
+		if (chome) {
+			size_t r = mbstowcs(env_home, chome, PATH_MAX+1);
+			if (r != (size_t)-1 && r <= PATH_MAX)
+				home = env_home;
+		}
+
+	}
 	return home;
 }
 
@@ -733,6 +744,7 @@ initstdio(void)
 	PyObject *m;
 	PyObject *std = NULL;
 	int status = 0, fd;
+	PyObject * encoding_attr;
 
 	/* Hack to avoid a nasty recursion issue when Python is invoked
 	   in verbose mode: pre-import the Latin-1 and UTF-8 codecs */
@@ -823,6 +835,19 @@ initstdio(void)
 			goto error;
 		}
 	} /* if (fd < 0) */
+
+	/* Same as hack above, pre-import stderr's codec to avoid recursion
+	   when import.c tries to write to stderr in verbose mode. */
+	encoding_attr = PyObject_GetAttrString(std, "encoding");
+	if (encoding_attr != NULL) {
+		const char * encoding;
+		encoding = PyUnicode_AsString(encoding_attr);
+		if (encoding != NULL) {
+			_PyCodec_Lookup(encoding);
+		}
+	}
+	PyErr_Clear();  /* Not a fatal error if codec isn't available */
+
 	PySys_SetObject("__stderr__", std);
 	PySys_SetObject("stderr", std);
 	Py_DECREF(std);
@@ -968,6 +993,7 @@ PyRun_InteractiveOneFlags(FILE *fp, const char *filename, PyCompilerFlags *flags
 	d = PyModule_GetDict(m);
 	v = run_mod(mod, filename, d, d, flags, arena);
 	PyArena_Free(arena);
+	flush_io();
 	if (v == NULL) {
 		PyErr_Print();
 		return -1;
@@ -1058,6 +1084,7 @@ PyRun_SimpleFileExFlags(FILE *fp, const char *filename, int closeit,
 		v = PyRun_FileExFlags(fp, filename, Py_file_input, d, d,
 				      closeit, flags);
 	}
+	flush_io();
 	if (v == NULL) {
 		PyErr_Print();
 		ret = -1;
@@ -1453,6 +1480,11 @@ static void
 flush_io(void)
 {
 	PyObject *f, *r;
+	PyObject *type, *value, *traceback;
+
+	/* Save the current exception */
+	PyErr_Fetch(&type, &value, &traceback);
+
 	f = PySys_GetObject("stderr");
 	if (f != NULL) {
 		r = PyObject_CallMethod(f, "flush", "");
@@ -1469,6 +1501,8 @@ flush_io(void)
 		else
 			PyErr_Clear();
 	}
+
+	PyErr_Restore(type, value, traceback);
 }
 
 static PyObject *
@@ -1482,7 +1516,6 @@ run_mod(mod_ty mod, const char *filename, PyObject *globals, PyObject *locals,
 		return NULL;
 	v = PyEval_EvalCode(co, globals, locals);
 	Py_DECREF(co);
-	flush_io();
 	return v;
 }
 
@@ -1515,7 +1548,6 @@ run_pyc_file(FILE *fp, const char *filename, PyObject *globals,
 	if (v && flags)
 		flags->cf_flags |= (co->co_flags & PyCF_MASK);
 	Py_DECREF(co);
-	flush_io();
 	return v;
 }
 
@@ -1549,11 +1581,13 @@ Py_SymtableString(const char *str, const char *filename, int start)
 {
 	struct symtable *st;
 	mod_ty mod;
+	PyCompilerFlags flags;
 	PyArena *arena = PyArena_New();
 	if (arena == NULL)
 		return NULL;
 
-	mod = PyParser_ASTFromString(str, filename, start, NULL, arena);
+	flags.cf_flags = 0;
+	mod = PyParser_ASTFromString(str, filename, start, &flags, arena);
 	if (mod == NULL) {
 		PyArena_Free(arena);
 		return NULL;
@@ -1570,10 +1604,15 @@ PyParser_ASTFromString(const char *s, const char *filename, int start,
 {
 	mod_ty mod;
 	perrdetail err;
-	node *n = PyParser_ParseStringFlagsFilename(s, filename,
+	int iflags = PARSER_FLAGS(flags);
+
+	node *n = PyParser_ParseStringFlagsFilenameEx(s, filename,
 					&_PyParser_Grammar, start, &err,
-					PARSER_FLAGS(flags));
+					&iflags);
 	if (n) {
+		if (flags) {
+			flags->cf_flags |= iflags & PyCF_MASK;
+		}
 		mod = PyAST_FromNode(n, flags, filename, arena);
 		PyNode_Free(n);
 		return mod;
@@ -1592,10 +1631,15 @@ PyParser_ASTFromFile(FILE *fp, const char *filename, const char* enc,
 {
 	mod_ty mod;
 	perrdetail err;
-	node *n = PyParser_ParseFileFlags(fp, filename, enc,
+	int iflags = PARSER_FLAGS(flags);
+
+	node *n = PyParser_ParseFileFlagsEx(fp, filename, enc,
 					  &_PyParser_Grammar,
-				start, ps1, ps2, &err, PARSER_FLAGS(flags));
+				start, ps1, ps2, &err, &iflags);
 	if (n) {
+		if (flags) {
+			flags->cf_flags |= iflags & PyCF_MASK;
+		}
 		mod = PyAST_FromNode(n, flags, filename, arena);
 		PyNode_Free(n);
 		return mod;
@@ -1900,8 +1944,8 @@ PyOS_CheckStack(void)
 		alloca(PYOS_STACK_MARGIN * sizeof(void*));
 		return 0;
 	} __except (GetExceptionCode() == STATUS_STACK_OVERFLOW ?
-		        EXCEPTION_EXECUTE_HANDLER : 
-		        EXCEPTION_CONTINUE_SEARCH) {
+			EXCEPTION_EXECUTE_HANDLER : 
+			EXCEPTION_CONTINUE_SEARCH) {
 		int errcode = _resetstkoflw();
 		if (errcode)
 		{

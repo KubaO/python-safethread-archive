@@ -9,7 +9,6 @@ import errno
 import string
 import tempfile
 from pprint import pprint
-from test import test_support
 import unittest
 import time
 
@@ -21,6 +20,10 @@ except ImportError:
     from bsddb import db
 
 from bsddb.test.test_all import verbose
+try:
+    from bsddb3 import test_support
+except ImportError:
+    from test import test_support
 
 DASH = b'-'
 letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -95,8 +98,9 @@ class BasicTestCase(unittest.TestCase):
     def tearDown(self):
         self.d.close()
         if self.env is not None:
-            test_support.rmtree(self.homeDir)
             self.env.close()
+            test_support.rmtree(self.homeDir)
+            ## XXX(nnorwitz): is this comment stil valid?
             ## Make a new DBEnv to remove the env files from the home dir.
             ## (It can't be done while the env is open, nor after it has been
             ## closed, so we make a new one to do it.)
@@ -362,7 +366,7 @@ class BasicTestCase(unittest.TestCase):
         else:
             if set_raises_error:
                 self.fail("expected exception")
-            if n != None:
+            if n is not None:
                 self.fail("expected None: %r" % (n,))
 
         rec = c.get_both(b'0404', self.makeData(b'0404'))
@@ -376,7 +380,7 @@ class BasicTestCase(unittest.TestCase):
         else:
             if get_raises_error:
                 self.fail("expected exception")
-            if n != None:
+            if n is not None:
                 self.fail("expected None: %r" % (n,))
 
         if self.d.get_type() == db.DB_BTREE:

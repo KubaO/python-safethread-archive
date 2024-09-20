@@ -794,6 +794,10 @@ PyZlib_unflush(compobject *self, PyObject *args)
 
     if (!PyArg_ParseTuple(args, "|i:flush", &length))
 	return NULL;
+    if (length <= 0) {
+	PyErr_SetString(PyExc_ValueError, "length must be greater than zero");
+	return NULL;
+    }
     if (!(retval = PyBytes_FromStringAndSize(NULL, length)))
 	return NULL;
 
@@ -915,14 +919,14 @@ PyDoc_STRVAR(adler32__doc__,
 static PyObject *
 PyZlib_adler32(PyObject *self, PyObject *args)
 {
-    uLong adler32val = adler32(0L, Z_NULL, 0);
+    unsigned int adler32val = 1;  /* adler32(0L, Z_NULL, 0) */
     Byte *buf;
     int len;
 
-    if (!PyArg_ParseTuple(args, "s#|k:adler32", &buf, &len, &adler32val))
+    if (!PyArg_ParseTuple(args, "s#|I:adler32", &buf, &len, &adler32val))
 	return NULL;
     adler32val = adler32(adler32val, buf, len);
-    return PyLong_FromLong(adler32val);
+    return PyLong_FromUnsignedLong(adler32val & 0xffffffffU);
 }
 
 PyDoc_STRVAR(crc32__doc__,
@@ -934,13 +938,14 @@ PyDoc_STRVAR(crc32__doc__,
 static PyObject *
 PyZlib_crc32(PyObject *self, PyObject *args)
 {
-    uLong crc32val = crc32(0L, Z_NULL, 0);
+    unsigned int crc32val = 0;  /* crc32(0L, Z_NULL, 0) */
     Byte *buf;
-    int len;
-    if (!PyArg_ParseTuple(args, "s#|k:crc32", &buf, &len, &crc32val))
+    int len, signed_val;
+
+    if (!PyArg_ParseTuple(args, "s#|I:crc32", &buf, &len, &crc32val))
 	return NULL;
-    crc32val = crc32(crc32val, buf, len);
-    return PyLong_FromLong(crc32val);
+    signed_val = crc32(crc32val, buf, len);
+    return PyLong_FromUnsignedLong(signed_val & 0xffffffffU);
 }
 
 

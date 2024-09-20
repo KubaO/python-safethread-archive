@@ -12,10 +12,9 @@ Command line options:
 -w: verbose2   -- re-run failed tests in verbose mode
 -d: debug      -- print traceback for failed tests
 -q: quiet      -- don't print anything except if a test fails
--g: generate   -- write the output file for a test instead of comparing it
 -x: exclude    -- arguments are tests to *exclude*
 -s: single     -- run only a single test (see below)
--S: start      -- start running all the tests with the specified one first
+-S: slow       -- print the slowest 10 tests
 -r: random     -- randomize test execution order
 -f: fromfile   -- read names of tests to run from a file (see below)
 -l: findleaks  -- if GC is available detect tests that leak memory
@@ -127,14 +126,16 @@ example, to run all the tests except for the bsddb tests, give the
 option '-uall,-bsddb'.
 """
 
-import os
-import sys
 import getopt
+import os
 import random
-import warnings
 import re
 import io
+import sys
+import time
 import traceback
+import warnings
+from inspect import isabstract
 
 # I see no other way to suppress these warnings;
 # putting them in test_grammar.py has no effect:
@@ -185,8 +186,7 @@ def usage(msg):
 def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
          exclude=False, single=False, randomize=False, fromfile=None,
          findleaks=False, use_resources=None, trace=False, coverdir='coverage',
-         runleaks=False, huntrleaks=None, verbose2=False, debug=False,
-         start=None):
+         runleaks=False, huntrleaks=False, verbose2=False, print_slow=False):
     """Execute a test suite.
 
     This also parses command-line options and modifies its behavior
@@ -203,17 +203,17 @@ def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
     command-line will be used.  If that's empty, too, then all *.py
     files beginning with test_ will be used.
 
-    The other default arguments (verbose, quiet, generate, exclude, single,
-    randomize, findleaks, use_resources, trace and coverdir) allow programmers
-    calling main() directly to set the values that would normally be set by
-    flags on the command line.
+    The other default arguments (verbose, quiet, generate, exclude,
+    single, randomize, findleaks, use_resources, trace, coverdir, and
+    print_slow) allow programmers calling main() directly to set the
+    values that would normally be set by flags on the command line.
     """
 
     test_support.record_original_stdout(sys.stdout)
     try:
-        opts, args = getopt.getopt(sys.argv[1:], 'dhvgqxsS:rf:lu:t:TD:NLR:wM:n',
-                                   ['help', 'verbose', 'quiet', 'generate',
-                                    'exclude', 'single', 'random', 'fromfile',
+        opts, args = getopt.getopt(sys.argv[1:], 'hvgqxsSrf:lu:t:TD:NLR:wM:n',
+                                   ['help', 'verbose', 'quiet', 'exclude',
+                                    'single', 'slow', 'random', 'fromfile',
                                     'findleaks', 'use=', 'threshold=', 'trace',
                                     'coverdir=', 'nocoverdir', 'runleaks',
                                     'huntrleaks=', 'verbose2', 'memlimit=',
@@ -225,6 +225,8 @@ def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
     # Defaults
     if use_resources is None:
         use_resources = []
+    debug = False
+    start = None
     for o, a in opts:
         if o in ('-h', '--help'):
             print(__doc__)
@@ -238,14 +240,14 @@ def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
         elif o in ('-q', '--quiet'):
             quiet = True;
             verbose = 0
-        elif o in ('-g', '--generate'):
-            generate = True
         elif o in ('-x', '--exclude'):
             exclude = True
         elif o in ('-S', '--start'):
             start = a
         elif o in ('-s', '--single'):
             single = True
+        elif o in ('-S', '--slow'):
+            print_slow = True
         elif o in ('-r', '--randomize'):
             randomize = True
         elif o in ('-f', '--fromfile'):
@@ -387,6 +389,7 @@ def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
         import trace
         tracer = trace.Trace(ignoredirs=[sys.prefix, sys.exec_prefix],
                              trace=False, count=True)
+    test_times = []
     test_support.verbose = verbose      # Tell tests to be moderately quiet
     test_support.use_resources = use_resources
     save_modules = sys.modules.keys()
@@ -397,12 +400,13 @@ def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
         if trace:
             # If we're tracing code coverage, then we don't exit with status
             # if on a false return value from main.
-            tracer.runctx('runtest(test, generate, verbose, quiet, testdir)',
+            tracer.runctx('runtest(test, generate, verbose, quiet,'
+                          '        test_times, testdir)',
                           globals=globals(), locals=vars())
         else:
             try:
-                ok = runtest(test, generate, verbose, quiet, testdir,
-                             huntrleaks)
+                ok = runtest(test, generate, verbose, quiet, test_times,
+                             testdir, huntrleaks)
             except KeyboardInterrupt:
                 # print a newline separate from the ^C
                 print()
@@ -443,6 +447,11 @@ def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
         if verbose:
             print("CAUTION:  stdout isn't compared in verbose mode:")
             print("a test that passes in verbose mode may fail without it.")
+    if print_slow:
+        test_times.sort(reverse=True)
+        print("10 slowest tests:")
+        for time, test in test_times[:10]:
+            print("%s: %.1fs" % (test, time))
     if bad:
         print(count(len(bad), "test"), "failed:")
         printlist(bad)
@@ -470,8 +479,8 @@ def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
             print("Re-running test %r in verbose mode" % test)
             sys.stdout.flush()
             try:
-                test_support.verbose = 1
-                ok = runtest(test, generate, 1, quiet, testdir,
+                test_support.verbose = True
+                ok = runtest(test, generate, True, quiet, test_times, testdir,
                              huntrleaks, debug)
             except KeyboardInterrupt:
                 # print a newline separate from the ^C
@@ -520,7 +529,6 @@ NOTTESTS = {
     'test_support',
     'test_future1',
     'test_future2',
-    'test_future3',
 }
 
 def findtests(testdir=None, stdtests=STDTESTS, nottests=NOTTESTS):
@@ -536,15 +544,14 @@ def findtests(testdir=None, stdtests=STDTESTS, nottests=NOTTESTS):
     tests.sort()
     return stdtests + tests
 
-def runtest(test, generate, verbose, quiet, testdir=None,
-            huntrleaks=None, debug=False):
+def runtest(test, generate, verbose, quiet, test_times,
+            testdir=None, huntrleaks=False, debug=False):
     """Run a single test.
 
     test -- the name of the test
-    generate -- if true, generate output, instead of running the test
-                and comparing it to a previously created output file
     verbose -- if true, print more messages
     quiet -- if true, don't print 'skipped' messages (probably redundant)
+    test_times -- a list of (time, test_name) pairs
     testdir -- test directory
     huntrleaks -- run multiple times to test for leaks; requires a debug
                   build; a triple corresponding to -R's three arguments
@@ -558,18 +565,16 @@ def runtest(test, generate, verbose, quiet, testdir=None,
     """
 
     try:
-        return runtest_inner(test, generate, verbose, quiet, testdir,
-                             huntrleaks, debug)
+        return runtest_inner(test, generate, verbose, quiet, test_times,
+                             testdir, huntrleaks)
     finally:
         cleanup_test_droppings(test, verbose)
 
-def runtest_inner(test, generate, verbose, quiet,
-                     testdir=None, huntrleaks=None, debug=False):
+def runtest_inner(test, generate, verbose, quiet, test_times,
+                  testdir=None, huntrleaks=False, debug=False):
     test_support.unload(test)
     if not testdir:
         testdir = findtestdir()
-    outputdir = os.path.join(testdir, "output")
-    outputfile = os.path.join(outputdir, test)
     if verbose:
         cfp = None
     else:
@@ -586,6 +591,7 @@ def runtest_inner(test, generate, verbose, quiet,
             else:
                 # Always import it from the test package
                 abstest = 'test.' + test
+            start_time = time.time()
             the_package = __import__(abstest, globals(), locals(), [])
             the_module = getattr(the_package, test)
             # Old tests run to completion simply as a side-effect of
@@ -596,6 +602,8 @@ def runtest_inner(test, generate, verbose, quiet,
                 indirect_test()
             if huntrleaks:
                 dash_R(the_module, test, indirect_test, huntrleaks)
+            test_time = time.time() - start_time
+            test_times.append((test_time, test))
         finally:
             sys.stdout = save_stdout
     except test_support.ResourceDenied as msg:
@@ -626,27 +634,7 @@ def runtest_inner(test, generate, verbose, quiet,
         if not cfp:
             return 1
         output = cfp.getvalue()
-        if generate:
-            if output == test + "\n":
-                if os.path.exists(outputfile):
-                    # Write it since it already exists (and the contents
-                    # may have changed), but let the user know it isn't
-                    # needed:
-                    print("output file", outputfile, \
-                          "is no longer needed; consider removing it")
-                else:
-                    # We don't need it, so don't create it.
-                    return 1
-            fp = open(outputfile, "w")
-            fp.write(output)
-            fp.close()
-            return 1
-        if os.path.exists(outputfile):
-            fp = open(outputfile, "r")
-            expected = fp.read()
-            fp.close()
-        else:
-            expected = test + "\n"
+        expected = test + "\n"
         if output == expected or huntrleaks:
             return 1
         print("test", test, "produced unexpected output:")
@@ -689,7 +677,6 @@ def cleanup_test_droppings(testname, verbose):
 def dash_R(the_module, test, indirect_test, huntrleaks):
     # This code is hackish and inelegant, but it seems to do the job.
     import copy_reg, _abcoll
-    from abc import _Abstract
 
     if not hasattr(sys, 'gettotalrefcount'):
         raise Exception("Tracking reference leaks requires a debug build "
@@ -701,7 +688,7 @@ def dash_R(the_module, test, indirect_test, huntrleaks):
     pic = sys.path_importer_cache.copy()
     abcs = {}
     for abc in [getattr(_abcoll, a) for a in _abcoll.__all__]:
-        if not issubclass(abc, _Abstract):
+        if not isabstract(abc):
             continue
         for obj in abc.__subclasses__() + [abc]:
             abcs[obj] = obj._abc_registry.copy()
@@ -741,7 +728,6 @@ def dash_R_cleanup(fs, ps, pic, abcs):
     import _strptime, linecache, dircache
     import urlparse, urllib, urllib2, mimetypes, doctest
     import struct, filecmp, _abcoll
-    from abc import _Abstract
     from distutils.dir_util import _path_created
     from weakref import WeakSet
 
@@ -757,7 +743,7 @@ def dash_R_cleanup(fs, ps, pic, abcs):
 
     # Clear ABC registries, restoring previously saved ABC registries.
     for abc in [getattr(_abcoll, a) for a in _abcoll.__all__]:
-        if not issubclass(abc, _Abstract):
+        if not isabstract(abc):
             continue
         for obj in abc.__subclasses__() + [abc]:
             obj._abc_registry = abcs.get(obj, WeakSet()).copy()
@@ -886,10 +872,12 @@ _expectations = {
         test_dl
         test_fcntl
         test_fork1
+        test_epoll
         test_gdbm
         test_grp
         test_ioctl
         test_largefile
+        test_kqueue
         test_mhlib
         test_openpty
         test_ossaudiodev
@@ -910,6 +898,7 @@ _expectations = {
         test_curses
         test_dl
         test_largefile
+        test_kqueue
         test_ossaudiodev
         """,
    'mac':
@@ -925,10 +914,12 @@ _expectations = {
         test_dl
         test_fcntl
         test_fork1
+        test_epoll
         test_grp
         test_ioctl
         test_largefile
         test_locale
+        test_kqueue
         test_mmap
         test_openpty
         test_ossaudiodev
@@ -946,7 +937,9 @@ _expectations = {
         """
         test_bsddb
         test_dl
+        test_epoll
         test_largefile
+        test_kqueue
         test_minidom
         test_openpty
         test_pyexpat
@@ -957,7 +950,9 @@ _expectations = {
         """
         test_bsddb
         test_dl
+        test_epoll
         test_largefile
+        test_kqueue
         test_minidom
         test_openpty
         test_pyexpat
@@ -970,9 +965,11 @@ _expectations = {
         test_bsddb
         test_dl
         test_fork1
+        test_epoll
         test_gettext
         test_largefile
         test_locale
+        test_kqueue
         test_minidom
         test_openpty
         test_pyexpat
@@ -990,9 +987,11 @@ _expectations = {
         test_bsddb
         test_bsddb3
         test_curses
+        test_epoll
         test_gdbm
         test_largefile
         test_locale
+        test_minidom
         test_ossaudiodev
         test_poll
         """,
@@ -1001,6 +1000,8 @@ _expectations = {
         test_bsddb
         test_curses
         test_dbm
+        test_epoll
+        test_kqueue
         test_gdbm
         test_gzip
         test_openpty
@@ -1012,10 +1013,12 @@ _expectations = {
         test_bsddb
         test_curses
         test_dl
+        test_epoll
         test_gdbm
         test_gzip
         test_largefile
         test_locale
+        test_kqueue
         test_minidom
         test_openpty
         test_pyexpat
@@ -1028,8 +1031,10 @@ _expectations = {
         test_curses
         test_dl
         test_gdbm
+        test_epoll
         test_largefile
         test_locale
+        test_kqueue
         test_mhlib
         test_mmap
         test_poll
@@ -1040,7 +1045,9 @@ _expectations = {
         test_bsddb3
         test_curses
         test_dbm
+        test_epoll
         test_ioctl
+        test_kqueue
         test_largefile
         test_locale
         test_ossaudiodev
@@ -1053,6 +1060,8 @@ _expectations = {
         test_commands
         test_curses
         test_dl
+        test_epoll
+        test_kqueue
         test_largefile
         test_mhlib
         test_mmap
@@ -1066,6 +1075,7 @@ _expectations = {
         """
         test_bsddb
         test_bsddb3
+        test_epoll
         test_gdbm
         test_locale
         test_ossaudiodev
@@ -1082,8 +1092,10 @@ _expectations = {
         test_bsddb3
         test_bz2
         test_dl
+        test_epoll
         test_gdbm
         test_gzip
+        test_kqueue
         test_ossaudiodev
         test_tcl
         test_zipimport
@@ -1095,6 +1107,7 @@ _expectations = {
         test_bsddb3
         test_ctypes
         test_dl
+        test_epoll
         test_gdbm
         test_locale
         test_normalization
@@ -1109,6 +1122,7 @@ _expectations = {
         test_ctypes
         test_curses
         test_dl
+        test_epoll
         test_gdbm
         test_locale
         test_ossaudiodev

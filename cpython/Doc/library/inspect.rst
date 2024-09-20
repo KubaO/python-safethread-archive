@@ -26,7 +26,7 @@ Types and members
 -----------------
 
 The :func:`getmembers` function retrieves the members of an object such as a
-class or module. The fifteen functions whose names begin with "is" are mainly
+class or module. The sixteen functions whose names begin with "is" are mainly
 provided as convenient choices for the second argument to :func:`getmembers`.
 They also help you determine when you can expect to find the following special
 attributes:
@@ -262,6 +262,10 @@ attributes:
 .. function:: isroutine(object)
 
    Return true if the object is a user-defined or built-in function or method.
+
+.. function:: isabstract(object)
+
+   Return true if the object is an abstract base class.
 
 
 .. function:: ismethoddescriptor(object)

@@ -1,6 +1,7 @@
 import unittest
 from test import test_support
 import zlib
+import binascii
 import random
 
 
@@ -38,6 +39,21 @@ class ChecksumTestCase(unittest.TestCase):
         self.assertEqual(zlib.crc32(b"penguin"), zlib.crc32(b"penguin", 0))
         self.assertEqual(zlib.adler32(b"penguin"),zlib.adler32(b"penguin",1))
 
+    def test_crc32_adler32_unsigned(self):
+        foo = 'abcdefghijklmnop'
+        # explicitly test signed behavior
+        self.assertEqual(zlib.crc32(foo), 2486878355)
+        self.assertEqual(zlib.crc32('spam'), 1138425661)
+        self.assertEqual(zlib.adler32(foo+foo), 3573550353)
+        self.assertEqual(zlib.adler32('spam'), 72286642)
+
+    def test_same_as_binascii_crc32(self):
+        foo = 'abcdefghijklmnop'
+        crc = 2486878355
+        self.assertEqual(binascii.crc32(foo), crc)
+        self.assertEqual(zlib.crc32(foo), crc)
+        self.assertEqual(binascii.crc32('spam'), zlib.crc32('spam'))
+
 
 
 class ExceptionTestCase(unittest.TestCase):
@@ -58,6 +74,11 @@ class ExceptionTestCase(unittest.TestCase):
     def test_baddecompressobj(self):
         # verify failure on building decompress object with bad params
         self.assertRaises(ValueError, zlib.decompressobj, 0)
+
+    def test_decompressobj_badflush(self):
+        # verify failure on calling decompressobj.flush with bad params
+        self.assertRaises(ValueError, zlib.decompressobj().flush, 0)
+        self.assertRaises(ValueError, zlib.decompressobj().flush, -1)
 
 
 

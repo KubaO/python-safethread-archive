@@ -44,17 +44,28 @@ def take(n, seq):
     'Convenience function for partially consuming a long of infinite iterable'
     return list(islice(seq, n))
 
+def prod(iterable):
+    return reduce(operator.mul, iterable, 1)
+
 def fact(n):
     'Factorial'
-    return reduce(operator.mul, range(1, n+1), 1)
+    return prod(range(1, n+1))
 
 class TestBasicOps(unittest.TestCase):
     def test_chain(self):
-        self.assertEqual(list(chain('abc', 'def')), list('abcdef'))
-        self.assertEqual(list(chain('abc')), list('abc'))
-        self.assertEqual(list(chain('')), [])
-        self.assertEqual(take(4, chain('abc', 'def')), list('abcd'))
-        self.assertRaises(TypeError, list,chain(2, 3))
+
+        def chain2(*iterables):
+            'Pure python version in the docs'
+            for it in iterables:
+                for element in it:
+                    yield element
+
+        for c in (chain, chain2):
+            self.assertEqual(list(c('abc', 'def')), list('abcdef'))
+            self.assertEqual(list(c('abc')), list('abc'))
+            self.assertEqual(list(c('')), [])
+            self.assertEqual(take(4, c('abc', 'def')), list('abcd'))
+            self.assertRaises(TypeError, list,c(2, 3))
 
     def test_chain_from_iterable(self):
         self.assertEqual(list(chain.from_iterable(['abc', 'def'])), list('abcdef'))
@@ -66,11 +77,38 @@ class TestBasicOps(unittest.TestCase):
     def test_combinations(self):
         self.assertRaises(TypeError, combinations, 'abc')   # missing r argument
         self.assertRaises(TypeError, combinations, 'abc', 2, 1) # too many arguments
+        self.assertRaises(TypeError, combinations, None)        # pool is not iterable
         self.assertRaises(ValueError, combinations, 'abc', -2)  # r is negative
         self.assertRaises(ValueError, combinations, 'abc', 32)  # r is too big
         self.assertEqual(list(combinations(range(4), 3)),
                                            [(0,1,2), (0,1,3), (0,2,3), (1,2,3)])
-        for n in range(8):
+
+        def combinations1(iterable, r):
+            'Pure python version shown in the docs'
+            pool = tuple(iterable)
+            n = len(pool)
+            indices = list(range(r))
+            yield tuple(pool[i] for i in indices)
+            while 1:
+                for i in reversed(range(r)):
+                    if indices[i] != i + n - r:
+                        break
+                else:
+                    return
+                indices[i] += 1
+                for j in range(i+1, r):
+                    indices[j] = indices[j-1] + 1
+                yield tuple(pool[i] for i in indices)
+
+        def combinations2(iterable, r):
+            'Pure python version shown in the docs'
+            pool = tuple(iterable)
+            n = len(pool)
+            for indices in permutations(range(n), r):
+                if sorted(indices) == list(indices):
+                    yield tuple(pool[i] for i in indices)
+
+        for n in range(7):
             values = [5*x-12 for x in range(n)]
             for r in range(n+1):
                 result = list(combinations(values, r))
@@ -82,6 +120,76 @@ class TestBasicOps(unittest.TestCase):
                     self.assertEqual(len(set(c)), r)                    # no duplicate elements
                     self.assertEqual(list(c), sorted(c))                # keep original ordering
                     self.assert_(all(e in values for e in c))           # elements taken from input iterable
+                    self.assertEqual(list(c),
+                                     [e for e in values if e in c])      # comb is a subsequence of the input iterable
+                self.assertEqual(result, list(combinations1(values, r))) # matches first pure python version
+                self.assertEqual(result, list(combinations2(values, r))) # matches first pure python version
+
+        # Test implementation detail:  tuple re-use
+        self.assertEqual(len(set(map(id, combinations('abcde', 3)))), 1)
+        self.assertNotEqual(len(set(map(id, list(combinations('abcde', 3))))), 1)
+
+    def test_permutations(self):
+        self.assertRaises(TypeError, permutations)              # too few arguments
+        self.assertRaises(TypeError, permutations, 'abc', 2, 1) # too many arguments
+        self.assertRaises(TypeError, permutations, None)        # pool is not iterable
+        self.assertRaises(ValueError, permutations, 'abc', -2)  # r is negative
+        self.assertRaises(ValueError, permutations, 'abc', 32)  # r is too big
+        self.assertRaises(TypeError, permutations, 'abc', 's')  # r is not an int or None
+        self.assertEqual(list(permutations(range(3), 2)),
+                                           [(0,1), (0,2), (1,0), (1,2), (2,0), (2,1)])
+
+        def permutations1(iterable, r=None):
+            'Pure python version shown in the docs'
+            pool = tuple(iterable)
+            n = len(pool)
+            r = n if r is None else r
+            indices = list(range(n))
+            cycles = list(range(n-r+1, n+1))[::-1]
+            yield tuple(pool[i] for i in indices[:r])
+            while n:
+                for i in reversed(range(r)):
+                    cycles[i] -= 1
+                    if cycles[i] == 0:
+                        indices[i:] = indices[i+1:] + indices[i:i+1]
+                        cycles[i] = n - i
+                    else:
+                        j = cycles[i]
+                        indices[i], indices[-j] = indices[-j], indices[i]
+                        yield tuple(pool[i] for i in indices[:r])
+                        break
+                else:
+                    return
+
+        def permutations2(iterable, r=None):
+            'Pure python version shown in the docs'
+            pool = tuple(iterable)
+            n = len(pool)
+            r = n if r is None else r
+            for indices in product(range(n), repeat=r):
+                if len(set(indices)) == r:
+                    yield tuple(pool[i] for i in indices)
+
+        for n in range(7):
+            values = [5*x-12 for x in range(n)]
+            for r in range(n+1):
+                result = list(permutations(values, r))
+                self.assertEqual(len(result), fact(n) / fact(n-r))      # right number of perms
+                self.assertEqual(len(result), len(set(result)))         # no repeats
+                self.assertEqual(result, sorted(result))                # lexicographic order
+                for p in result:
+                    self.assertEqual(len(p), r)                         # r-length permutations
+                    self.assertEqual(len(set(p)), r)                    # no duplicate elements
+                    self.assert_(all(e in values for e in p))           # elements taken from input iterable
+                self.assertEqual(result, list(permutations1(values, r))) # matches first pure python version
+                self.assertEqual(result, list(permutations2(values, r))) # matches first pure python version
+                if r == n:
+                    self.assertEqual(result, list(permutations(values, None))) # test r as None
+                    self.assertEqual(result, list(permutations(values)))       # test default r
+
+        # Test implementation detail:  tuple re-use
+        self.assertEqual(len(set(map(id, permutations('abcde', 3)))), 1)
+        self.assertNotEqual(len(set(map(id, list(permutations('abcde', 3))))), 1)
 
     def test_count(self):
         self.assertEqual(lzip('abc',count()), [('a', 0), ('b', 1), ('c', 2)])
@@ -205,50 +313,50 @@ class TestBasicOps(unittest.TestCase):
         keyfunc.skip = 1
         self.assertRaises(ExpectedError, gulp, [None, None], keyfunc)
 
-    def test_ifilter(self):
-        self.assertEqual(list(ifilter(isEven, range(6))), [0,2,4])
-        self.assertEqual(list(ifilter(None, [0,1,0,2,0])), [1,2])
-        self.assertEqual(list(ifilter(bool, [0,1,0,2,0])), [1,2])
-        self.assertEqual(take(4, ifilter(isEven, count())), [0,2,4,6])
-        self.assertRaises(TypeError, ifilter)
-        self.assertRaises(TypeError, ifilter, lambda x:x)
-        self.assertRaises(TypeError, ifilter, lambda x:x, range(6), 7)
-        self.assertRaises(TypeError, ifilter, isEven, 3)
-        self.assertRaises(TypeError, next, ifilter(range(6), range(6)))
+    def test_filter(self):
+        self.assertEqual(list(filter(isEven, range(6))), [0,2,4])
+        self.assertEqual(list(filter(None, [0,1,0,2,0])), [1,2])
+        self.assertEqual(list(filter(bool, [0,1,0,2,0])), [1,2])
+        self.assertEqual(take(4, filter(isEven, count())), [0,2,4,6])
+        self.assertRaises(TypeError, filter)
+        self.assertRaises(TypeError, filter, lambda x:x)
+        self.assertRaises(TypeError, filter, lambda x:x, range(6), 7)
+        self.assertRaises(TypeError, filter, isEven, 3)
+        self.assertRaises(TypeError, next, filter(range(6), range(6)))
 
-    def test_ifilterfalse(self):
-        self.assertEqual(list(ifilterfalse(isEven, range(6))), [1,3,5])
-        self.assertEqual(list(ifilterfalse(None, [0,1,0,2,0])), [0,0,0])
-        self.assertEqual(list(ifilterfalse(bool, [0,1,0,2,0])), [0,0,0])
-        self.assertEqual(take(4, ifilterfalse(isEven, count())), [1,3,5,7])
-        self.assertRaises(TypeError, ifilterfalse)
-        self.assertRaises(TypeError, ifilterfalse, lambda x:x)
-        self.assertRaises(TypeError, ifilterfalse, lambda x:x, range(6), 7)
-        self.assertRaises(TypeError, ifilterfalse, isEven, 3)
-        self.assertRaises(TypeError, next, ifilterfalse(range(6), range(6)))
+    def test_filterfalse(self):
+        self.assertEqual(list(filterfalse(isEven, range(6))), [1,3,5])
+        self.assertEqual(list(filterfalse(None, [0,1,0,2,0])), [0,0,0])
+        self.assertEqual(list(filterfalse(bool, [0,1,0,2,0])), [0,0,0])
+        self.assertEqual(take(4, filterfalse(isEven, count())), [1,3,5,7])
+        self.assertRaises(TypeError, filterfalse)
+        self.assertRaises(TypeError, filterfalse, lambda x:x)
+        self.assertRaises(TypeError, filterfalse, lambda x:x, range(6), 7)
+        self.assertRaises(TypeError, filterfalse, isEven, 3)
+        self.assertRaises(TypeError, next, filterfalse(range(6), range(6)))
 
-    def test_izip(self):
-        # XXX This is rather silly now that builtin zip() calls izip()...
-        ans = [(x,y) for x, y in izip('abc',count())]
+    def test_zip(self):
+        # XXX This is rather silly now that builtin zip() calls zip()...
+        ans = [(x,y) for x, y in zip('abc',count())]
         self.assertEqual(ans, [('a', 0), ('b', 1), ('c', 2)])
-        self.assertEqual(list(izip('abc', range(6))), lzip('abc', range(6)))
-        self.assertEqual(list(izip('abcdef', range(3))), lzip('abcdef', range(3)))
-        self.assertEqual(take(3,izip('abcdef', count())), lzip('abcdef', range(3)))
-        self.assertEqual(list(izip('abcdef')), lzip('abcdef'))
-        self.assertEqual(list(izip()), lzip())
-        self.assertRaises(TypeError, izip, 3)
-        self.assertRaises(TypeError, izip, range(3), 3)
+        self.assertEqual(list(zip('abc', range(6))), lzip('abc', range(6)))
+        self.assertEqual(list(zip('abcdef', range(3))), lzip('abcdef', range(3)))
+        self.assertEqual(take(3,zip('abcdef', count())), lzip('abcdef', range(3)))
+        self.assertEqual(list(zip('abcdef')), lzip('abcdef'))
+        self.assertEqual(list(zip()), lzip())
+        self.assertRaises(TypeError, zip, 3)
+        self.assertRaises(TypeError, zip, range(3), 3)
         # Check tuple re-use (implementation detail)
-        self.assertEqual([tuple(list(pair)) for pair in izip('abc', 'def')],
+        self.assertEqual([tuple(list(pair)) for pair in zip('abc', 'def')],
                          lzip('abc', 'def'))
-        self.assertEqual([pair for pair in izip('abc', 'def')],
+        self.assertEqual([pair for pair in zip('abc', 'def')],
                          lzip('abc', 'def'))
-        ids = list(map(id, izip('abc', 'def')))
+        ids = list(map(id, zip('abc', 'def')))
         self.assertEqual(min(ids), max(ids))
-        ids = list(map(id, list(izip('abc', 'def'))))
+        ids = list(map(id, list(zip('abc', 'def'))))
         self.assertEqual(len(dict.fromkeys(ids)), len(ids))
 
-    def test_iziplongest(self):
+    def test_ziplongest(self):
         for args in [
                 ['abc', range(6)],
                 [range(6), 'abc'],
@@ -258,25 +366,25 @@ class TestBasicOps(unittest.TestCase):
             ]:
             target = [tuple([arg[i] if i < len(arg) else None for arg in args])
                       for i in range(max(map(len, args)))]
-            self.assertEqual(list(izip_longest(*args)), target)
-            self.assertEqual(list(izip_longest(*args, **{})), target)
+            self.assertEqual(list(zip_longest(*args)), target)
+            self.assertEqual(list(zip_longest(*args, **{})), target)
             target = [tuple((e is None and 'X' or e) for e in t) for t in target]   # Replace None fills with 'X'
-            self.assertEqual(list(izip_longest(*args, **dict(fillvalue='X'))), target)
+            self.assertEqual(list(zip_longest(*args, **dict(fillvalue='X'))), target)
 
-        self.assertEqual(take(3,izip_longest('abcdef', count())), list(zip('abcdef', range(3)))) # take 3 from infinite input
+        self.assertEqual(take(3,zip_longest('abcdef', count())), list(zip('abcdef', range(3)))) # take 3 from infinite input
 
-        self.assertEqual(list(izip_longest()), list(zip()))
-        self.assertEqual(list(izip_longest([])), list(zip([])))
-        self.assertEqual(list(izip_longest('abcdef')), list(zip('abcdef')))
+        self.assertEqual(list(zip_longest()), list(zip()))
+        self.assertEqual(list(zip_longest([])), list(zip([])))
+        self.assertEqual(list(zip_longest('abcdef')), list(zip('abcdef')))
 
-        self.assertEqual(list(izip_longest('abc', 'defg', **{})),
-                         list(izip(list('abc')+[None], 'defg'))) # empty keyword dict
-        self.assertRaises(TypeError, izip_longest, 3)
-        self.assertRaises(TypeError, izip_longest, range(3), 3)
+        self.assertEqual(list(zip_longest('abc', 'defg', **{})),
+                         list(zip(list('abc')+[None], 'defg'))) # empty keyword dict
+        self.assertRaises(TypeError, zip_longest, 3)
+        self.assertRaises(TypeError, zip_longest, range(3), 3)
 
         for stmt in [
-            "izip_longest('abc', fv=1)",
-            "izip_longest('abc', fillvalue=1, bogus_keyword=None)",
+            "zip_longest('abc', fv=1)",
+            "zip_longest('abc', fillvalue=1, bogus_keyword=None)",
         ]:
             try:
                 eval(stmt, globals(), locals())
@@ -286,18 +394,18 @@ class TestBasicOps(unittest.TestCase):
                 self.fail('Did not raise Type in:  ' + stmt)
 
         # Check tuple re-use (implementation detail)
-        self.assertEqual([tuple(list(pair)) for pair in izip_longest('abc', 'def')],
+        self.assertEqual([tuple(list(pair)) for pair in zip_longest('abc', 'def')],
                          list(zip('abc', 'def')))
-        self.assertEqual([pair for pair in izip_longest('abc', 'def')],
+        self.assertEqual([pair for pair in zip_longest('abc', 'def')],
                          list(zip('abc', 'def')))
-        ids = list(map(id, izip_longest('abc', 'def')))
+        ids = list(map(id, zip_longest('abc', 'def')))
         self.assertEqual(min(ids), max(ids))
-        ids = list(map(id, list(izip_longest('abc', 'def'))))
+        ids = list(map(id, list(zip_longest('abc', 'def'))))
         self.assertEqual(len(dict.fromkeys(ids)), len(ids))
 
     def test_product(self):
         for args, result in [
-            ([], []),                       # zero iterables   ??? is this correct
+            ([], [()]),                     # zero iterables
             (['ab'], [('a',), ('b',)]),     # one iterable
             ([range(2), range(3)], [(0,0), (0,1), (0,2), (1,0), (1,1), (1,2)]),     # two iterables
             ([range(0), range(2), range(3)], []),           # first iterable with zero length
@@ -310,14 +418,48 @@ class TestBasicOps(unittest.TestCase):
                                  list(product(*args, **dict(repeat=r))))
         self.assertEqual(len(list(product(*[range(7)]*6))), 7**6)
         self.assertRaises(TypeError, product, range(6), None)
+
+        def product1(*args, **kwds):
+            pools = list(map(tuple, args)) * kwds.get('repeat', 1)
+            n = len(pools)
+            if n == 0:
+                yield ()
+                return
+            if any(len(pool) == 0 for pool in pools):
+                return
+            indices = [0] * n
+            yield tuple(pool[i] for pool, i in zip(pools, indices))
+            while 1:
+                for i in reversed(range(n)):  # right to left
+                    if indices[i] == len(pools[i]) - 1:
+                        continue
+                    indices[i] += 1
+                    for j in range(i+1, n):
+                        indices[j] = 0
+                    yield tuple(pool[i] for pool, i in zip(pools, indices))
+                    break
+                else:
+                    return
+
+        def product2(*args, **kwds):
+            'Pure python version used in docs'
+            pools = list(map(tuple, args)) * kwds.get('repeat', 1)
+            result = [[]]
+            for pool in pools:
+                result = [x+[y] for x in result for y in pool]
+            for prod in result:
+                yield tuple(prod)
+
         argtypes = ['', 'abc', '', range(0), range(4), dict(a=1, b=2, c=3),
                     set('abcdefg'), range(11), tuple(range(13))]
         for i in range(100):
             args = [random.choice(argtypes) for j in range(random.randrange(5))]
-            n = reduce(operator.mul, map(len, args), 1) if args else 0
-            self.assertEqual(len(list(product(*args))), n)
+            expected_len = prod(map(len, args))
+            self.assertEqual(len(list(product(*args))), expected_len)
+            self.assertEqual(list(product(*args)), list(product1(*args)))
+            self.assertEqual(list(product(*args)), list(product2(*args)))
             args = map(iter, args)
-            self.assertEqual(len(list(product(*args))), n)
+            self.assertEqual(len(list(product(*args))), expected_len)
 
         # Test implementation detail:  tuple re-use
         self.assertEqual(len(set(map(id, product('abc', 'def')))), 1)
@@ -340,29 +482,29 @@ class TestBasicOps(unittest.TestCase):
         list(r)
         self.assertEqual(repr(r), 'repeat((1+0j), 0)')
 
-    def test_imap(self):
-        self.assertEqual(list(imap(operator.pow, range(3), range(1,7))),
+    def test_map(self):
+        self.assertEqual(list(map(operator.pow, range(3), range(1,7))),
                          [0**1, 1**2, 2**3])
         def tupleize(*args):
             return args
-        self.assertEqual(list(imap(tupleize, 'abc', range(5))),
+        self.assertEqual(list(map(tupleize, 'abc', range(5))),
                          [('a',0),('b',1),('c',2)])
-        self.assertEqual(list(imap(tupleize, 'abc', count())),
+        self.assertEqual(list(map(tupleize, 'abc', count())),
                          [('a',0),('b',1),('c',2)])
-        self.assertEqual(take(2,imap(tupleize, 'abc', count())),
+        self.assertEqual(take(2,map(tupleize, 'abc', count())),
                          [('a',0),('b',1)])
-        self.assertEqual(list(imap(operator.pow, [])), [])
-        self.assertRaises(TypeError, imap)
-        self.assertRaises(TypeError, list, imap(None, range(3), range(3)))
-        self.assertRaises(TypeError, imap, operator.neg)
-        self.assertRaises(TypeError, next, imap(10, range(5)))
-        self.assertRaises(ValueError, next, imap(errfunc, [4], [5]))
-        self.assertRaises(TypeError, next, imap(onearg, [4], [5]))
+        self.assertEqual(list(map(operator.pow, [])), [])
+        self.assertRaises(TypeError, map)
+        self.assertRaises(TypeError, list, map(None, range(3), range(3)))
+        self.assertRaises(TypeError, map, operator.neg)
+        self.assertRaises(TypeError, next, map(10, range(5)))
+        self.assertRaises(ValueError, next, map(errfunc, [4], [5]))
+        self.assertRaises(TypeError, next, map(onearg, [4], [5]))
 
     def test_starmap(self):
         self.assertEqual(list(starmap(operator.pow, zip(range(3), range(1,7)))),
                          [0**1, 1**2, 2**3])
-        self.assertEqual(take(3, starmap(operator.pow, izip(count(), count(1)))),
+        self.assertEqual(take(3, starmap(operator.pow, zip(count(), count(1)))),
                          [0**1, 1**2, 2**3])
         self.assertEqual(list(starmap(operator.pow, [])), [])
         self.assertEqual(list(starmap(operator.pow, [iter([4,5])])), [4**5])
@@ -533,9 +675,9 @@ class TestBasicOps(unittest.TestCase):
         self.assertRaises(ReferenceError, getattr, p, '__class__')
 
     def test_StopIteration(self):
-        self.assertRaises(StopIteration, next, izip())
+        self.assertRaises(StopIteration, next, zip())
 
-        for f in (chain, cycle, izip, groupby):
+        for f in (chain, cycle, zip, groupby):
             self.assertRaises(StopIteration, next, f([]))
             self.assertRaises(StopIteration, next, f(StopNow()))
 
@@ -551,9 +693,84 @@ class TestBasicOps(unittest.TestCase):
 
         self.assertRaises(StopIteration, next, repeat(None, 0))
 
-        for f in (ifilter, ifilterfalse, imap, takewhile, dropwhile, starmap):
+        for f in (filter, filterfalse, map, takewhile, dropwhile, starmap):
             self.assertRaises(StopIteration, next, f(lambda x:x, []))
             self.assertRaises(StopIteration, next, f(lambda x:x, StopNow()))
+
+class TestExamples(unittest.TestCase):
+
+    def test_chain(self):
+        self.assertEqual(''.join(chain('ABC', 'DEF')), 'ABCDEF')
+
+    def test_chain_from_iterable(self):
+        self.assertEqual(''.join(chain.from_iterable(['ABC', 'DEF'])), 'ABCDEF')
+
+    def test_combinations(self):
+        self.assertEqual(list(combinations('ABCD', 2)),
+                         [('A','B'), ('A','C'), ('A','D'), ('B','C'), ('B','D'), ('C','D')])
+        self.assertEqual(list(combinations(range(4), 3)),
+                         [(0,1,2), (0,1,3), (0,2,3), (1,2,3)])
+
+    def test_count(self):
+        self.assertEqual(list(islice(count(10), 5)), [10, 11, 12, 13, 14])
+
+    def test_cycle(self):
+        self.assertEqual(list(islice(cycle('ABCD'), 12)), list('ABCDABCDABCD'))
+
+    def test_dropwhile(self):
+        self.assertEqual(list(dropwhile(lambda x: x<5, [1,4,6,4,1])), [6,4,1])
+
+    def test_groupby(self):
+        self.assertEqual([k for k, g in groupby('AAAABBBCCDAABBB')],
+                         list('ABCDAB'))
+        self.assertEqual([(list(g)) for k, g in groupby('AAAABBBCCD')],
+                         [list('AAAA'), list('BBB'), list('CC'), list('D')])
+
+    def test_filter(self):
+        self.assertEqual(list(filter(lambda x: x%2, range(10))), [1,3,5,7,9])
+
+    def test_filterfalse(self):
+        self.assertEqual(list(filterfalse(lambda x: x%2, range(10))), [0,2,4,6,8])
+
+    def test_map(self):
+        self.assertEqual(list(map(pow, (2,3,10), (5,2,3))), [32, 9, 1000])
+
+    def test_islice(self):
+        self.assertEqual(list(islice('ABCDEFG', 2)), list('AB'))
+        self.assertEqual(list(islice('ABCDEFG', 2, 4)), list('CD'))
+        self.assertEqual(list(islice('ABCDEFG', 2, None)), list('CDEFG'))
+        self.assertEqual(list(islice('ABCDEFG', 0, None, 2)), list('ACEG'))
+
+    def test_zip(self):
+        self.assertEqual(list(zip('ABCD', 'xy')), [('A', 'x'), ('B', 'y')])
+
+    def test_zip_longest(self):
+        self.assertEqual(list(zip_longest('ABCD', 'xy', fillvalue='-')),
+                         [('A', 'x'), ('B', 'y'), ('C', '-'), ('D', '-')])
+
+    def test_permutations(self):
+        self.assertEqual(list(permutations('ABCD', 2)),
+                         list(map(tuple, 'AB AC AD BA BC BD CA CB CD DA DB DC'.split())))
+        self.assertEqual(list(permutations(range(3))),
+                         [(0,1,2), (0,2,1), (1,0,2), (1,2,0), (2,0,1), (2,1,0)])
+
+    def test_product(self):
+        self.assertEqual(list(product('ABCD', 'xy')),
+                         list(map(tuple, 'Ax Ay Bx By Cx Cy Dx Dy'.split())))
+        self.assertEqual(list(product(range(2), repeat=3)),
+                        [(0,0,0), (0,0,1), (0,1,0), (0,1,1),
+                         (1,0,0), (1,0,1), (1,1,0), (1,1,1)])
+
+    def test_repeat(self):
+        self.assertEqual(list(repeat(10, 3)), [10, 10, 10])
+
+    def test_stapmap(self):
+        self.assertEqual(list(starmap(pow, [(2,5), (3,2), (10,3)])),
+                         [32, 9, 1000])
+
+    def test_takewhile(self):
+        self.assertEqual(list(takewhile(lambda x: x<5, [1,4,6,4,1])), [1,4])
+
 
 class TestGC(unittest.TestCase):
 
@@ -565,6 +782,14 @@ class TestGC(unittest.TestCase):
     def test_chain(self):
         a = []
         self.makecycle(chain(a), a)
+
+    def test_chain_from_iterable(self):
+        a = []
+        self.makecycle(chain.from_iterable([a]), a)
+
+    def test_combinations(self):
+        a = []
+        self.makecycle(combinations([1,2,a,3], 3), a)
 
     def test_cycle(self):
         a = []
@@ -578,25 +803,46 @@ class TestGC(unittest.TestCase):
         a = []
         self.makecycle(groupby([a]*2, lambda x:x), a)
 
-    def test_ifilter(self):
-        a = []
-        self.makecycle(ifilter(lambda x:True, [a]*2), a)
+    def test_issue2246(self):
+        # Issue 2246 -- the _grouper iterator was not included in GC
+        n = 10
+        keyfunc = lambda x: x
+        for i, j in groupby(range(n), key=keyfunc):
+            keyfunc.__dict__.setdefault('x',[]).append(j)
 
-    def test_ifilterfalse(self):
+    def test_filter(self):
         a = []
-        self.makecycle(ifilterfalse(lambda x:False, a), a)
+        self.makecycle(filter(lambda x:True, [a]*2), a)
 
-    def test_izip(self):
+    def test_filterfalse(self):
         a = []
-        self.makecycle(izip([a]*2, [a]*3), a)
+        self.makecycle(filterfalse(lambda x:False, a), a)
 
-    def test_imap(self):
+    def test_zip(self):
         a = []
-        self.makecycle(imap(lambda x:x, [a]*2), a)
+        self.makecycle(zip([a]*2, [a]*3), a)
+
+    def test_zip_longest(self):
+        a = []
+        self.makecycle(zip_longest([a]*2, [a]*3), a)
+        b = [a, None]
+        self.makecycle(zip_longest([a]*2, [a]*3, fillvalue=b), a)
+
+    def test_map(self):
+        a = []
+        self.makecycle(map(lambda x:x, [a]*2), a)
 
     def test_islice(self):
         a = []
         self.makecycle(islice([a]*2, None), a)
+
+    def test_permutations(self):
+        a = []
+        self.makecycle(permutations([1,2,a,3], 3), a)
+
+    def test_product(self):
+        a = []
+        self.makecycle(product([1,2,a,3], repeat=3), a)
 
     def test_repeat(self):
         a = []
@@ -684,7 +930,7 @@ class S:
 
 def L(seqn):
     'Test multiple tiers of iterators'
-    return chain(imap(lambda x:x, R(Ig(G(seqn)))))
+    return chain(map(lambda x:x, R(Ig(G(seqn)))))
 
 
 class TestVariousIteratorArgs(unittest.TestCase):
@@ -723,52 +969,52 @@ class TestVariousIteratorArgs(unittest.TestCase):
             self.assertRaises(TypeError, groupby, N(s))
             self.assertRaises(ZeroDivisionError, list, groupby(E(s)))
 
-    def test_ifilter(self):
+    def test_filter(self):
         for s in (range(10), range(0), range(1000), (7,11), range(2000,2200,5)):
             for g in (G, I, Ig, S, L, R):
-                self.assertEqual(list(ifilter(isEven, g(s))),
+                self.assertEqual(list(filter(isEven, g(s))),
                                  [x for x in g(s) if isEven(x)])
-            self.assertRaises(TypeError, ifilter, isEven, X(s))
-            self.assertRaises(TypeError, ifilter, isEven, N(s))
-            self.assertRaises(ZeroDivisionError, list, ifilter(isEven, E(s)))
+            self.assertRaises(TypeError, filter, isEven, X(s))
+            self.assertRaises(TypeError, filter, isEven, N(s))
+            self.assertRaises(ZeroDivisionError, list, filter(isEven, E(s)))
 
-    def test_ifilterfalse(self):
+    def test_filterfalse(self):
         for s in (range(10), range(0), range(1000), (7,11), range(2000,2200,5)):
             for g in (G, I, Ig, S, L, R):
-                self.assertEqual(list(ifilterfalse(isEven, g(s))),
+                self.assertEqual(list(filterfalse(isEven, g(s))),
                                  [x for x in g(s) if isOdd(x)])
-            self.assertRaises(TypeError, ifilterfalse, isEven, X(s))
-            self.assertRaises(TypeError, ifilterfalse, isEven, N(s))
-            self.assertRaises(ZeroDivisionError, list, ifilterfalse(isEven, E(s)))
+            self.assertRaises(TypeError, filterfalse, isEven, X(s))
+            self.assertRaises(TypeError, filterfalse, isEven, N(s))
+            self.assertRaises(ZeroDivisionError, list, filterfalse(isEven, E(s)))
 
-    def test_izip(self):
+    def test_zip(self):
         for s in ("123", "", range(1000), ('do', 1.2), range(2000,2200,5)):
             for g in (G, I, Ig, S, L, R):
-                self.assertEqual(list(izip(g(s))), lzip(g(s)))
-                self.assertEqual(list(izip(g(s), g(s))), lzip(g(s), g(s)))
-            self.assertRaises(TypeError, izip, X(s))
-            self.assertRaises(TypeError, izip, N(s))
-            self.assertRaises(ZeroDivisionError, list, izip(E(s)))
+                self.assertEqual(list(zip(g(s))), lzip(g(s)))
+                self.assertEqual(list(zip(g(s), g(s))), lzip(g(s), g(s)))
+            self.assertRaises(TypeError, zip, X(s))
+            self.assertRaises(TypeError, zip, N(s))
+            self.assertRaises(ZeroDivisionError, list, zip(E(s)))
 
-    def test_iziplongest(self):
+    def test_ziplongest(self):
         for s in ("123", "", range(1000), ('do', 1.2), range(2000,2200,5)):
             for g in (G, I, Ig, S, L, R):
-                self.assertEqual(list(izip_longest(g(s))), list(zip(g(s))))
-                self.assertEqual(list(izip_longest(g(s), g(s))), list(zip(g(s), g(s))))
-            self.assertRaises(TypeError, izip_longest, X(s))
-            self.assertRaises(TypeError, izip_longest, N(s))
-            self.assertRaises(ZeroDivisionError, list, izip_longest(E(s)))
+                self.assertEqual(list(zip_longest(g(s))), list(zip(g(s))))
+                self.assertEqual(list(zip_longest(g(s), g(s))), list(zip(g(s), g(s))))
+            self.assertRaises(TypeError, zip_longest, X(s))
+            self.assertRaises(TypeError, zip_longest, N(s))
+            self.assertRaises(ZeroDivisionError, list, zip_longest(E(s)))
 
-    def test_imap(self):
+    def test_map(self):
         for s in (range(10), range(0), range(100), (7,11), range(20,50,5)):
             for g in (G, I, Ig, S, L, R):
-                self.assertEqual(list(imap(onearg, g(s))),
+                self.assertEqual(list(map(onearg, g(s))),
                                  [onearg(x) for x in g(s)])
-                self.assertEqual(list(imap(operator.pow, g(s), g(s))),
+                self.assertEqual(list(map(operator.pow, g(s), g(s))),
                                  [x**x for x in g(s)])
-            self.assertRaises(TypeError, imap, onearg, X(s))
-            self.assertRaises(TypeError, imap, onearg, N(s))
-            self.assertRaises(ZeroDivisionError, list, imap(onearg, E(s)))
+            self.assertRaises(TypeError, map, onearg, X(s))
+            self.assertRaises(TypeError, map, onearg, N(s))
+            self.assertRaises(ZeroDivisionError, list, map(onearg, E(s)))
 
     def test_islice(self):
         for s in ("12345", "", range(1000), ('do', 1.2), range(2000,2200,5)):
@@ -845,8 +1091,8 @@ class RegressionTests(unittest.TestCase):
                 return value
             items = list(tuple2)
             items[1:1] = list(tuple1)
-            gen = imap(g, items)
-            z = izip(*[gen]*len(tuple1))
+            gen = map(g, items)
+            z = zip(*[gen]*len(tuple1))
             next(z)
 
         def f(t):
@@ -893,7 +1139,7 @@ class RegressionTests(unittest.TestCase):
 class SubclassWithKwargsTest(unittest.TestCase):
     def test_keywords_in_subclass(self):
         # count is not subclassable...
-        for cls in (repeat, izip, ifilter, ifilterfalse, chain, imap,
+        for cls in (repeat, zip, filter, filterfalse, chain, map,
                     starmap, islice, takewhile, dropwhile, cycle):
             class Subclass(cls):
                 def __init__(self, newarg=None, *args):
@@ -909,7 +1155,7 @@ libreftest = """ Doctest for examples in the library reference: libitertools.tex
 
 
 >>> amounts = [120.15, 764.05, 823.14]
->>> for checknum, amount in izip(count(1200), amounts):
+>>> for checknum, amount in zip(count(1200), amounts):
 ...     print('Check %d is for $%.2f' % (checknum, amount))
 ...
 Check 1200 is for $120.15
@@ -917,7 +1163,7 @@ Check 1201 is for $764.05
 Check 1202 is for $823.14
 
 >>> import operator
->>> for cube in imap(operator.pow, range(1,4), repeat(3)):
+>>> for cube in map(operator.pow, range(1,4), repeat(3)):
 ...    print(cube)
 ...
 1
@@ -962,14 +1208,14 @@ Samuele
 ...     return list(islice(seq, n))
 
 >>> def enumerate(iterable):
-...     return izip(count(), iterable)
+...     return zip(count(), iterable)
 
 >>> def tabulate(function):
 ...     "Return function(0), function(1), ..."
-...     return imap(function, count())
+...     return map(function, count())
 
 >>> def iteritems(mapping):
-...     return izip(mapping.keys(), mapping.values())
+...     return zip(mapping.keys(), mapping.values())
 
 >>> def nth(iterable, n):
 ...     "Returns the nth item"
@@ -977,25 +1223,25 @@ Samuele
 
 >>> def all(seq, pred=None):
 ...     "Returns True if pred(x) is true for every element in the iterable"
-...     for elem in ifilterfalse(pred, seq):
+...     for elem in filterfalse(pred, seq):
 ...         return False
 ...     return True
 
 >>> def any(seq, pred=None):
 ...     "Returns True if pred(x) is true for at least one element in the iterable"
-...     for elem in ifilter(pred, seq):
+...     for elem in filter(pred, seq):
 ...         return True
 ...     return False
 
 >>> def no(seq, pred=None):
 ...     "Returns True if pred(x) is false for every element in the iterable"
-...     for elem in ifilter(pred, seq):
+...     for elem in filter(pred, seq):
 ...         return False
 ...     return True
 
 >>> def quantify(seq, pred=None):
 ...     "Count how many times the predicate is true in the sequence"
-...     return sum(imap(pred, seq))
+...     return sum(map(pred, seq))
 
 >>> def padnone(seq):
 ...     "Returns the sequence elements and then returns None indefinitely"
@@ -1006,10 +1252,10 @@ Samuele
 ...     return chain(*repeat(seq, n))
 
 >>> def dotproduct(vec1, vec2):
-...     return sum(imap(operator.mul, vec1, vec2))
+...     return sum(map(operator.mul, vec1, vec2))
 
 >>> def flatten(listOfLists):
-...     return list(chain(*listOfLists))
+...     return list(chain.from_iterable(listOfLists))
 
 >>> def repeatfunc(func, times=None, *args):
 ...     "Repeat calls to func with specified arguments."
@@ -1026,7 +1272,39 @@ Samuele
 ...         next(b)
 ...     except StopIteration:
 ...         pass
-...     return izip(a, b)
+...     return zip(a, b)
+
+>>> def grouper(n, iterable, fillvalue=None):
+...     "grouper(3, 'abcdefg', 'x') --> ('a','b','c'), ('d','e','f'), ('g','x','x')"
+...     args = [iter(iterable)] * n
+...     kwds = dict(fillvalue=fillvalue)
+...     return zip_longest(*args, **kwds)
+
+>>> def roundrobin(*iterables):
+...     "roundrobin('abc', 'd', 'ef') --> 'a', 'd', 'e', 'b', 'f', 'c'"
+...     # Recipe credited to George Sakkis
+...     pending = len(iterables)
+...     nexts = cycle(iter(it).__next__ for it in iterables)
+...     while pending:
+...         try:
+...             for next in nexts:
+...                 yield next()
+...         except StopIteration:
+...             pending -= 1
+...             nexts = cycle(islice(nexts, pending))
+
+>>> def powerset(iterable):
+...     "powerset('ab') --> set([]), set(['a']), set(['b']), set(['a', 'b'])"
+...     # Recipe credited to Eric Raymond
+...     pairs = [(2**i, x) for i, x in enumerate(iterable)]
+...     for n in range(2**len(pairs)):
+...         yield set(x for m, x in pairs if m&n)
+
+>>> def compress(data, selectors):
+...     "compress('abcdef', [1,0,1,0,1,1]) --> a c e f"
+...     for d, s in zip(data, selectors):
+...         if s:
+...             yield d
 
 This is not part of the examples but it tests to make sure the definitions
 perform as purported.
@@ -1072,7 +1350,7 @@ False
 [8, 8, 8, 8, 8]
 
 >>> import random
->>> take(5, imap(int, repeatfunc(random.random)))
+>>> take(5, map(int, repeatfunc(random.random)))
 [0, 0, 0, 0, 0]
 
 >>> list(pairwise('abcd'))
@@ -1093,6 +1371,18 @@ False
 >>> dotproduct([1,2,3], [4,5,6])
 32
 
+>>> list(grouper(3, 'abcdefg', 'x'))
+[('a', 'b', 'c'), ('d', 'e', 'f'), ('g', 'x', 'x')]
+
+>>> list(roundrobin('abc', 'd', 'ef'))
+['a', 'd', 'e', 'b', 'f', 'c']
+
+>>> list(map(sorted, powerset('ab')))
+[[], ['a'], ['b'], ['a', 'b']]
+
+>>> list(compress('abcdef', [1,0,1,0,1,1]))
+['a', 'c', 'e', 'f']
+
 """
 
 __test__ = {'libreftest' : libreftest}
@@ -1100,7 +1390,7 @@ __test__ = {'libreftest' : libreftest}
 def test_main(verbose=None):
     test_classes = (TestBasicOps, TestVariousIteratorArgs, TestGC,
                     RegressionTests, LengthTransparency,
-                    SubclassWithKwargsTest)
+                    SubclassWithKwargsTest, TestExamples)
     test_support.run_unittest(*test_classes)
 
     # verify reference counting

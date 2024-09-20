@@ -583,7 +583,7 @@ static void EnableEventHook(void); /* Forward */
 static void DisableEventHook(void); /* Forward */
 
 static TkappObject *
-Tkapp_New(char *screenName, char *baseName, char *className,
+Tkapp_New(char *screenName, char *className,
 	  int interactive, int wantobjects, int	wantTk, int sync, char *use)
 {
 	TkappObject *v;
@@ -2812,7 +2812,8 @@ static PyObject *
 Tkinter_Create(PyObject *self, PyObject *args)
 {
 	char *screenName = NULL;
-	char *baseName = NULL;
+	char *baseName = NULL; /* XXX this is not used anymore;
+				  try getting rid of it. */
 	char *className = NULL;
 	int interactive = 0;
 	int wantobjects = 0;
@@ -2820,11 +2821,6 @@ Tkinter_Create(PyObject *self, PyObject *args)
 	int sync = 0; /* pass -sync to wish */
 	char *use = NULL; /* pass -use to wish */
 
-	baseName = strrchr(Py_GetProgramName(), '/');
-	if (baseName != NULL)
-		baseName++;
-	else
-		baseName = Py_GetProgramName();
 	className = "Tk";
 
 	if (!PyArg_ParseTuple(args, "|zssiiiiz:create",
@@ -2833,7 +2829,7 @@ Tkinter_Create(PyObject *self, PyObject *args)
 			      &sync, &use))
 		return NULL;
 
-	return (PyObject *) Tkapp_New(screenName, baseName, className,
+	return (PyObject *) Tkapp_New(screenName, className,
 				      interactive, wantobjects,	wantTk,
 				      sync, use);
 }
@@ -3016,7 +3012,7 @@ ins_string(PyObject *d, char *name, char *val)
 PyMODINIT_FUNC
 init_tkinter(void)
 {
-	PyObject *m, *d;
+	PyObject *m, *d, *uexe, *cexe;
 
 	Py_TYPE(&Tkapp_Type) = &PyType_Type;
 
@@ -3069,7 +3065,16 @@ init_tkinter(void)
 
 	/* This helps the dynamic loader; in Unicode aware Tcl versions
 	   it also helps Tcl find its encodings. */
-	Tcl_FindExecutable(Py_GetProgramName());
+	uexe = PyUnicode_FromWideChar(Py_GetProgramName(), -1);
+	if (uexe) {
+		cexe = PyUnicode_AsEncodedString(uexe, 
+						 Py_FileSystemDefaultEncoding, 
+						 NULL);
+		if (cexe)
+			Tcl_FindExecutable(PyString_AsString(cexe));
+		Py_XDECREF(cexe);
+		Py_DECREF(uexe);
+	}
 
 	if (PyErr_Occurred())
 		return;

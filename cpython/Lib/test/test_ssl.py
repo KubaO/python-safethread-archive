@@ -25,10 +25,9 @@ try:
 except ImportError:
     skip_expected = True
 
+HOST = test_support.HOST
 CERTFILE = None
 SVN_PYTHON_ORG_ROOT_CERT = None
-
-TESTPORT = 10025
 
 def handle_error(prefix):
     exc_format = ' '.join(traceback.format_exception(*sys.exc_info()))
@@ -299,7 +298,7 @@ else:
                     except:
                         handle_error('')
 
-        def __init__(self, port, certificate, ssl_version=None,
+        def __init__(self, certificate, ssl_version=None,
                      certreqs=None, cacerts=None, expect_bad_connects=False,
                      chatty=True, connectionchatty=False, starttls_server=False):
             if ssl_version is None:
@@ -315,12 +314,8 @@ else:
             self.connectionchatty = connectionchatty
             self.starttls_server = starttls_server
             self.sock = socket.socket()
+            self.port = test_support.bind_port(self.sock)
             self.flag = None
-            if hasattr(socket, 'SO_REUSEADDR'):
-                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if hasattr(socket, 'SO_REUSEPORT'):
-                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            self.sock.bind(('127.0.0.1', port))
             self.active = False
             threading.Thread.__init__(self)
             self.setDaemon(False)
@@ -368,6 +363,7 @@ else:
                 # we assume the certfile contains both private key and certificate
                 self.certfile = certfile
                 self.active = False
+                self.active_lock = threading.Lock()
                 self.allow_reuse_address = True
 
             def __str__(self):
@@ -398,23 +394,33 @@ else:
                 # We want this to run in a thread, so we use a slightly
                 # modified version of "forever".
                 self.active = True
-                while self.active:
+                while 1:
                     try:
-                        self.handle_request()
+                        # We need to lock while handling the request.
+                        # Another thread can close the socket after self.active
+                        # has been checked and before the request is handled.
+                        # This causes an exception when using the closed socket.
+                        with self.active_lock:
+                            if not self.active:
+                                break
+                            self.handle_request()
                     except socket.timeout:
                         pass
                     except KeyboardInterrupt:
                         self.server_close()
                         return
                     except:
-                        sys.stdout.write(''.join(traceback.format_exception(*sys.exc_info())));
+                        sys.stdout.write(''.join(traceback.format_exception(*sys.exc_info())))
+                        break
+                    time.sleep(0.1)
 
             def server_close(self):
                 # Again, we want this to run in a thread, so we need to override
                 # close to clear the "active" flag, so that serve_forever() will
                 # terminate.
-                HTTPServer.server_close(self)
-                self.active = False
+                with self.active_lock:
+                    HTTPServer.server_close(self)
+                    self.active = False
 
         class RootedHTTPRequestHandler(SimpleHTTPRequestHandler):
 
@@ -460,12 +466,13 @@ else:
                                       format%args))
 
 
-        def __init__(self, port, certfile):
+        def __init__(self, certfile):
             self.flag = None
             self.active = False
             self.RootedHTTPRequestHandler.root = os.path.split(CERTFILE)[0]
+            self.port = test_support.find_unused_port()
             self.server = self.HTTPSServer(
-                ('', port), self.RootedHTTPRequestHandler, certfile)
+                (HOST, self.port), self.RootedHTTPRequestHandler, certfile)
             threading.Thread.__init__(self)
             self.setDaemon(True)
 
@@ -546,10 +553,11 @@ else:
             def handle_error(self):
                 raise
 
-        def __init__(self, port, certfile):
+        def __init__(self, certfile):
             self.flag = None
             self.active = False
-            self.server = self.EchoServer(port, certfile)
+            self.port = test_support.find_unused_port()
+            self.server = self.EchoServer(self.port, certfile)
             threading.Thread.__init__(self)
             self.setDaemon(True)
 
@@ -575,7 +583,7 @@ else:
             self.server.close()
 
     def badCertTest (certfile):
-        server = ThreadedEchoServer(TESTPORT, CERTFILE,
+        server = ThreadedEchoServer(CERTFILE,
                                     certreqs=ssl.CERT_REQUIRED,
                                     cacerts=CERTFILE, chatty=False,
                                     connectionchatty=False)
@@ -589,7 +597,7 @@ else:
                 s = ssl.wrap_socket(socket.socket(),
                                     certfile=certfile,
                                     ssl_version=ssl.PROTOCOL_TLSv1)
-                s.connect(('127.0.0.1', TESTPORT))
+                s.connect((HOST, server.port))
             except ssl.SSLError as x:
                 if test_support.verbose:
                     sys.stdout.write("\nSSLError is %s\n" % x)
@@ -605,7 +613,7 @@ else:
                           indata="FOO\n",
                           chatty=False, connectionchatty=False):
 
-        server = ThreadedEchoServer(TESTPORT, certfile,
+        server = ThreadedEchoServer(certfile,
                                     certreqs=certreqs,
                                     ssl_version=protocol,
                                     cacerts=cacertsfile,
@@ -625,7 +633,7 @@ else:
                                 ca_certs=cacertsfile,
                                 cert_reqs=certreqs,
                                 ssl_version=client_protocol)
-            s.connect(('127.0.0.1', TESTPORT))
+            s.connect((HOST, server.port))
         except ssl.SSLError as x:
             raise test_support.TestFailed("Unexpected SSL error:  " + str(x))
         except Exception as x:
@@ -660,7 +668,7 @@ else:
                           expectedToWork,
                           certsreqs=None):
 
-        if certsreqs == None:
+        if certsreqs is None:
             certsreqs = ssl.CERT_NONE
 
         if certsreqs == ssl.CERT_NONE:
@@ -705,7 +713,7 @@ else:
             if test_support.verbose:
                 sys.stdout.write("\n")
             s2 = socket.socket()
-            server = ThreadedEchoServer(TESTPORT, CERTFILE,
+            server = ThreadedEchoServer(CERTFILE,
                                         certreqs=ssl.CERT_NONE,
                                         ssl_version=ssl.PROTOCOL_SSLv23,
                                         cacerts=CERTFILE,
@@ -722,7 +730,7 @@ else:
                                         ca_certs=CERTFILE,
                                         cert_reqs=ssl.CERT_REQUIRED,
                                         ssl_version=ssl.PROTOCOL_SSLv23)
-                    s.connect(('127.0.0.1', TESTPORT))
+                    s.connect((HOST, server.port))
                 except ssl.SSLError as x:
                     raise test_support.TestFailed(
                         "Unexpected SSL error:  " + str(x))
@@ -749,7 +757,7 @@ else:
                         not in cert['subject']):
                         raise test_support.TestFailed(
                             "Missing or invalid 'organizationName' field in certificate subject; "
-                            "should be 'Python Software Foundation'.");
+                            "should be 'Python Software Foundation'.")
                     s.close()
             finally:
                 server.stop()
@@ -769,6 +777,7 @@ else:
 
             listener_ready = threading.Event()
             listener_gone = threading.Event()
+            port = test_support.find_unused_port()
 
             # `listener` runs in a thread.  It opens a socket listening on
             # PORT, and sits in an accept() until the main thread connects.
@@ -776,11 +785,7 @@ else:
             # to let the main thread know the socket is gone.
             def listener():
                 s = socket.socket()
-                if hasattr(socket, 'SO_REUSEADDR'):
-                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                if hasattr(socket, 'SO_REUSEPORT'):
-                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-                s.bind(('127.0.0.1', TESTPORT))
+                s.bind((HOST, port))
                 s.listen(5)
                 listener_ready.set()
                 s.accept()
@@ -790,7 +795,7 @@ else:
             def connector():
                 listener_ready.wait()
                 s = socket.socket()
-                s.connect(('127.0.0.1', TESTPORT))
+                s.connect((HOST, port))
                 listener_gone.wait()
                 try:
                     ssl_sock = ssl.wrap_socket(s)
@@ -862,7 +867,7 @@ else:
 
             msgs = ("msg 1", "MSG 2", "STARTTLS", "MSG 3", "msg 4")
 
-            server = ThreadedEchoServer(TESTPORT, CERTFILE,
+            server = ThreadedEchoServer(CERTFILE,
                                         ssl_version=ssl.PROTOCOL_TLSv1,
                                         starttls_server=True,
                                         chatty=True,
@@ -877,7 +882,7 @@ else:
                 try:
                     s = socket.socket()
                     s.setblocking(1)
-                    s.connect(('127.0.0.1', TESTPORT))
+                    s.connect((HOST, server.port))
                 except Exception as x:
                     raise test_support.TestFailed("Unexpected exception:  " + str(x))
                 else:
@@ -925,7 +930,7 @@ else:
 
         def testSocketServer(self):
 
-            server = OurHTTPSServer(TESTPORT, CERTFILE)
+            server = OurHTTPSServer(CERTFILE)
             flag = threading.Event()
             server.start(flag)
             # wait for it to start
@@ -937,8 +942,8 @@ else:
                 d1 = open(CERTFILE, 'rb').read()
                 d2 = ''
                 # now fetch the same data from the HTTPS server
-                url = 'https://127.0.0.1:%d/%s' % (
-                    TESTPORT, os.path.split(CERTFILE)[1])
+                url = 'https://%s:%d/%s' % (
+                    HOST, server.port, os.path.split(CERTFILE)[1])
                 f = urllib.urlopen(url)
                 dlen = f.info().getheader("content-length")
                 if dlen and (int(dlen) > 0):
@@ -960,7 +965,11 @@ else:
                     raise test_support.TestFailed(
                         "Couldn't fetch data from HTTPS server")
             finally:
+                if test_support.verbose:
+                    sys.stdout.write('stopping server\n')
                 server.stop()
+                if test_support.verbose:
+                    sys.stdout.write('joining thread\n')
                 server.join()
 
         def testAsyncoreServer(self):
@@ -969,7 +978,7 @@ else:
                 sys.stdout.write("\n")
 
             indata="FOO\n"
-            server = AsyncoreEchoServer(TESTPORT, CERTFILE)
+            server = AsyncoreEchoServer(CERTFILE)
             flag = threading.Event()
             server.start(flag)
             # wait for it to start
@@ -977,7 +986,7 @@ else:
             # try to connect
             try:
                 s = ssl.wrap_socket(socket.socket())
-                s.connect(('127.0.0.1', TESTPORT))
+                s.connect((HOST, server.port))
             except ssl.SSLError as x:
                 raise test_support.TestFailed("Unexpected SSL error:  " + str(x))
             except Exception as x:
@@ -1004,30 +1013,11 @@ else:
                 server.stop()
                 server.join()
 
-
-def findtestsocket(start, end):
-    def testbind(i):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind(("127.0.0.1", i))
-        except:
-            return 0
-        else:
-            return 1
-        finally:
-            s.close()
-
-    for i in range(start, end):
-        if testbind(i) and testbind(i+1):
-            return i
-    return 0
-
-
 def test_main(verbose=False):
     if skip_expected:
         raise test_support.TestSkipped("No SSL support")
 
-    global CERTFILE, TESTPORT, SVN_PYTHON_ORG_ROOT_CERT
+    global CERTFILE, SVN_PYTHON_ORG_ROOT_CERT
     CERTFILE = os.path.join(os.path.dirname(__file__) or os.curdir,
                             "keycert.pem")
     SVN_PYTHON_ORG_ROOT_CERT = os.path.join(
@@ -1037,10 +1027,6 @@ def test_main(verbose=False):
     if (not os.path.exists(CERTFILE) or
         not os.path.exists(SVN_PYTHON_ORG_ROOT_CERT)):
         raise test_support.TestFailed("Can't read certificate files!")
-
-    TESTPORT = findtestsocket(10025, 12000)
-    if not TESTPORT:
-        raise test_support.TestFailed("Can't find open port to test servers on!")
 
     tests = [BasicTests]
 

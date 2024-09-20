@@ -39,14 +39,6 @@ extern char *PyOS_Readline(FILE *, FILE *, char *);
 /* Don't ever change this -- it would break the portability of Python code */
 #define TABSIZE 8
 
-/* Convert a possibly signed character to a nonnegative int */
-/* XXX This assumes characters are 8 bits wide */
-#ifdef __CHAR_UNSIGNED__
-#define Py_CHARMASK(c)		(c)
-#else
-#define Py_CHARMASK(c)		((c) & 0xff)
-#endif
-
 /* Forward */
 static struct tok_state *tok_new(void);
 static int tok_nextc(struct tok_state *tok);
@@ -1578,70 +1570,6 @@ PyTokenizer_Get(struct tok_state *tok, char **p_start, char **p_end)
 	}
 	return result;
 }
-
-/* This function is only called from parsetok. However, it cannot live
-   there, as it must be empty for PGEN, and we can check for PGEN only
-   in this file. */
-
-#ifdef PGEN
-char*
-PyTokenizer_RestoreEncoding(struct tok_state* tok, int len, int* offset)
-{
-	return NULL;
-}
-#else
-static PyObject *
-dec_utf8(const char *enc, const char *text, size_t len) {
-	PyObject *ret = NULL;
-	PyObject *unicode_text = PyUnicode_DecodeUTF8(text, len, "replace");
-	if (unicode_text) {
-		ret = PyUnicode_AsEncodedString(unicode_text, enc, "replace");
-		Py_DECREF(unicode_text);
-	}
-	if (!ret) {
-		PyErr_Clear();
-	}
-        else {
-		assert(PyString_Check(ret));
-	}
-	return ret;
-}
-
-char *
-PyTokenizer_RestoreEncoding(struct tok_state* tok, int len, int *offset)
-{
-	char *text = NULL;
-	if (tok->encoding) {
-		/* convert source to original encondig */
-		PyObject *lineobj = dec_utf8(tok->encoding, tok->buf, len);
-		if (lineobj != NULL) {
-			int linelen = PyString_GET_SIZE(lineobj);
-			const char *line = PyString_AS_STRING(lineobj);
-			text = PyObject_MALLOC(linelen + 1);
-			if (text != NULL && line != NULL) {
-				if (linelen)
-					strncpy(text, line, linelen);
-				text[linelen] = '\0';
-			}
-			Py_DECREF(lineobj);
-
-			/* adjust error offset */
-			if (*offset > 1) {
-				PyObject *offsetobj = dec_utf8(tok->encoding,
-							       tok->buf,
-							       *offset-1);
-				if (offsetobj) {
-					*offset = 1 + Py_SIZE(offsetobj);
-					Py_DECREF(offsetobj);
-				}
-			}
-
-		}
-	}
-	return text;
-
-}
-#endif
 
 /* Get -*- encoding -*- from a Python file.
 

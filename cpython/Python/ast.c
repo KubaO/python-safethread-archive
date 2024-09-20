@@ -35,7 +35,7 @@ static stmt_ty ast_for_classdef(struct compiling *, const node *, asdl_seq *);
 static expr_ty ast_for_call(struct compiling *, const node *, expr_ty);
 
 static PyObject *parsenumber(const char *);
-static PyObject *parsestr(const node *n, const char *encoding, int *bytesmode);
+static PyObject *parsestr(struct compiling *, const node *n, int *bytesmode);
 static PyObject *parsestrplus(struct compiling *, const node *n,
                               int *bytesmode);
 
@@ -1994,10 +1994,14 @@ ast_for_call(struct compiling *c, const node *n, expr_ty func)
         }
         else if (TYPE(ch) == STAR) {
             vararg = ast_for_expr(c, CHILD(n, i+1));
+            if (!vararg)
+                return NULL;
             i++;
         }
         else if (TYPE(ch) == DOUBLESTAR) {
             kwarg = ast_for_expr(c, CHILD(n, i+1));
+            if (!kwarg)
+                return NULL;
             i++;
         }
     }
@@ -2382,10 +2386,6 @@ ast_for_import_stmt(struct compiling *c, const node *n)
             /* from ... import * */
             n = CHILD(n, idx);
             n_children = 1;
-            if (ndots) {
-                ast_error(n, "'import *' not allowed with 'from .'");
-                return NULL;
-            }
             break;
         case LPAR:
             /* from ... import (x, y, z) */
@@ -2787,7 +2787,7 @@ ast_for_except_clause(struct compiling *c, const node *exc, node *body)
         if (!suite_seq)
             return NULL;
 
-        return excepthandler(NULL, NULL, suite_seq, LINENO(exc),
+        return ExceptHandler(NULL, NULL, suite_seq, LINENO(exc),
                              exc->n_col_offset, c->c_arena);
     }
     else if (NCH(exc) == 2) {
@@ -2801,7 +2801,7 @@ ast_for_except_clause(struct compiling *c, const node *exc, node *body)
         if (!suite_seq)
             return NULL;
 
-        return excepthandler(expression, NULL, suite_seq, LINENO(exc),
+        return ExceptHandler(expression, NULL, suite_seq, LINENO(exc),
                              exc->n_col_offset, c->c_arena);
     }
     else if (NCH(exc) == 4) {
@@ -2817,7 +2817,7 @@ ast_for_except_clause(struct compiling *c, const node *exc, node *body)
         if (!suite_seq)
             return NULL;
 
-        return excepthandler(expression, e, suite_seq, LINENO(exc),
+        return ExceptHandler(expression, e, suite_seq, LINENO(exc),
                              exc->n_col_offset, c->c_arena);
     }
 
@@ -3191,14 +3191,13 @@ decode_unicode(const char *s, size_t len, int rawmode, const char *encoding)
  * parsestr parses it, and returns the decoded Python string object.
  */
 static PyObject *
-parsestr(const node *n, const char *encoding, int *bytesmode)
+parsestr(struct compiling *c, const node *n, int *bytesmode)
 {
     size_t len;
     const char *s = STR(n);
     int quote = Py_CHARMASK(*s);
     int rawmode = 0;
     int need_encoding;
-
     if (isalpha(quote)) {
         if (quote == 'b' || quote == 'B') {
             quote = *++s;
@@ -3233,7 +3232,7 @@ parsestr(const node *n, const char *encoding, int *bytesmode)
         }
     }
     if (!*bytesmode && !rawmode) {
-        return decode_unicode(s, len, rawmode, encoding);
+        return decode_unicode(s, len, rawmode, c->c_encoding);
     }
     if (*bytesmode) {
         /* Disallow non-ascii characters (but not escapes) */
@@ -3246,28 +3245,27 @@ parsestr(const node *n, const char *encoding, int *bytesmode)
             }
         }
     }
-    need_encoding = (!*bytesmode && encoding != NULL &&
-                     strcmp(encoding, "utf-8") != 0 &&
-                     strcmp(encoding, "iso-8859-1") != 0);
+    need_encoding = (!*bytesmode && c->c_encoding != NULL &&
+                     strcmp(c->c_encoding, "utf-8") != 0 &&
+                     strcmp(c->c_encoding, "iso-8859-1") != 0);
     if (rawmode || strchr(s, '\\') == NULL) {
         if (need_encoding) {
             PyObject *v, *u = PyUnicode_DecodeUTF8(s, len, NULL);
             if (u == NULL || !*bytesmode)
                 return u;
-            v = PyUnicode_AsEncodedString(u, encoding, NULL);
+            v = PyUnicode_AsEncodedString(u, c->c_encoding, NULL);
             Py_DECREF(u);
             return v;
         } else if (*bytesmode) {
             return PyString_FromStringAndSize(s, len);
-        } else if (strcmp(encoding, "utf-8") == 0) {
+        } else if (strcmp(c->c_encoding, "utf-8") == 0) {
             return PyUnicode_FromStringAndSize(s, len);
 	} else {
             return PyUnicode_DecodeLatin1(s, len, NULL);
         }
     }
-
     return PyString_DecodeEscape(s, len, NULL, 1,
-                                 need_encoding ? encoding : NULL);
+                                 need_encoding ? c->c_encoding : NULL);
 }
 
 /* Build a Python string object out of a STRING+ atom.  This takes care of
@@ -3280,13 +3278,13 @@ parsestrplus(struct compiling *c, const node *n, int *bytesmode)
     PyObject *v;
     int i;
     REQ(CHILD(n, 0), STRING);
-    v = parsestr(CHILD(n, 0), c->c_encoding, bytesmode);
+    v = parsestr(c, CHILD(n, 0), bytesmode);
     if (v != NULL) {
         /* String literal concatenation */
         for (i = 1; i < NCH(n); i++) {
             PyObject *s;
             int subbm = 0;
-            s = parsestr(CHILD(n, i), c->c_encoding, &subbm);
+            s = parsestr(c, CHILD(n, i), &subbm);
             if (s == NULL)
                 goto onError;
             if (*bytesmode != subbm) {

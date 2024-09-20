@@ -1551,6 +1551,7 @@ compiler_class(struct compiler *c, stmt_ty s)
 	{
 		/* use the class name for name mangling */
 		Py_INCREF(s->v.ClassDef.name);
+		Py_XDECREF(c->u->u_private);
 		c->u->u_private = s->v.ClassDef.name;
 		/* force it to have one mandatory argument */
 		c->u->u_argcount = 1;
@@ -1984,22 +1985,22 @@ compiler_try_except(struct compiler *c, stmt_ty s)
 	for (i = 0; i < n; i++) {
 		excepthandler_ty handler = (excepthandler_ty)asdl_seq_GET(
 						s->v.TryExcept.handlers, i);
-		if (!handler->type && i < n-1)
+		if (!handler->v.ExceptHandler.type && i < n-1)
 		    return compiler_error(c, "default 'except:' must be last");
 		c->u->u_lineno_set = 0;
 		c->u->u_lineno = handler->lineno;
 		except = compiler_new_block(c);
 		if (except == NULL)
 			return 0;
-		if (handler->type) {
+		if (handler->v.ExceptHandler.type) {
 			ADDOP(c, DUP_TOP);
-			VISIT(c, expr, handler->type);
+			VISIT(c, expr, handler->v.ExceptHandler.type);
 			ADDOP_I(c, COMPARE_OP, PyCmp_EXC_MATCH);
 			ADDOP_JREL(c, JUMP_IF_FALSE, except);
 			ADDOP(c, POP_TOP);
 		}
 		ADDOP(c, POP_TOP);
-		if (handler->name) {
+		if (handler->v.ExceptHandler.name) {
             basicblock *cleanup_end, *cleanup_body;
 
             cleanup_end = compiler_new_block(c);
@@ -2007,7 +2008,7 @@ compiler_try_except(struct compiler *c, stmt_ty s)
             if(!(cleanup_end || cleanup_body))
                 return 0;
 
-            compiler_nameop(c, handler->name, Store);
+            compiler_nameop(c, handler->v.ExceptHandler.name, Store);
             ADDOP(c, POP_TOP);
 
             /*
@@ -2028,7 +2029,7 @@ compiler_try_except(struct compiler *c, stmt_ty s)
 		        return 0;
 
             /* second # body */
-	        VISIT_SEQ(c, stmt, handler->body);
+		VISIT_SEQ(c, stmt, handler->v.ExceptHandler.body);
 	        ADDOP(c, POP_BLOCK);
 	        compiler_pop_fblock(c, FINALLY_TRY, cleanup_body);
 
@@ -2040,10 +2041,10 @@ compiler_try_except(struct compiler *c, stmt_ty s)
 
             /* name = None */
             ADDOP_O(c, LOAD_CONST, Py_None, consts);
-            compiler_nameop(c, handler->name, Store);
+            compiler_nameop(c, handler->v.ExceptHandler.name, Store);
 
             /* del name */
-            compiler_nameop(c, handler->name, Del);
+            compiler_nameop(c, handler->v.ExceptHandler.name, Del);
 
 	        ADDOP(c, END_FINALLY);
 	        compiler_pop_fblock(c, FINALLY_END, cleanup_end);
@@ -2051,11 +2052,11 @@ compiler_try_except(struct compiler *c, stmt_ty s)
 		else {
             ADDOP(c, POP_TOP);
             ADDOP(c, POP_TOP);
-		    VISIT_SEQ(c, stmt, handler->body);
+		    VISIT_SEQ(c, stmt, handler->v.ExceptHandler.body);
 		}
 		ADDOP_JREL(c, JUMP_FORWARD, end);
 		compiler_use_next_block(c, except);
-		if (handler->type)
+		if (handler->v.ExceptHandler.type)
 			ADDOP(c, POP_TOP);
 	}
 	ADDOP(c, END_FINALLY);
@@ -2223,6 +2224,14 @@ compiler_assert(struct compiler *c, stmt_ty s)
 		if (assertion_error == NULL)
 			return 0;
 	}
+	if (s->v.Assert.test->kind == Tuple_kind &&
+	    asdl_seq_LEN(s->v.Assert.test->v.Tuple.elts) > 0) {
+		const char* msg =
+			"assertion is always true, perhaps remove parentheses?";
+		if (PyErr_WarnExplicit(PyExc_SyntaxWarning, msg, c->c_filename,
+				       c->u->u_lineno, NULL, NULL) == -1)
+			return 0;
+	}
 	VISIT(c, expr, s->v.Assert.test);
 	end = compiler_new_block(c);
 	if (end == NULL)
@@ -2348,8 +2357,11 @@ unaryop(unaryop_ty op)
 		return UNARY_POSITIVE;
 	case USub:
 		return UNARY_NEGATIVE;
+	default:
+		PyErr_Format(PyExc_SystemError,
+			"unary op %d should not be possible", op);
+		return 0;
 	}
-	return 0;
 }
 
 static int
@@ -2380,8 +2392,11 @@ binop(struct compiler *c, operator_ty op)
 		return BINARY_AND;
 	case FloorDiv:
 		return BINARY_FLOOR_DIVIDE;
+	default:
+		PyErr_Format(PyExc_SystemError,
+			"binary op %d should not be possible", op);
+		return 0;
 	}
-	return 0;
 }
 
 static int
@@ -2408,8 +2423,9 @@ cmpop(cmpop_ty op)
 		return PyCmp_IN;
 	case NotIn:
 		return PyCmp_NOT_IN;
+	default:
+		return PyCmp_BAD;
 	}
-	return PyCmp_BAD;
 }
 
 static int
@@ -2440,10 +2456,11 @@ inplace_binop(struct compiler *c, operator_ty op)
 		return INPLACE_AND;
 	case FloorDiv:
 		return INPLACE_FLOOR_DIVIDE;
+	default:
+		PyErr_Format(PyExc_SystemError,
+			"inplace binary op %d should not be possible", op);
+		return 0;
 	}
-	PyErr_Format(PyExc_SystemError,
-		     "inplace binary op %d should not be possible", op);
-	return 0;
 }
 
 static int
@@ -2614,6 +2631,11 @@ compiler_list(struct compiler *c, expr_ty e)
 		for (i = 0; i < n; i++) {
 			expr_ty elt = asdl_seq_GET(e->v.List.elts, i);
 			if (elt->kind == Starred_kind && !seen_star) {
+				if ((i >= (1 << 8)) ||
+				    (n-i-1 >= (INT_MAX >> 8)))
+					return compiler_error(c,
+						"too many expressions in "
+						"star-unpacking assignment");
 				ADDOP_I(c, UNPACK_EX, (i + ((n-i-1) << 8)));
 				seen_star = 1;
 				asdl_seq_SET(e->v.List.elts, i, elt->v.Starred.value);
@@ -2642,6 +2664,11 @@ compiler_tuple(struct compiler *c, expr_ty e)
 		for (i = 0; i < n; i++) {
 			expr_ty elt = asdl_seq_GET(e->v.Tuple.elts, i);
 			if (elt->kind == Starred_kind && !seen_star) {
+				if ((i >= (1 << 8)) ||
+				    (n-i-1 >= (INT_MAX >> 8)))
+					return compiler_error(c,
+						"too many expressions in "
+						"star-unpacking assignment");
 				ADDOP_I(c, UNPACK_EX, (i + ((n-i-1) << 8)));
 				seen_star = 1;
 				asdl_seq_SET(e->v.Tuple.elts, i, elt->v.Starred.value);
@@ -3082,7 +3109,7 @@ compiler_with(struct compiler *c, stmt_ty s)
 {
     static identifier enter_attr, exit_attr;
     basicblock *block, *finally;
-    identifier tmpexit, tmpvalue = NULL;
+    identifier tmpvalue = NULL;
 
     assert(s->kind == With_kind);
 
@@ -3101,12 +3128,6 @@ compiler_with(struct compiler *c, stmt_ty s)
     finally = compiler_new_block(c);
     if (!block || !finally)
 	return 0;
-
-    /* Create a temporary variable to hold context.__exit__ */
-    tmpexit = compiler_new_tmpname(c);
-    if (tmpexit == NULL)
-	return 0;
-    PyArena_AddPyObject(c->c_arena, tmpexit);
 
     if (s->v.With.optional_vars) {
 	/* Create a temporary variable to hold context.__enter__().
@@ -3127,11 +3148,10 @@ compiler_with(struct compiler *c, stmt_ty s)
     /* Evaluate EXPR */
     VISIT(c, expr, s->v.With.context_expr);
 
-    /* Squirrel away context.__exit__  */
+    /* Squirrel away context.__exit__ by stuffing it under context */
     ADDOP(c, DUP_TOP);
     ADDOP_O(c, LOAD_ATTR, exit_attr, names);
-    if (!compiler_nameop(c, tmpexit, Store))
-	return 0;
+    ADDOP(c, ROT_TWO);
 
     /* Call context.__enter__() */
     ADDOP_O(c, LOAD_ATTR, enter_attr, names);
@@ -3175,10 +3195,9 @@ compiler_with(struct compiler *c, stmt_ty s)
     if (!compiler_push_fblock(c, FINALLY_END, finally))
 	return 0;
 
-    /* Finally block starts; push tmpexit and issue our magic opcode. */
-    if (!compiler_nameop(c, tmpexit, Load) ||
-	!compiler_nameop(c, tmpexit, Del))
-	return 0;
+    /* Finally block starts; context.__exit__ is on the stack under
+       the exception or return information. Just issue our magic
+       opcode. */
     ADDOP(c, WITH_CLEANUP);
 
     /* Finally block ends. */

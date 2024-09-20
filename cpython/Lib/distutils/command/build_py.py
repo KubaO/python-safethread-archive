@@ -383,3 +383,38 @@ class build_py (Command):
         if self.optimize > 0:
             byte_compile(files, optimize=self.optimize,
                          force=self.force, prefix=prefix, dry_run=self.dry_run)
+
+class build_py_2to3(build_py):
+    def run(self):
+        self.updated_files = []
+
+        # Base class code
+        if self.py_modules:
+            self.build_modules()
+        if self.packages:
+            self.build_packages()
+            self.build_package_data()
+
+        # 2to3
+        from lib2to3.refactor import RefactoringTool
+        class Options:
+            pass
+        o = Options()
+        o.doctests_only = False
+        o.fix = []
+        o.list_fixes = []
+        o.print_function = False
+        o.verbose = False
+        o.write = True
+        r = RefactoringTool(o)
+        r.refactor_args(self.updated_files)
+
+        # Remaining base class code
+        self.byte_compile(self.get_outputs(include_bytecode=0))
+
+    def build_module(self, module, module_file, package):
+        res = build_py.build_module(self, module, module_file, package)
+        if res[1]:
+            # file was copied
+            self.updated_files.append(res[0])
+        return res

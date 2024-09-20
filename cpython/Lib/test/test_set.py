@@ -295,7 +295,7 @@ class TestJointOps(unittest.TestCase):
             self.assertEqual(fo.read(), repr(s))
         finally:
             fo.close()
-            os.remove(test_support.TESTFN)
+            test_support.unlink(test_support.TESTFN)
 
     def test_do_not_rehash_dict_keys(self):
         n = 10
@@ -679,7 +679,7 @@ class TestBasicOps(unittest.TestCase):
             self.assertEqual(fo.read(), repr(self.set))
         finally:
             fo.close()
-            os.remove(test_support.TESTFN)
+            test_support.unlink(test_support.TESTFN)
 
     def test_length(self):
         self.assertEqual(len(self.set), self.length)
@@ -1560,10 +1560,10 @@ class S:
     def __next__(self):
         raise StopIteration
 
-from itertools import chain, imap
+from itertools import chain
 def L(seqn):
     'Test multiple tiers of iterators'
-    return chain(imap(lambda x:x, R(Ig(G(seqn)))))
+    return chain(map(lambda x:x, R(Ig(G(seqn)))))
 
 class TestVariousIteratorArgs(unittest.TestCase):
 

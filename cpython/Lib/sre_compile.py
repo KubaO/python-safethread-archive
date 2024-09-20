@@ -11,7 +11,7 @@
 """Internal support module for sre"""
 
 import _sre, sys
-
+import sre_parse
 from sre_constants import *
 
 assert _sre.MAGIC == MAGIC, "SRE module mismatch"
@@ -472,7 +472,7 @@ def _compile_info(code, pattern, flags):
     code[skip] = len(code) - skip
 
 def isstring(obj):
-    return isinstance(obj, str)
+    return isinstance(obj, (str, bytes))
 
 def _code(p, flags):
 
@@ -493,7 +493,6 @@ def compile(p, flags=0):
     # internal: convert pattern list to internal format
 
     if isstring(p):
-        import sre_parse
         pattern = p
         p = sre_parse.parse(p, flags)
     else:
