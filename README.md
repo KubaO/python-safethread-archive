@@ -1,12 +1,20 @@
 # python-safethread
 ## by Adam  Olsen
-This is a mirror of the historic python-safethread project from https://code.google.com/archive/p/python-safethread.
+This is a mirror of the historic python-safethread project from https://code.google.com/archive/p/python-safethread. **It is here to make the project easily browseable for historic preservation.**
 
-**It is here to make the project easily browseable for historic preservation.**
+The source was originally published as [patches against Python SVN tree](patches/README.md). These patches are each available as a branch of this repository.
 
-The source is available here as [patches against Python SVN tree](patches/README.md). PRs of the 4 SVN Python revision checkouts, each in its own branch, with a patch applied as a separate commit, are welcome.
+| Branch                    | File                                                         | Summary + Labels                                   | Uploaded     | Size      |
+| ------------------------- | :----------------------------------------------------------- | :------------------------------------------------- | :----------- | :-------- |
+| [bzr-36020](../bzr-36020) | [safethread-bzr-36020.diff](https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/python-safethread/safethread-bzr-36020.diff) | patch against 3.0 in bzr, 36020                    | Apr 11, 2008 | 1011.97KB |
+| [r61159](../61159)        | [py3k-safethread-r61159.diff](https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/python-safethread/py3k-safethread-r61159.diff) | patch against py3k in svn, r61159                  | Mar 13, 2008 | 938.23KB  |
+| [r58353-2](../r58353-2)   | [py3k-safethread-r58353-2.diff](https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/python-safethread/py3k-safethread-r58353-2.diff) | patch against py3k in svn, r58353, second revision | Jan 30, 2008 | 831.74KB  |
+| [r58353](../r58353)       | [py3k-safethread-r58353.diff](https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/python-safethread/py3k-safethread-r58353.diff) | patch against py3k in svn, r58353                  | Nov 11, 2007 | 638.06KB  |
 
-Licensed under the [PSF License](https://docs.python.org/3/license.html#psf-license) as a derivative work of Python.
+
+https://github.com/KubaO/python-safethread-archive/tree/r58353
+
+Python source is licensed under [PSF License](https://docs.python.org/3/license.html#psf-license). The python-safethread patches/changes are licensed under the Apache License, version 2.0.
 
 ---
 

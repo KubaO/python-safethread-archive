@@ -2,8 +2,6 @@
 
 These patches come from https://code.google.com/archive/p/python-safethread/downloads
 
-If someone has time, these revisions could be checked out from the Python repo and added here as branches, then the patches applied on top.
-
 | File                                                         | Summary + Labels                                   | Uploaded     | Size      |
 | :----------------------------------------------------------- | :------------------------------------------------- | :----------- | :-------- |
 | [safethread-bzr-36020.diff](https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/python-safethread/safethread-bzr-36020.diff) | patch against 3.0 in bzr, 36020                    | Apr 11, 2008 | 1011.97KB |
