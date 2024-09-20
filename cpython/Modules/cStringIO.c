@@ -276,7 +276,7 @@ IO_tell(IOobject *self, PyObject *unused) {
 
         if (!IO__opencheck(self)) return NULL;
 
-        return PyInt_FromSsize_t(self->pos);
+        return PyLong_FromSsize_t(self->pos);
 }
 
 PyDoc_STRVAR(IO_truncate__doc__,
@@ -566,8 +566,7 @@ newOobject(int  size) {
 
 static PyObject *
 I_close(Iobject *self, PyObject *unused) {
-        Py_XDECREF(self->pbuf);
-        self->pbuf = NULL;
+        Py_CLEAR(self->pbuf);
         self->buf = NULL;
 
         self->pos = self->string_size = 0;
@@ -738,8 +737,8 @@ initcStringIO(void) {
   d = PyModule_GetDict(m);
   
   /* Export C API */
-  Py_Type(&Itype)=&PyType_Type;
-  Py_Type(&Otype)=&PyType_Type;
+  Py_TYPE(&Itype)=&PyType_Type;
+  Py_TYPE(&Otype)=&PyType_Type;
   if (PyType_Ready(&Otype) < 0) return;
   if (PyType_Ready(&Itype) < 0) return;
   PyDict_SetItemString(d,"cStringIO_CAPI",

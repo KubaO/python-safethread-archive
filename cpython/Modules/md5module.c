@@ -340,7 +340,7 @@ MD5_copy(MD5object *self, PyObject *unused)
 {
     MD5object *newobj;
 
-    if (Py_Type(self) == &MD5type) {
+    if (Py_TYPE(self) == &MD5type) {
         if ( (newobj = newMD5object())==NULL)
             return NULL;
     } else {
@@ -363,7 +363,7 @@ MD5_digest(MD5object *self, PyObject *unused)
 
     temp = self->hash_state;
     md5_done(&temp, digest);
-    return PyBytes_FromStringAndSize((const char *)digest, MD5_DIGESTSIZE);
+    return PyString_FromStringAndSize((const char *)digest, MD5_DIGESTSIZE);
 }
 
 PyDoc_STRVAR(MD5_hexdigest__doc__,
@@ -434,7 +434,7 @@ static PyMethodDef MD5_methods[] = {
 static PyObject *
 MD5_get_block_size(PyObject *self, void *closure)
 {
-    return PyInt_FromLong(MD5_BLOCKSIZE);
+    return PyLong_FromLong(MD5_BLOCKSIZE);
 }
 
 static PyObject *
@@ -446,7 +446,7 @@ MD5_get_name(PyObject *self, void *closure)
 static PyObject *
 md5_get_digest_size(PyObject *self, void *closure)
 {
-    return PyInt_FromLong(MD5_DIGESTSIZE);
+    return PyLong_FromLong(MD5_DIGESTSIZE);
 }
 
 
@@ -552,7 +552,7 @@ init_md5(void)
 {
     PyObject *m;
 
-    Py_Type(&MD5type) = &PyType_Type;
+    Py_TYPE(&MD5type) = &PyType_Type;
     if (PyType_Ready(&MD5type) < 0)
         return;
     m = Py_InitModule("_md5", MD5_functions);

@@ -43,8 +43,6 @@ using the :class:`DictReader` and :class:`DictWriter` classes.
 
 .. seealso::
 
-   .. % \seemodule{array}{Arrays of uniformly types numeric values.}
-
    :pep:`305` - CSV File API
       The Python Enhancement Proposal which proposed this addition to Python.
 
@@ -60,7 +58,7 @@ The :mod:`csv` module defines the following functions:
 .. function:: reader(csvfile[, dialect='excel'][, fmtparam])
 
    Return a reader object which will iterate over lines in the given *csvfile*.
-   *csvfile* can be any object which supports the iterator protocol and returns a
+   *csvfile* can be any object which supports the :term:`iterator` protocol and returns a
    string each time its :meth:`next` method is called --- file objects and list
    objects are both suitable.   If *csvfile* is a file object, it must be opened
    with the 'b' flag on platforms where that makes a difference.  An optional
@@ -83,6 +81,15 @@ The :mod:`csv` module defines the following functions:
    consequence, if newlines embedded within fields are important, the input should
    be split into lines in a manner which preserves the newline characters.
 
+   A short usage example::
+ 
+      >>> import csv
+      >>> spamReader = csv.reader(open('eggs.csv'), delimiter=' ', quotechar='|')
+      >>> for row in spamReader:
+      ...     print(', '.join(row))
+      Spam, Spam, Spam, Spam, Spam, Baked Beans
+      Spam, Lovely Spam, Wonderful Spam
+
 
 .. function:: writer(csvfile[, dialect='excel'][, fmtparam])
 
@@ -103,10 +110,18 @@ The :mod:`csv` module defines the following functions:
    CSV files without preprocessing the data returned from a ``cursor.fetch*`` call.
    All other non-string data are stringified with :func:`str` before being written.
 
+   A short usage example::
+
+      >>> import csv
+      >>> spamWriter = csv.writer(open('eggs.csv', 'w'), delimiter=' ',
+      ...                         quotechar='|', quoting=QUOTE_MINIMAL)
+      >>> spamWriter.writerow(['Spam'] * 5 + ['Baked Beans'])
+      >>> spamWriter.writerow(['Spam', 'Lovely Spam', 'Wonderful Spam'])
+
 
 .. function:: register_dialect(name[, dialect][, fmtparam])
 
-   Associate *dialect* with *name*.  *name* must be a string or Unicode object. The
+   Associate *dialect* with *name*.  *name* must be a string. The
    dialect can be specified either by passing a sub-class of :class:`Dialect`, or
    by *fmtparam* keyword arguments, or both, with keyword arguments overriding
    parameters of the dialect. For full details about the dialect and formatting
@@ -121,9 +136,9 @@ The :mod:`csv` module defines the following functions:
 
 .. function:: get_dialect(name)
 
-   Return the dialect associated with *name*.  An :exc:`Error` is raised if *name*
-   is not a registered dialect name.
-
+   Return the dialect associated with *name*.  An :exc:`Error` is raised if
+   *name* is not a registered dialect name.  This function returns an immutable
+   :class:`Dialect`.
 
 .. function:: list_dialects()
 
@@ -138,7 +153,7 @@ The :mod:`csv` module defines the following functions:
 
 The :mod:`csv` module defines the following classes:
 
-.. class:: DictReader(csvfile[, fieldnames=:const:None,[, restkey=:const:None[, restval=None[, dialect='excel'[, *args, **kwds]]]]])
+.. class:: DictReader(csvfile[, fieldnames=None[, restkey=None[, restval=None[, dialect='excel'[, *args, **kwds]]]]])
 
    Create an object which operates like a regular reader but maps the information
    read into a dict whose keys are given by the optional  *fieldnames* parameter.
@@ -196,7 +211,6 @@ The :mod:`csv` module defines the following classes:
 
 The :class:`Sniffer` class provides two methods:
 
-
 .. method:: Sniffer.sniff(sample[, delimiters=None])
 
    Analyze the given *sample* and return a :class:`Dialect` subclass reflecting the
@@ -209,8 +223,16 @@ The :class:`Sniffer` class provides two methods:
    Analyze the sample text (presumed to be in CSV format) and return :const:`True`
    if the first row appears to be a series of column headers.
 
-The :mod:`csv` module defines the following constants:
+An example for :class:`Sniffer` use::
 
+   csvfile = open("example.csv")
+   dialect = csv.Sniffer().sniff(csvfile.read(1024))
+   csvfile.seek(0)
+   reader = csv.reader(csvfile, dialect)
+   # ... process CSV file contents here ...
+
+
+The :mod:`csv` module defines the following constants:
 
 .. data:: QUOTE_ALL
 
@@ -436,9 +458,9 @@ it is 8-bit-clean save for some problems with ASCII NUL characters.  So you can
 write functions or classes that handle the encoding and decoding for you as long
 as you avoid encodings like UTF-16 that use NULs.  UTF-8 is recommended.
 
-:func:`unicode_csv_reader` below is a generator that wraps :class:`csv.reader`
+:func:`unicode_csv_reader` below is a :term:`generator` that wraps :class:`csv.reader`
 to handle Unicode CSV data (a list of Unicode strings).  :func:`utf_8_encoder`
-is a generator that encodes the Unicode strings as UTF-8, one string (or row) at
+is a :term:`generator` that encodes the Unicode strings as UTF-8, one string (or row) at
 a time.  The encoded strings are parsed by the CSV reader, and
 :func:`unicode_csv_reader` decodes the UTF-8-encoded cells back into Unicode::
 

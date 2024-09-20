@@ -71,7 +71,7 @@ copy_grouping(char* s)
     i = -1;
     do {
         i++;
-        val = PyInt_FromLong(s[i]);
+        val = PyLong_FromLong(s[i]);
         if (!val)
             break;
         if (PyList_SetItem(result, i, val)) {
@@ -143,13 +143,13 @@ PyLocale_localeconv(PyObject* self)
        involved herein */
 
 #define RESULT_STRING(s)\
-    x = PyUnicode_FromString(l->s);\
+    x = PyUnicode_DecodeUnicodeEscape(l->s, strlen(l->s), "strict");\
     if (!x) goto failed;\
     PyDict_SetItemString(result, #s, x);\
     Py_XDECREF(x)
 
 #define RESULT_INT(i)\
-    x = PyInt_FromLong(l->i);\
+    x = PyLong_FromLong(l->i);\
     if (!x) goto failed;\
     PyDict_SetItemString(result, #i, x);\
     Py_XDECREF(x)
@@ -202,7 +202,7 @@ PyLocale_strcoll(PyObject* self, PyObject* args)
     
     if (!PyArg_ParseTuple(args, "ss:strcoll", &s1, &s2))
         return NULL;
-    return PyInt_FromLong(strcoll(s1, s2));
+    return PyLong_FromLong(strcoll(s1, s2));
 #else
     PyObject *os1, *os2, *result = NULL;
     wchar_t *ws1 = NULL, *ws2 = NULL;
@@ -234,7 +234,7 @@ PyLocale_strcoll(PyObject* self, PyObject* args)
         goto done;
     ws2[len2 - 1] = 0;
     /* Collate the strings. */
-    result = PyInt_FromLong(wcscoll(ws1, ws2));
+    result = PyLong_FromLong(wcscoll(ws1, ws2));
   done:
     /* Deallocate everything. */
     if (ws1) PyMem_FREE(ws1);
@@ -471,8 +471,10 @@ PyLocale_nl_langinfo(PyObject* self, PyObject* args)
             /* Check NULL as a workaround for GNU libc's returning NULL
                instead of an empty string for nl_langinfo(ERA).  */
             const char *result = nl_langinfo(item);
+            result = result != NULL ? result : "";
             /* XXX may have to convert this to wcs first. */
-            return PyUnicode_FromString(result != NULL ? result : "");
+            return PyUnicode_DecodeUnicodeEscape(result, strlen(result),
+                                                 "strict");
         }
     PyErr_SetString(PyExc_ValueError, "unsupported langinfo constant");
     return NULL;
@@ -626,37 +628,37 @@ init_locale(void)
 
     d = PyModule_GetDict(m);
 
-    x = PyInt_FromLong(LC_CTYPE);
+    x = PyLong_FromLong(LC_CTYPE);
     PyDict_SetItemString(d, "LC_CTYPE", x);
     Py_XDECREF(x);
 
-    x = PyInt_FromLong(LC_TIME);
+    x = PyLong_FromLong(LC_TIME);
     PyDict_SetItemString(d, "LC_TIME", x);
     Py_XDECREF(x);
 
-    x = PyInt_FromLong(LC_COLLATE);
+    x = PyLong_FromLong(LC_COLLATE);
     PyDict_SetItemString(d, "LC_COLLATE", x);
     Py_XDECREF(x);
 
-    x = PyInt_FromLong(LC_MONETARY);
+    x = PyLong_FromLong(LC_MONETARY);
     PyDict_SetItemString(d, "LC_MONETARY", x);
     Py_XDECREF(x);
 
 #ifdef LC_MESSAGES
-    x = PyInt_FromLong(LC_MESSAGES);
+    x = PyLong_FromLong(LC_MESSAGES);
     PyDict_SetItemString(d, "LC_MESSAGES", x);
     Py_XDECREF(x);
 #endif /* LC_MESSAGES */
 
-    x = PyInt_FromLong(LC_NUMERIC);
+    x = PyLong_FromLong(LC_NUMERIC);
     PyDict_SetItemString(d, "LC_NUMERIC", x);
     Py_XDECREF(x);
 
-    x = PyInt_FromLong(LC_ALL);
+    x = PyLong_FromLong(LC_ALL);
     PyDict_SetItemString(d, "LC_ALL", x);
     Py_XDECREF(x);
 
-    x = PyInt_FromLong(CHAR_MAX);
+    x = PyLong_FromLong(CHAR_MAX);
     PyDict_SetItemString(d, "CHAR_MAX", x);
     Py_XDECREF(x);
 

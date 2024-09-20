@@ -93,13 +93,6 @@ The mathematical and bitwise operations are the most numerous:
    Return the bitwise and of *a* and *b*.
 
 
-.. function:: div(a, b)
-              __div__(a, b)
-
-   Return ``a / b`` when ``__future__.division`` is not in effect.  This is
-   also known as "classic" division.
-
-
 .. function:: floordiv(a, b)
               __floordiv__(a, b)
 
@@ -171,8 +164,8 @@ The mathematical and bitwise operations are the most numerous:
 .. function:: truediv(a, b)
               __truediv__(a, b)
 
-   Return ``a / b`` when ``__future__.division`` is in effect.  This is also
-   known as "true" division.
+   Return ``a / b`` where 2/3 is .66 rather than 0.  This is also known as
+   "true" division.
 
 
 .. function:: xor(a, b)
@@ -211,7 +204,7 @@ Operations which work with sequences include:
 
    Remove the value of *a* at index *b*.
 
-
+ 
 .. function:: delslice(a, b, c)
               __delslice__(a, b, c)
 
@@ -241,14 +234,6 @@ Operations which work with sequences include:
    Return ``a * b`` where *a* is a sequence and *b* is an integer.
 
 
-.. function:: sequenceIncludes(...)
-
-   .. deprecated:: 2.0
-      Use :func:`contains` instead.
-
-   Alias for :func:`contains`.
-
-
 .. function:: setitem(a, b, c)
               __setitem__(a, b, c)
 
@@ -260,12 +245,13 @@ Operations which work with sequences include:
 
    Set the slice of *a* from index *b* to index *c-1* to the sequence *v*.
 
+
 Many operations have an "in-place" version.  The following functions provide a
 more primitive access to in-place operators than the usual syntax does; for
-example, the statement ``x += y`` is equivalent to ``x = operator.iadd(x, y)``.
-Another way to put it is to say that ``z = operator.iadd(x, y)`` is equivalent
-to the compound statement ``z = x; z += y``.
-
+example, the :term:`statement` ``x += y`` is equivalent to
+``x = operator.iadd(x, y)``.  Another way to put it is to say that
+``z = operator.iadd(x, y)`` is equivalent to the compound statement
+``z = x; z += y``.
 
 .. function:: iadd(a, b)
               __iadd__(a, b)
@@ -283,13 +269,6 @@ to the compound statement ``z = x; z += y``.
               __iconcat__(a, b)
 
    ``a = iconcat(a, b)`` is equivalent to ``a += b`` for *a* and *b* sequences.
-
-
-.. function:: idiv(a, b)
-              __idiv__(a, b)
-
-   ``a = idiv(a, b)`` is equivalent to ``a /= b`` when ``__future__.division`` is
-   not in effect.
 
 
 .. function:: ifloordiv(a, b)
@@ -350,8 +329,7 @@ to the compound statement ``z = x; z += y``.
 .. function:: itruediv(a, b)
               __itruediv__(a, b)
 
-   ``a = itruediv(a, b)`` is equivalent to ``a /= b`` when ``__future__.division``
-   is in effect.
+   ``a = itruediv(a, b)`` is equivalent to ``a /= b``.
 
 
 .. function:: ixor(a, b)
@@ -363,10 +341,11 @@ to the compound statement ``z = x; z += y``.
 The :mod:`operator` module also defines a few predicates to test the type of
 objects.
 
+.. XXX just remove them?
 .. note::
 
-   Be careful not to misinterpret the results of these functions; only
-   :func:`isCallable` has any measure of reliability with instance objects.
+   Be careful not to misinterpret the results of these functions; none have any
+   measure of reliability with instance objects.
    For example::
 
       >>> class C:
@@ -379,20 +358,9 @@ objects.
 
 .. note::
 
-   Python 3 is expected to introduce abstract base classes for
-   collection types, so it should be possible to write, for example,
-   ``isinstance(obj, collections.Mapping)`` and ``isinstance(obj,
+   Since there are now abstract classes for collection types, you should write,
+   for example, ``isinstance(obj, collections.Mapping)`` and ``isinstance(obj,
    collections.Sequence)``.
-
-.. function:: isCallable(obj)
-
-   .. deprecated:: 2.0
-      Use the :func:`callable` built-in function instead.
-
-   Returns true if the object *obj* can be called like a function, otherwise it
-   returns false.  True is returned for functions, bound and unbound methods, class
-   objects, and instance objects which support the :meth:`__call__` method.
-
 
 .. function:: isMappingType(obj)
 
@@ -451,10 +419,12 @@ expect a function argument.
 
    Return a callable object that fetches *attr* from its operand. If more than one
    attribute is requested, returns a tuple of attributes. After,
-   ``f=attrgetter('name')``, the call ``f(b)`` returns ``b.name``.  After,
-   ``f=attrgetter('name', 'date')``, the call ``f(b)`` returns ``(b.name,
+   ``f = attrgetter('name')``, the call ``f(b)`` returns ``b.name``.  After,
+   ``f = attrgetter('name', 'date')``, the call ``f(b)`` returns ``(b.name,
    b.date)``.
 
+   The attribute names can also contain dots; after ``f = attrgetter('date.month')``,
+   the call ``f(b)`` returns ``b.date.month``.
 
 .. function:: itemgetter(item[, args...])
 
@@ -475,6 +445,15 @@ Examples::
    [('orange', 1), ('banana', 2), ('apple', 3), ('pear', 5)]
 
 
+.. function:: methodcaller(name[, args...])
+
+   Return a callable object that calls the method *name* on its operand.  If
+   additional arguments and/or keyword arguments are given, they will be given
+   to the method as well.  After ``f = methodcaller('name')``, the call ``f(b)``
+   returns ``b.name()``.  After ``f = methodcaller('name', 'foo', bar=1)``, the
+   call ``f(b)`` returns ``b.name('foo', bar=1)``.
+
+
 .. _operator-map:
 
 Mapping Operators to Functions
@@ -492,11 +471,7 @@ Python syntax and the functions in the :mod:`operator` module.
 +-----------------------+-------------------------+---------------------------------+
 | Containment Test      | ``obj in seq``          | ``contains(seq, obj)``          |
 +-----------------------+-------------------------+---------------------------------+
-| Division              | ``a / b``               | ``div(a, b)`` (without          |
-|                       |                         | ``__future__.division``)        |
-+-----------------------+-------------------------+---------------------------------+
-| Division              | ``a / b``               | ``truediv(a, b)`` (with         |
-|                       |                         | ``__future__.division``)        |
+| Division              | ``a / b``               | ``truediv(a, b)``               |
 +-----------------------+-------------------------+---------------------------------+
 | Division              | ``a // b``              | ``floordiv(a, b)``              |
 +-----------------------+-------------------------+---------------------------------+

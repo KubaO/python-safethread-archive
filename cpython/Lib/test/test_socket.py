@@ -9,6 +9,8 @@ import time
 import thread, threading
 import Queue
 import sys
+import os
+import array
 from weakref import proxy
 import signal
 
@@ -116,7 +118,7 @@ class ThreadableTest:
         self.__tearDown()
         self.done.wait()
 
-        if not self.queue.empty():
+        if self.queue.qsize():
             msg = self.queue.get()
             self.fail(msg)
 
@@ -286,7 +288,6 @@ class GeneralModuleTests(unittest.TestCase):
 
     def testRefCountGetNameInfo(self):
         # Testing reference count for getnameinfo
-        import sys
         if hasattr(sys, "getrefcount"):
             try:
                 # On some versions, this loses a reference
@@ -338,7 +339,7 @@ class GeneralModuleTests(unittest.TestCase):
         # I've ordered this by protocols that have both a tcp and udp
         # protocol, at least for modern Linuxes.
         if sys.platform in ('linux2', 'freebsd4', 'freebsd5', 'freebsd6',
-                            'freebsd7', 'darwin'):
+                            'freebsd7', 'freebsd8', 'darwin'):
             # avoid the 'echo' service on this platform, as there is an
             # assumption breaking non-standard port/protocol entry
             services = ('daytime', 'qotd', 'domain')
@@ -498,7 +499,7 @@ class GeneralModuleTests(unittest.TestCase):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
         sock.close()
-        self.assertRaises(socket.error, sock.send, "spam")
+        self.assertRaises(socket.error, sock.send, b"spam")
 
     def testNewAttributes(self):
         # testing .family, .type and .protocol
@@ -507,6 +508,15 @@ class GeneralModuleTests(unittest.TestCase):
         self.assertEqual(sock.type, socket.SOCK_STREAM)
         self.assertEqual(sock.proto, 0)
         sock.close()
+
+    def test_sock_ioctl(self):
+        if os.name != "nt":
+            return
+        self.assert_(hasattr(socket.socket, 'ioctl'))
+        self.assert_(hasattr(socket, 'SIO_RCVALL'))
+        self.assert_(hasattr(socket, 'RCVALL_ON'))
+        self.assert_(hasattr(socket, 'RCVALL_OFF'))
+
 
 class BasicTCPTest(SocketConnectedTest):
 
@@ -573,6 +583,15 @@ class BasicTCPTest(SocketConnectedTest):
         self.assertEqual(msg, MSG)
 
     def _testFromFd(self):
+        self.serv_conn.send(MSG)
+
+    def testDup(self):
+        # Testing dup()
+        sock = self.cli_conn.dup()
+        msg = sock.recv(1024)
+        self.assertEqual(msg, MSG)
+
+    def _testDup(self):
         self.serv_conn.send(MSG)
 
     def testShutdown(self):
@@ -1094,6 +1113,85 @@ class BufferIOTest(SocketConnectedTest):
         buf = bytes(MSG)
         self.serv_conn.send(buf)
 
+
+TIPC_STYPE = 2000
+TIPC_LOWER = 200
+TIPC_UPPER = 210
+
+def isTipcAvailable():
+    """Check if the TIPC module is loaded
+
+    The TIPC module is not loaded automatically on Ubuntu and probably
+    other Linux distros.
+    """
+    if not hasattr(socket, "AF_TIPC"):
+        return False
+    if not os.path.isfile("/proc/modules"):
+        return False
+    with open("/proc/modules") as f:
+        for line in f:
+            if line.startswith("tipc "):
+                return True
+    if test_support.verbose:
+        print("TIPC module is not loaded, please 'sudo modprobe tipc'")
+    return False
+
+class TIPCTest (unittest.TestCase):
+    def testRDM(self):
+        srv = socket.socket(socket.AF_TIPC, socket.SOCK_RDM)
+        cli = socket.socket(socket.AF_TIPC, socket.SOCK_RDM)
+
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srvaddr = (socket.TIPC_ADDR_NAMESEQ, TIPC_STYPE,
+                TIPC_LOWER, TIPC_UPPER)
+        srv.bind(srvaddr)
+
+        sendaddr = (socket.TIPC_ADDR_NAME, TIPC_STYPE,
+                TIPC_LOWER + int((TIPC_UPPER - TIPC_LOWER) / 2), 0)
+        cli.sendto(MSG, sendaddr)
+
+        msg, recvaddr = srv.recvfrom(1024)
+
+        self.assertEqual(cli.getsockname(), recvaddr)
+        self.assertEqual(msg, MSG)
+
+
+class TIPCThreadableTest (unittest.TestCase, ThreadableTest):
+    def __init__(self, methodName = 'runTest'):
+        unittest.TestCase.__init__(self, methodName = methodName)
+        ThreadableTest.__init__(self)
+
+    def setUp(self):
+        self.srv = socket.socket(socket.AF_TIPC, socket.SOCK_STREAM)
+        self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srvaddr = (socket.TIPC_ADDR_NAMESEQ, TIPC_STYPE,
+                TIPC_LOWER, TIPC_UPPER)
+        self.srv.bind(srvaddr)
+        self.srv.listen(5)
+        self.serverExplicitReady()
+        self.conn, self.connaddr = self.srv.accept()
+
+    def clientSetUp(self):
+        # The is a hittable race between serverExplicitReady() and the
+        # accept() call; sleep a little while to avoid it, otherwise
+        # we could get an exception
+        time.sleep(0.1)
+        self.cli = socket.socket(socket.AF_TIPC, socket.SOCK_STREAM)
+        addr = (socket.TIPC_ADDR_NAME, TIPC_STYPE,
+                TIPC_LOWER + int((TIPC_UPPER - TIPC_LOWER) / 2), 0)
+        self.cli.connect(addr)
+        self.cliaddr = self.cli.getsockname()
+
+    def testStream(self):
+        msg = self.conn.recv(1024)
+        self.assertEqual(msg, MSG)
+        self.assertEqual(self.cliaddr, self.connaddr)
+
+    def _testStream(self):
+        self.cli.send(MSG)
+        self.cli.close()
+
+
 def test_main():
     tests = [GeneralModuleTests, BasicTCPTest, TCPCloserTest, TCPTimeoutTest,
              TestExceptions, BufferIOTest, BasicTCPTest2]
@@ -1114,6 +1212,9 @@ def test_main():
         tests.append(BasicSocketPairTest)
     if sys.platform == 'linux2':
         tests.append(TestLinuxAbstractNamespace)
+    if isTipcAvailable():
+        tests.append(TIPCTest)
+        tests.append(TIPCThreadableTest)
 
     thread_info = test_support.threading_setup()
     test_support.run_unittest(*tests)

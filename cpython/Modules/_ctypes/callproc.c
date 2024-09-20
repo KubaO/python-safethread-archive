@@ -269,7 +269,7 @@ check_hresult(PyObject *self, PyObject *args)
 		return NULL;
 	if (FAILED(hr))
 		return PyErr_SetFromWindowsErr(hr);
-	return PyInt_FromLong(hr);
+	return PyLong_FromLong(hr);
 }
 
 #endif
@@ -507,9 +507,9 @@ static int ConvParam(PyObject *obj, Py_ssize_t index, struct argument *pa)
 		return 0;
 	}
 
-	if (PyBytes_Check(obj)) {
+	if (PyString_Check(obj)) {
 		pa->ffi_type = &ffi_type_pointer;
-		pa->value.p = PyBytes_AsString(obj);
+		pa->value.p = PyString_AsString(obj);
 		Py_INCREF(obj);
 		pa->keep = obj;
 		return 0;
@@ -727,7 +727,7 @@ static PyObject *GetResult(PyObject *restype, void *result, PyObject *checker)
 	PyObject *retval, *v;
 
 	if (restype == NULL)
-		return PyInt_FromLong(*(int *)result);
+		return PyLong_FromLong(*(int *)result);
 
 	if (restype == Py_None) {
 		Py_INCREF(Py_None);
@@ -755,7 +755,7 @@ static PyObject *GetResult(PyObject *restype, void *result, PyObject *checker)
 
 	v = PyObject_CallFunctionObjArgs(checker, retval, NULL);
 	if (v == NULL)
-		_AddTraceback("GetResult", __FILE__, __LINE__-2);
+		_AddTraceback("GetResult", "_ctypes/callproc.c", __LINE__-2);
 	Py_DECREF(retval);
 	return v;
 }
@@ -770,7 +770,7 @@ void Extend_Error_Info(PyObject *exc_class, char *fmt, ...)
 	PyObject *tp, *v, *tb, *s, *cls_str, *msg_str;
 
 	va_start(vargs, fmt);
-	s = PyString_FromFormatV(fmt, vargs);
+	s = PyUnicode_FromFormatV(fmt, vargs);
 	va_end(vargs);
 	if (!s)
 		return;
@@ -779,18 +779,18 @@ void Extend_Error_Info(PyObject *exc_class, char *fmt, ...)
 	PyErr_NormalizeException(&tp, &v, &tb);
 	cls_str = PyObject_Str(tp);
 	if (cls_str) {
-		PyString_ConcatAndDel(&s, cls_str);
-		PyString_ConcatAndDel(&s, PyString_FromString(": "));
+		PyUnicode_AppendAndDel(&s, cls_str);
+		PyUnicode_AppendAndDel(&s, PyUnicode_FromString(": "));
 		if (s == NULL)
 			goto error;
 	} else
 		PyErr_Clear();
 	msg_str = PyObject_Str(v);
 	if (msg_str)
-		PyString_ConcatAndDel(&s, msg_str);
+		PyUnicode_AppendAndDel(&s, msg_str);
 	else {
 		PyErr_Clear();
-		PyString_ConcatAndDel(&s, PyString_FromString("???"));
+		PyUnicode_AppendAndDel(&s, PyUnicode_FromString("???"));
 		if (s == NULL)
 			goto error;
 	}
@@ -1020,12 +1020,12 @@ PyObject *_CallProc(PPROC pProc,
 		if (*(int *)resbuf & 0x80000000)
 			retval = GetComError(*(HRESULT *)resbuf, iid, pIunk);
 		else
-			retval = PyInt_FromLong(*(int *)resbuf);
+			retval = PyLong_FromLong(*(int *)resbuf);
 	} else if (flags & FUNCFLAG_HRESULT) {
 		if (*(int *)resbuf & 0x80000000)
 			retval = PyErr_SetFromWindowsErr(*(int *)resbuf);
 		else
-			retval = PyInt_FromLong(*(int *)resbuf);
+			retval = PyLong_FromLong(*(int *)resbuf);
 	} else
 #endif
 		retval = GetResult(restype, resbuf, checker);
@@ -1087,34 +1087,18 @@ The handle may be used to locate exported functions in this\n\
 module.\n";
 static PyObject *load_library(PyObject *self, PyObject *args)
 {
-	TCHAR *name;
+	WCHAR *name;
 	PyObject *nameobj;
 	PyObject *ignored;
 	HMODULE hMod;
 	if (!PyArg_ParseTuple(args, "O|O:LoadLibrary", &nameobj, &ignored))
 		return NULL;
-#ifdef _UNICODE
-	name = alloca((PyString_Size(nameobj) + 1) * sizeof(WCHAR));
-	if (!name) {
-		PyErr_NoMemory();
-		return NULL;
-	}
 
-	{
-		int r;
-		char *aname = PyString_AsString(nameobj);
-		if(!aname)
-			return NULL;
-		r = MultiByteToWideChar(CP_ACP, 0, aname, -1, name, PyString_Size(nameobj) + 1);
-		name[r] = 0;
-	}
-#else
-	name = PyString_AsString(nameobj);
-	if(!name)
+	name = PyUnicode_AsUnicode(nameobj);
+	if (!name)
 		return NULL;
-#endif
 
-	hMod = LoadLibrary(name);
+	hMod = LoadLibraryW(name);
 	if (!hMod)
 		return PyErr_SetFromWindowsErr(GetLastError());
 #ifdef _WIN64
@@ -1169,7 +1153,7 @@ call_commethod(PyObject *self, PyObject *args)
 	if (!CDataObject_Check(pcom) || (pcom->b_size != sizeof(void *))) {
 		PyErr_Format(PyExc_TypeError,
 			     "COM Pointer expected instead of %s instance",
-			     Py_Type(pcom)->tp_name);
+			     Py_TYPE(pcom)->tp_name);
 		return NULL;
 	}
 
@@ -1214,12 +1198,12 @@ copy_com_pointer(PyObject *self, PyObject *args)
 	pdst = (IUnknown **)b.value.p;
 
 	if (pdst == NULL)
-		r = PyInt_FromLong(E_POINTER);
+		r = PyLong_FromLong(E_POINTER);
 	else {
 		if (src)
 			src->lpVtbl->AddRef(src);
 		*pdst = src;
-		r = PyInt_FromLong(S_OK);
+		r = PyLong_FromLong(S_OK);
 	}
   done:
 	Py_XDECREF(a.keep);
@@ -1361,10 +1345,10 @@ sizeof_func(PyObject *self, PyObject *obj)
 
 	dict = PyType_stgdict(obj);
 	if (dict)
-		return PyInt_FromSsize_t(dict->size);
+		return PyLong_FromSsize_t(dict->size);
 
 	if (CDataObject_Check(obj))
-		return PyInt_FromSsize_t(((CDataObject *)obj)->b_size);
+		return PyLong_FromSsize_t(((CDataObject *)obj)->b_size);
 	PyErr_SetString(PyExc_TypeError,
 			"this type has no size");
 	return NULL;
@@ -1382,11 +1366,11 @@ align_func(PyObject *self, PyObject *obj)
 
 	dict = PyType_stgdict(obj);
 	if (dict)
-		return PyInt_FromSsize_t(dict->align);
+		return PyLong_FromSsize_t(dict->align);
 
 	dict = PyObject_stgdict(obj);
 	if (dict)
-		return PyInt_FromSsize_t(dict->align);
+		return PyLong_FromSsize_t(dict->align);
 
 	PyErr_SetString(PyExc_TypeError,
 			"no alignment info");
@@ -1409,7 +1393,7 @@ byref(PyObject *self, PyObject *obj)
 	if (!CDataObject_Check(obj)) {
 		PyErr_Format(PyExc_TypeError,
 			     "byref() argument must be a ctypes instance, not '%s'",
-			     Py_Type(obj)->tp_name);
+			     Py_TYPE(obj)->tp_name);
 		return NULL;
 	}
 
@@ -1559,7 +1543,30 @@ resize(PyObject *self, PyObject *args)
 	return Py_None;
 }
 
+static PyObject *
+unpickle(PyObject *self, PyObject *args)
+{
+	PyObject *typ;
+	PyObject *state;
+	PyObject *result;
+	PyObject *tmp;
+
+	if (!PyArg_ParseTuple(args, "OO", &typ, &state))
+		return NULL;
+	result = PyObject_CallMethod(typ, "__new__", "O", typ);
+	if (result == NULL)
+		return NULL;
+	tmp = PyObject_CallMethod(result, "__setstate__", "O", state);
+	if (tmp == NULL) {
+		Py_DECREF(result);
+		return NULL;
+	}
+	Py_DECREF(tmp);
+	return result;
+}
+
 PyMethodDef module_methods[] = {
+	{"_unpickle", unpickle, METH_VARARGS },
 	{"resize", resize, METH_VARARGS, "Resize the memory buffer of a ctypes instance"},
 #ifdef CTYPES_UNICODE
 	{"set_conversion_mode", set_conversion_mode, METH_VARARGS, set_conversion_mode_doc},

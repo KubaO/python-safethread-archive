@@ -1,30 +1,45 @@
 """Unit tests for collections.py."""
 
-import unittest
+import unittest, doctest
 from test import test_support
-from collections import NamedTuple
+from collections import namedtuple
 from collections import Hashable, Iterable, Iterator
 from collections import Sized, Container, Callable
 from collections import Set, MutableSet
 from collections import Mapping, MutableMapping
 from collections import Sequence, MutableSequence
+from collections import ByteString
 
 
 class TestNamedTuple(unittest.TestCase):
 
     def test_factory(self):
-        Point = NamedTuple('Point', 'x y')
+        Point = namedtuple('Point', 'x y')
         self.assertEqual(Point.__name__, 'Point')
         self.assertEqual(Point.__doc__, 'Point(x, y)')
         self.assertEqual(Point.__slots__, ())
         self.assertEqual(Point.__module__, __name__)
         self.assertEqual(Point.__getitem__, tuple.__getitem__)
-        self.assertRaises(ValueError, NamedTuple, 'abc%', 'def ghi')
-        self.assertRaises(ValueError, NamedTuple, 'abc', 'def g%hi')
-        NamedTuple('Point0', 'x1 y2')   # Verify that numbers are allowed in names
+        self.assertEqual(Point._fields, ('x', 'y'))
+
+        self.assertRaises(ValueError, namedtuple, 'abc%', 'efg ghi')       # type has non-alpha char
+        self.assertRaises(ValueError, namedtuple, 'class', 'efg ghi')      # type has keyword
+        self.assertRaises(ValueError, namedtuple, '9abc', 'efg ghi')       # type starts with digit
+
+        self.assertRaises(ValueError, namedtuple, 'abc', 'efg g%hi')       # field with non-alpha char
+        self.assertRaises(ValueError, namedtuple, 'abc', 'abc class')      # field has keyword
+        self.assertRaises(ValueError, namedtuple, 'abc', '8efg 9ghi')      # field starts with digit
+        self.assertRaises(ValueError, namedtuple, 'abc', '_efg ghi')       # field with leading underscore
+        self.assertRaises(ValueError, namedtuple, 'abc', 'efg efg ghi')    # duplicate field
+
+        namedtuple('Point0', 'x1 y2')   # Verify that numbers are allowed in names
+        namedtuple('_', 'a b c')        # Test leading underscores in a typename
+
+        self.assertRaises(TypeError, Point._make, [11])                     # catch too few args
+        self.assertRaises(TypeError, Point._make, [11, 22, 33])             # catch too many args
 
     def test_instance(self):
-        Point = NamedTuple('Point', 'x y')
+        Point = namedtuple('Point', 'x y')
         p = Point(11, 22)
         self.assertEqual(p, Point(x=11, y=22))
         self.assertEqual(p, Point(11, y=22))
@@ -38,16 +53,30 @@ class TestNamedTuple(unittest.TestCase):
         self.assertEqual(repr(p), 'Point(x=11, y=22)')
         self.assert_('__dict__' not in dir(p))                              # verify instance has no dict
         self.assert_('__weakref__' not in dir(p))
-        self.assertEqual(p.__fields__, ('x', 'y'))                          # test __fields__ attribute
-        self.assertEqual(p.__replace__('x', 1), (1, 22))                    # test __replace__ method
+        self.assertEqual(p, Point._make([11, 22]))                          # test _make classmethod
+        self.assertEqual(p._fields, ('x', 'y'))                             # test _fields attribute
+        self.assertEqual(p._replace(x=1), (1, 22))                          # test _replace method
+        self.assertEqual(p._asdict(), dict(x=11, y=22))                     # test _asdict method
+
+        try:
+            p._replace(x=1, error=2)
+        except ValueError:
+            pass
+        else:
+            self._fail('Did not detect an incorrect fieldname')
 
         # verify that field string can have commas
-        Point = NamedTuple('Point', 'x, y')
+        Point = namedtuple('Point', 'x, y')
+        p = Point(x=11, y=22)
+        self.assertEqual(repr(p), 'Point(x=11, y=22)')
+
+        # verify that fieldspec can be a non-string sequence
+        Point = namedtuple('Point', ('x', 'y'))
         p = Point(x=11, y=22)
         self.assertEqual(repr(p), 'Point(x=11, y=22)')
 
     def test_tupleness(self):
-        Point = NamedTuple('Point', 'x y')
+        Point = namedtuple('Point', 'x y')
         p = Point(11, 22)
 
         self.assert_(isinstance(p, tuple))
@@ -66,17 +95,48 @@ class TestNamedTuple(unittest.TestCase):
         self.assertRaises(AttributeError, eval, 'p.z', locals())
 
     def test_odd_sizes(self):
-        Zero = NamedTuple('Zero', '')
+        Zero = namedtuple('Zero', '')
         self.assertEqual(Zero(), ())
-        Dot = NamedTuple('Dot', 'd')
-        self.assertEqual(Dot(1), (1,))
+        self.assertEqual(Zero._make([]), ())
+        self.assertEqual(repr(Zero()), 'Zero()')
+        self.assertEqual(Zero()._asdict(), {})
+        self.assertEqual(Zero()._fields, ())
 
+        Dot = namedtuple('Dot', 'd')
+        self.assertEqual(Dot(1), (1,))
+        self.assertEqual(Dot._make([1]), (1,))
+        self.assertEqual(Dot(1).d, 1)
+        self.assertEqual(repr(Dot(1)), 'Dot(d=1)')
+        self.assertEqual(Dot(1)._asdict(), {'d':1})
+        self.assertEqual(Dot(1)._replace(d=999), (999,))
+        self.assertEqual(Dot(1)._fields, ('d',))
+
+        # n = 10000
+        n = 254 # SyntaxError: more than 255 arguments:
+        import string, random
+        names = [''.join([random.choice(string.ascii_letters) for j in range(10)]) for i in range(n)]
+        Big = namedtuple('Big', names)
+        b = Big(*range(n))
+        self.assertEqual(b, tuple(range(n)))
+        self.assertEqual(Big._make(range(n)), tuple(range(n)))
+        for pos, name in enumerate(names):
+            self.assertEqual(getattr(b, name), pos)
+        repr(b)                                 # make sure repr() doesn't blow-up
+        d = b._asdict()
+        d_expected = dict(zip(names, range(n)))
+        self.assertEqual(d, d_expected)
+        b2 = b._replace(**dict([(names[1], 999),(names[-5], 42)]))
+        b2_expected = list(range(n))
+        b2_expected[1] = 999
+        b2_expected[-5] = 42
+        self.assertEqual(b2, tuple(b2_expected))
+        self.assertEqual(b._fields, tuple(names))
 
 class TestOneTrickPonyABCs(unittest.TestCase):
 
     def test_Hashable(self):
         # Check some non-hashables
-        non_samples = [bytes(), list(), set(), dict()]
+        non_samples = [bytearray(), list(), set(), dict()]
         for x in non_samples:
             self.failIf(isinstance(x, Hashable), repr(x))
             self.failIf(issubclass(type(x), Hashable), repr(type(x)))
@@ -85,7 +145,7 @@ class TestOneTrickPonyABCs(unittest.TestCase):
                    int(), float(), complex(),
                    str(),
                    tuple(), frozenset(),
-                   int, list, object, type,
+                   int, list, object, type, bytes()
                    ]
         for x in samples:
             self.failUnless(isinstance(x, Hashable), repr(x))
@@ -235,21 +295,33 @@ class TestCollectionABCs(unittest.TestCase):
         for sample in [tuple, list, bytes, str]:
             self.failUnless(isinstance(sample(), Sequence))
             self.failUnless(issubclass(sample, Sequence))
-        self.failUnless(issubclass(basestring, Sequence))
+        self.failUnless(issubclass(str, Sequence))
+
+    def test_ByteString(self):
+        for sample in [bytes, bytearray]:
+            self.failUnless(isinstance(sample(), ByteString))
+            self.failUnless(issubclass(sample, ByteString))
+        for sample in [str, list, tuple]:
+            self.failIf(isinstance(sample(), ByteString))
+            self.failIf(issubclass(sample, ByteString))
+        self.failIf(isinstance(memoryview(b""), ByteString))
+        self.failIf(issubclass(memoryview, ByteString))
 
     def test_MutableSequence(self):
-        for sample in [tuple, str]:
+        for sample in [tuple, str, bytes]:
             self.failIf(isinstance(sample(), MutableSequence))
             self.failIf(issubclass(sample, MutableSequence))
-        for sample in [list, bytes]:
+        for sample in [list, bytearray]:
             self.failUnless(isinstance(sample(), MutableSequence))
             self.failUnless(issubclass(sample, MutableSequence))
-        self.failIf(issubclass(basestring, MutableSequence))
+        self.failIf(issubclass(str, MutableSequence))
 
+import doctest, collections
+NamedTupleDocs = doctest.DocTestSuite(module=collections)
 
 def test_main(verbose=None):
     import collections as CollectionsModule
-    test_classes = [TestNamedTuple, TestOneTrickPonyABCs, TestCollectionABCs]
+    test_classes = [TestNamedTuple, NamedTupleDocs, TestOneTrickPonyABCs, TestCollectionABCs]
     test_support.run_unittest(*test_classes)
     test_support.run_doctest(CollectionsModule, verbose)
 

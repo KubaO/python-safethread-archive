@@ -1,5 +1,4 @@
 import sys
-import os
 import linecache
 import time
 import socket
@@ -38,10 +37,11 @@ else:
 
 # Thread shared globals: Establish a queue between a subthread (which handles
 # the socket) and the main thread (which runs user code), plus global
-# completion and exit flags:
+# completion, exit and interruptable (the main thread) flags:
 
 exit_now = False
 quitting = False
+interruptable = False
 
 def main(del_exitfunc=False):
     """Start the Python execution server in a subprocess
@@ -115,8 +115,8 @@ def manage_socket(address):
             server = MyRPCServer(address, MyHandler)
             break
         except socket.error as err:
-            print("IDLE Subprocess: socket error: "\
-                                        + err[1] + ", retrying....", file=sys.__stderr__)
+            print("IDLE Subprocess: socket error: " + err.args[1] +
+                  ", retrying....", file=sys.__stderr__)
     else:
         print("IDLE Subprocess: Connection to "\
                                "IDLE GUI failed, exiting.", file=sys.__stderr__)
@@ -131,14 +131,15 @@ def show_socket_error(err, address):
     import tkMessageBox
     root = Tkinter.Tk()
     root.withdraw()
-    if err[0] == 61: # connection refused
+    if err.args[0] == 61: # connection refused
         msg = "IDLE's subprocess can't connect to %s:%d.  This may be due "\
               "to your personal firewall configuration.  It is safe to "\
               "allow this internal connection because no data is visible on "\
               "external ports." % address
         tkMessageBox.showerror("IDLE Subprocess Error", msg, parent=root)
     else:
-        tkMessageBox.showerror("IDLE Subprocess Error", "Socket Error: %s" % err[1])
+        tkMessageBox.showerror("IDLE Subprocess Error",
+                               "Socket Error: %s" % err.args[1])
     root.destroy()
 
 def print_exception():
@@ -245,6 +246,9 @@ class MyHandler(rpc.RPCHandler):
         sys.stdin = self.console = self.get_remote_proxy("stdin")
         sys.stdout = self.get_remote_proxy("stdout")
         sys.stderr = self.get_remote_proxy("stderr")
+        # page help() text to shell.
+        import pydoc # import must be done here to capture i/o binding
+        pydoc.pager = pydoc.plainpager
         from idlelib import IOBinding
         sys.stdin.encoding = sys.stdout.encoding = \
                              sys.stderr.encoding = IOBinding.encoding
@@ -277,9 +281,14 @@ class Executive(object):
         self.autocomplete = AutoComplete.AutoComplete()
 
     def runcode(self, code):
+        global interruptable
         try:
             self.usr_exc_info = None
-            exec(code, self.locals)
+            interruptable = True
+            try:
+                exec(code, self.locals)
+            finally:
+                interruptable = False
         except:
             self.usr_exc_info = sys.exc_info()
             if quitting:
@@ -293,7 +302,8 @@ class Executive(object):
             flush_stdout()
 
     def interrupt_the_server(self):
-        thread.interrupt_main()
+        if interruptable:
+            thread.interrupt_main()
 
     def start_the_debugger(self, gui_adap_oid):
         return RemoteDebugger.start_debugger(self.rpchandler, gui_adap_oid)

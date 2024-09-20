@@ -1,7 +1,6 @@
 "Test the functionality of Python classes implementing operators."
 
 import unittest
-import sys
 
 from test import test_support
 
@@ -552,7 +551,7 @@ class ClassTests(unittest.TestCase):
         self.assertEquals(hash(B.f), hash(A.f))
 
         # the following triggers a SystemError in 2.4
-        a = A(hash(A.f.im_func)^(-1))
+        a = A(hash(A.f)^(-1))
         hash(a.f)
 
 def test_main():

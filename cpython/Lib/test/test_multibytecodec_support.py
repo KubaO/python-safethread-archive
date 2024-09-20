@@ -4,7 +4,7 @@
 #   Common Unittest Routines for CJK codecs
 #
 
-import sys, codecs, os.path
+import sys, codecs
 import unittest, re
 from test import test_support
 from io import BytesIO
@@ -31,8 +31,14 @@ class TestBase:
         self.incrementaldecoder = self.codec.incrementaldecoder
 
     def test_chunkcoding(self):
-        for native, utf8 in zip(*[map(bytes, str8(f).splitlines(1))
-                                  for f in self.tstring]):
+        tstring_lines = []
+        for b in self.tstring:
+            lines = b.split(b"\n")
+            last = lines.pop()
+            assert last == b""
+            lines = [line + b"\n" for line in lines]
+            tstring_lines.append(lines)
+        for native, utf8 in zip(*tstring_lines):
             u = self.decode(native)[0]
             self.assertEqual(u, utf8.decode('utf-8'))
             if self.roundtriptest:
@@ -46,6 +52,10 @@ class TestBase:
                 func = self.encode
             if expected:
                 result = func(source, scheme)[0]
+                if func is self.decode:
+                    self.assert_(type(result) is str, type(result))
+                else:
+                    self.assert_(type(result) is bytes, type(result))
                 self.assertEqual(result, expected)
             else:
                 self.assertRaises(UnicodeError, func, source, scheme)
@@ -104,7 +114,7 @@ class TestBase:
                                      'test.cjktest'), (b'abcdxefgh', 9))
 
         def myreplace(exc):
-            return ('x', sys.maxint + 1)
+            return ('x', sys.maxsize + 1)
         codecs.register_error("test.cjktest", myreplace)
         self.assertRaises(IndexError, self.encode, self.unmappedunicode,
                           'test.cjktest')

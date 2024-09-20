@@ -1,4 +1,3 @@
-import sys
 import unittest
 from test import test_support
 
@@ -15,6 +14,13 @@ class Cmp:
 
     def __eq__(self, other):
         return self.arg == other
+
+class Anything:
+    def __eq__(self, other):
+        return True
+
+    def __ne__(self, other):
+        return False
 
 class ComparisonTest(unittest.TestCase):
     set1 = [2, 2.0, 2, 2+0j, Cmp(2.0)]
@@ -44,6 +50,15 @@ class ComparisonTest(unittest.TestCase):
         b = Cmp(1)
         self.assertTrue(a == b)
         self.assertFalse(a != b)
+
+    def test_issue_1393(self):
+        x = lambda: None
+        self.assertEqual(x, Anything())
+        self.assertEqual(Anything(), x)
+        y = object()
+        self.assertEqual(y, Anything())
+        self.assertEqual(Anything(), y)
+
 
 def test_main():
     test_support.run_unittest(ComparisonTest)

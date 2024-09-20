@@ -409,7 +409,7 @@ SHA256_copy(SHAobject *self, PyObject *unused)
 {
     SHAobject *newobj;
 
-    if (Py_Type(self) == &SHA256type) {
+    if (Py_TYPE(self) == &SHA256type) {
         if ( (newobj = newSHA256object())==NULL)
             return NULL;
     } else {
@@ -432,7 +432,7 @@ SHA256_digest(SHAobject *self, PyObject *unused)
 
     SHAcopy(self, &temp);
     sha_final(digest, &temp);
-    return PyBytes_FromStringAndSize((const char *)digest, self->digestsize);
+    return PyString_FromStringAndSize((const char *)digest, self->digestsize);
 }
 
 PyDoc_STRVAR(SHA256_hexdigest__doc__,
@@ -503,7 +503,7 @@ static PyMethodDef SHA_methods[] = {
 static PyObject *
 SHA256_get_block_size(PyObject *self, void *closure)
 {
-    return PyInt_FromLong(SHA_BLOCKSIZE);
+    return PyLong_FromLong(SHA_BLOCKSIZE);
 }
 
 static PyObject *
@@ -687,10 +687,10 @@ init_sha256(void)
 {
     PyObject *m;
 
-    Py_Type(&SHA224type) = &PyType_Type;
+    Py_TYPE(&SHA224type) = &PyType_Type;
     if (PyType_Ready(&SHA224type) < 0)
         return;
-    Py_Type(&SHA256type) = &PyType_Type;
+    Py_TYPE(&SHA256type) = &PyType_Type;
     if (PyType_Ready(&SHA256type) < 0)
         return;
     m = Py_InitModule("_sha256", SHA_functions);

@@ -115,13 +115,13 @@ class SlicesTestCase(unittest.TestCase):
         dll.my_strdup.errcheck = errcheck
         try:
             res = dll.my_strdup(s)
-            self.failUnlessEqual(res, str(s))
+            self.failUnlessEqual(res, s.decode())
         finally:
             del dll.my_strdup.errcheck
 
 
     def test_char_array(self):
-        s = "abcdefghijklmnopqrstuvwxyz\0"
+        s = b"abcdefghijklmnopqrstuvwxyz\0"
 
         p = (c_char * 27)(*s)
         self.failUnlessEqual(p[:], s)

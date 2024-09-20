@@ -4,7 +4,6 @@ import sys
 import os
 import tempfile
 import textwrap
-import traceback
 import unittest
 from test import test_support
 
@@ -43,14 +42,18 @@ def fixdir(lst):
 # from package import * (defined in __init__)
 
 
-class Test(unittest.TestCase):
+class TestPkg(unittest.TestCase):
 
     def setUp(self):
         self.root = None
         self.syspath = list(sys.path)
+        self.sysmodules = sys.modules.copy()
 
     def tearDown(self):
         sys.path[:] = self.syspath
+        sys.modules.clear()
+        sys.modules.update(self.sysmodules)
+        del self.sysmodules
         cleanout(self.root)
 
     def run_code(self, code):
@@ -188,11 +191,13 @@ class Test(unittest.TestCase):
         import t5
         self.assertEqual(fixdir(dir(t5)),
                          ['__doc__', '__file__', '__name__',
-                          '__path__', 'foo', 'string', 't5'])
+                          '__package__', '__path__', 'foo', 'string', 't5'])
         self.assertEqual(fixdir(dir(t5.foo)),
-                         ['__doc__', '__file__', '__name__', 'string'])
+                         ['__doc__', '__file__', '__name__', '__package__',
+                          'string'])
         self.assertEqual(fixdir(dir(t5.string)),
-                         ['__doc__', '__file__', '__name__', 'spam'])
+                         ['__doc__', '__file__', '__name__','__package__',
+                          'spam'])
 
     def test_6(self):
         hier = [
@@ -208,14 +213,14 @@ class Test(unittest.TestCase):
         import t6
         self.assertEqual(fixdir(dir(t6)),
                          ['__all__', '__doc__', '__file__',
-                          '__name__', '__path__'])
+                          '__name__', '__package__', '__path__'])
         s = """
             import t6
             from t6 import *
             self.assertEqual(fixdir(dir(t6)),
                              ['__all__', '__doc__', '__file__',
-                              '__name__', '__path__', 'eggs',
-                              'ham', 'spam'])
+                              '__name__', '__package__', '__path__',
+                              'eggs', 'ham', 'spam'])
             self.assertEqual(dir(), ['eggs', 'ham', 'self', 'spam', 't6'])
             """
         self.run_code(s)
@@ -241,17 +246,19 @@ class Test(unittest.TestCase):
         t7, sub, subsub = None, None, None
         import t7 as tas
         self.assertEqual(fixdir(dir(tas)),
-                         ['__doc__', '__file__', '__name__', '__path__'])
+                         ['__doc__', '__file__', '__name__',
+                          '__package__', '__path__'])
         self.failIf(t7)
         from t7 import sub as subpar
         self.assertEqual(fixdir(dir(subpar)),
-                         ['__doc__', '__file__', '__name__', '__path__'])
+                         ['__doc__', '__file__', '__name__',
+                          '__package__', '__path__'])
         self.failIf(t7)
         self.failIf(sub)
         from t7.sub import subsub as subsubsub
         self.assertEqual(fixdir(dir(subsubsub)),
-                         ['__doc__', '__file__', '__name__', '__path__',
-                          'spam'])
+                         ['__doc__', '__file__', '__name__',
+                         '__package__', '__path__', 'spam'])
         self.failIf(t7)
         self.failIf(sub)
         self.failIf(subsub)

@@ -186,6 +186,12 @@ extern int chmod(const char *, int);
 #else
 extern int chmod(const char *, mode_t);
 #endif
+/*#ifdef HAVE_FCHMOD
+extern int fchmod(int, mode_t);
+#endif*/
+/*#ifdef HAVE_LCHMOD
+extern int lchmod(const char *, mode_t);
+#endif*/
 extern int chown(const char *, uid_t, gid_t);
 extern char *getcwd(char *, int);
 extern char *strerror(int);
@@ -302,10 +308,6 @@ extern int lstat(const char *, struct stat *);
 #define USE_CTERMID_R
 #endif
 
-#if defined(HAVE_TMPNAM_R) && defined(WITH_THREAD)
-#define USE_TMPNAM_R
-#endif
-
 /* choose the appropriate stat and fstat functions and return structs */
 #undef STAT
 #if defined(MS_WIN64) || defined(MS_WINDOWS)
@@ -344,7 +346,11 @@ static PyObject *
 convertenviron(void)
 {
 	PyObject *d;
+#ifdef MS_WINDOWS
+	wchar_t **e;
+#else
 	char **e;
+#endif
 	d = PyDict_New();
 	if (d == NULL)
 		return NULL;
@@ -352,21 +358,25 @@ convertenviron(void)
 	if (environ == NULL)
 		environ = *_NSGetEnviron();
 #endif
-	if (environ == NULL)
+#ifdef MS_WINDOWS
+	/* _wenviron must be initialized in this way if the program is started
+	   through main() instead of wmain(). */
+	_wgetenv(L"");
+	if (_wenviron == NULL)
 		return d;
 	/* This part ignores errors */
-	for (e = environ; *e != NULL; e++) {
+	for (e = _wenviron; *e != NULL; e++) {
 		PyObject *k;
 		PyObject *v;
-		char *p = strchr(*e, '=');
+		wchar_t *p = wcschr(*e, L'=');
 		if (p == NULL)
 			continue;
-		k = PyString_FromStringAndSize(*e, (int)(p-*e));
+		k = PyUnicode_FromWideChar(*e, (Py_ssize_t)(p-*e));
 		if (k == NULL) {
 			PyErr_Clear();
 			continue;
 		}
-		v = PyString_FromString(p+1);
+		v = PyUnicode_FromWideChar(p+1, wcslen(p+1));
 		if (v == NULL) {
 			PyErr_Clear();
 			Py_DECREF(k);
@@ -379,6 +389,35 @@ convertenviron(void)
 		Py_DECREF(k);
 		Py_DECREF(v);
 	}
+#else
+	if (environ == NULL)
+		return d;
+	/* This part ignores errors */
+	for (e = environ; *e != NULL; e++) {
+		PyObject *k;
+		PyObject *v;
+		char *p = strchr(*e, '=');
+		if (p == NULL)
+			continue;
+		k = PyUnicode_FromStringAndSize(*e, (int)(p-*e));
+		if (k == NULL) {
+			PyErr_Clear();
+			continue;
+		}
+		v = PyUnicode_FromString(p+1);
+		if (v == NULL) {
+			PyErr_Clear();
+			Py_DECREF(k);
+			continue;
+		}
+		if (PyDict_GetItem(d, k) == NULL) {
+			if (PyDict_SetItem(d, k, v) != 0)
+				PyErr_Clear();
+		}
+		Py_DECREF(k);
+		Py_DECREF(v);
+	}
+#endif
 #if defined(PYOS_OS2)
     {
         APIRET rc;
@@ -1242,7 +1281,7 @@ fill_time(PyObject *v, int index, time_t sec, unsigned long nsec)
 #if SIZEOF_TIME_T > SIZEOF_LONG
 	ival = PyLong_FromLongLong((PY_LONG_LONG)sec);
 #else
-	ival = PyInt_FromLong((long)sec);
+	ival = PyLong_FromLong((long)sec);
 #endif
 	if (!ival)
 		return;
@@ -1266,27 +1305,27 @@ _pystat_fromstructstat(STRUCT_STAT *st)
 	if (v == NULL)
 		return NULL;
 
-        PyStructSequence_SET_ITEM(v, 0, PyInt_FromLong((long)st->st_mode));
+        PyStructSequence_SET_ITEM(v, 0, PyLong_FromLong((long)st->st_mode));
 #ifdef HAVE_LARGEFILE_SUPPORT
         PyStructSequence_SET_ITEM(v, 1,
 				  PyLong_FromLongLong((PY_LONG_LONG)st->st_ino));
 #else
-        PyStructSequence_SET_ITEM(v, 1, PyInt_FromLong((long)st->st_ino));
+        PyStructSequence_SET_ITEM(v, 1, PyLong_FromLong((long)st->st_ino));
 #endif
 #if defined(HAVE_LONG_LONG) && !defined(MS_WINDOWS)
         PyStructSequence_SET_ITEM(v, 2,
 				  PyLong_FromLongLong((PY_LONG_LONG)st->st_dev));
 #else
-        PyStructSequence_SET_ITEM(v, 2, PyInt_FromLong((long)st->st_dev));
+        PyStructSequence_SET_ITEM(v, 2, PyLong_FromLong((long)st->st_dev));
 #endif
-        PyStructSequence_SET_ITEM(v, 3, PyInt_FromLong((long)st->st_nlink));
-        PyStructSequence_SET_ITEM(v, 4, PyInt_FromLong((long)st->st_uid));
-        PyStructSequence_SET_ITEM(v, 5, PyInt_FromLong((long)st->st_gid));
+        PyStructSequence_SET_ITEM(v, 3, PyLong_FromLong((long)st->st_nlink));
+        PyStructSequence_SET_ITEM(v, 4, PyLong_FromLong((long)st->st_uid));
+        PyStructSequence_SET_ITEM(v, 5, PyLong_FromLong((long)st->st_gid));
 #ifdef HAVE_LARGEFILE_SUPPORT
         PyStructSequence_SET_ITEM(v, 6,
 				  PyLong_FromLongLong((PY_LONG_LONG)st->st_size));
 #else
-        PyStructSequence_SET_ITEM(v, 6, PyInt_FromLong(st->st_size));
+        PyStructSequence_SET_ITEM(v, 6, PyLong_FromLong(st->st_size));
 #endif
 
 #if defined(HAVE_STAT_TV_NSEC)
@@ -1310,19 +1349,19 @@ _pystat_fromstructstat(STRUCT_STAT *st)
 
 #ifdef HAVE_STRUCT_STAT_ST_BLKSIZE
 	PyStructSequence_SET_ITEM(v, ST_BLKSIZE_IDX,
-			 PyInt_FromLong((long)st->st_blksize));
+			 PyLong_FromLong((long)st->st_blksize));
 #endif
 #ifdef HAVE_STRUCT_STAT_ST_BLOCKS
 	PyStructSequence_SET_ITEM(v, ST_BLOCKS_IDX,
-			 PyInt_FromLong((long)st->st_blocks));
+			 PyLong_FromLong((long)st->st_blocks));
 #endif
 #ifdef HAVE_STRUCT_STAT_ST_RDEV
 	PyStructSequence_SET_ITEM(v, ST_RDEV_IDX,
-			 PyInt_FromLong((long)st->st_rdev));
+			 PyLong_FromLong((long)st->st_rdev));
 #endif
 #ifdef HAVE_STRUCT_STAT_ST_GEN
 	PyStructSequence_SET_ITEM(v, ST_GEN_IDX,
-			 PyInt_FromLong((long)st->st_gen));
+			 PyLong_FromLong((long)st->st_gen));
 #endif
 #ifdef HAVE_STRUCT_STAT_ST_BIRTHTIME
 	{
@@ -1337,7 +1376,7 @@ _pystat_fromstructstat(STRUCT_STAT *st)
 	  if (_stat_float_times) {
 	    val = PyFloat_FromDouble(bsec + 1e-9*bnsec);
 	  } else {
-	    val = PyInt_FromLong((long)bsec);
+	    val = PyLong_FromLong((long)bsec);
 	  }
 	  PyStructSequence_SET_ITEM(v, ST_BIRTHTIME_IDX,
 				    val);
@@ -1345,7 +1384,7 @@ _pystat_fromstructstat(STRUCT_STAT *st)
 #endif
 #ifdef HAVE_STRUCT_STAT_ST_FLAGS
 	PyStructSequence_SET_ITEM(v, ST_FLAGS_IDX,
-			 PyInt_FromLong((long)st->st_flags));
+			 PyLong_FromLong((long)st->st_flags));
 #endif
 
 	if (PyErr_Occurred()) {
@@ -1526,8 +1565,11 @@ finish:
 		/* File does not exist, or cannot read attributes */
 		return PyBool_FromLong(0);
 	/* Access is possible if either write access wasn't requested, or
-	   the file isn't read-only. */
-	return PyBool_FromLong(!(mode & 2) || !(attr & FILE_ATTRIBUTE_READONLY));
+	   the file isn't read-only, or if it's a directory, as there are
+	   no read-only directories on Windows. */
+	return PyBool_FromLong(!(mode & 2) 
+	                       || !(attr & FILE_ATTRIBUTE_READONLY)
+			       || (attr & FILE_ATTRIBUTE_DIRECTORY));
 #else
 	int res;
 	if (!PyArg_ParseTuple(args, "eti:access", 
@@ -1714,6 +1756,52 @@ posix_chmod(PyObject *self, PyObject *args)
 #endif
 }
 
+#ifdef HAVE_FCHMOD
+PyDoc_STRVAR(posix_fchmod__doc__,
+"fchmod(fd, mode)\n\n\
+Change the access permissions of the file given by file\n\
+descriptor fd.");
+
+static PyObject *
+posix_fchmod(PyObject *self, PyObject *args)
+{
+	int fd, mode, res;
+	if (!PyArg_ParseTuple(args, "ii:fchmod", &fd, &mode))
+		return NULL;
+	Py_BEGIN_ALLOW_THREADS
+	res = fchmod(fd, mode);
+	Py_END_ALLOW_THREADS
+	if (res < 0)
+		return posix_error();
+	Py_RETURN_NONE;
+}
+#endif /* HAVE_FCHMOD */
+
+#ifdef HAVE_LCHMOD
+PyDoc_STRVAR(posix_lchmod__doc__,
+"lchmod(path, mode)\n\n\
+Change the access permissions of a file. If path is a symlink, this\n\
+affects the link itself rather than the target.");
+
+static PyObject *
+posix_lchmod(PyObject *self, PyObject *args)
+{
+	char *path = NULL;
+	int i;
+	int res;
+	if (!PyArg_ParseTuple(args, "eti:lchmod", Py_FileSystemDefaultEncoding,
+	                      &path, &i))
+		return NULL;
+	Py_BEGIN_ALLOW_THREADS
+	res = lchmod(path, i);
+	Py_END_ALLOW_THREADS
+	if (res < 0)
+		return posix_error_with_allocated_filename(path);
+	PyMem_Free(path);
+	Py_RETURN_NONE;
+}
+#endif /* HAVE_LCHMOD */
+
 
 #ifdef HAVE_CHFLAGS
 PyDoc_STRVAR(posix_chflags__doc__,
@@ -1834,6 +1922,28 @@ posix_chown(PyObject *self, PyObject *args)
 	return Py_None;
 }
 #endif /* HAVE_CHOWN */
+
+#ifdef HAVE_FCHOWN
+PyDoc_STRVAR(posix_fchown__doc__,
+"fchown(fd, uid, gid)\n\n\
+Change the owner and group id of the file given by file descriptor\n\
+fd to the numeric uid and gid.");
+
+static PyObject *
+posix_fchown(PyObject *self, PyObject *args)
+{
+	int fd, uid, gid;
+	int res;
+	if (!PyArg_ParseTuple(args, "iii:chown", &fd, &uid, &gid))
+		return NULL;
+	Py_BEGIN_ALLOW_THREADS
+	res = fchown(fd, (uid_t) uid, (gid_t) gid);
+	Py_END_ALLOW_THREADS
+	if (res < 0)
+		return posix_error();
+	Py_RETURN_NONE;
+}
+#endif /* HAVE_FCHOWN */
 
 #ifdef HAVE_LCHOWN
 PyDoc_STRVAR(posix_lchown__doc__,
@@ -2135,10 +2245,12 @@ posix_listdir(PyObject *self, PyObject *args)
     FILEFINDBUF3   ep;
     APIRET rc;
 
-    if (!PyArg_ParseTuple(args, "t#:listdir", &name, &len))
+    if (!PyArg_ParseTuple(args, "et#:listdir", 
+                          Py_FileSystemDefaultEncoding, &name, &len))
         return NULL;
     if (len >= MAX_PATH) {
-		PyErr_SetString(PyExc_ValueError, "path too long");
+        PyMem_Free(name);
+        PyErr_SetString(PyExc_ValueError, "path too long");
         return NULL;
     }
     strcpy(namebuf, name);
@@ -2149,8 +2261,10 @@ posix_listdir(PyObject *self, PyObject *args)
         namebuf[len++] = SEP;
     strcpy(namebuf + len, "*.*");
 
-	if ((d = PyList_New(0)) == NULL)
+    if ((d = PyList_New(0)) == NULL) {
+        PyMem_Free(name);
         return NULL;
+    }
 
     rc = DosFindFirst(namebuf,         /* Wildcard Pattern to Match */
                       &hdir,           /* Handle to Use While Search Directory */
@@ -2161,7 +2275,7 @@ posix_listdir(PyObject *self, PyObject *args)
 
     if (rc != NO_ERROR) {
         errno = ENOENT;
-        return posix_error_with_filename(name);
+        return posix_error_with_allocated_filename(name);
     }
 
     if (srchcnt > 0) { /* If Directory is NOT Totally Empty, */
@@ -2191,6 +2305,7 @@ posix_listdir(PyObject *self, PyObject *args)
         } while (DosFindNext(hdir, &ep, sizeof(ep), &srchcnt) == NO_ERROR && srchcnt > 0);
     }
 
+    PyMem_Free(name);
     return d;
 #else
 
@@ -2416,7 +2531,7 @@ posix_nice(PyObject *self, PyObject *args)
 	if (value == -1 && errno != 0)
 		/* either nice() or getpriority() returned an error */
 		return posix_error();
-	return PyInt_FromLong((long) value);
+	return PyLong_FromLong((long) value);
 }
 #endif /* HAVE_NICE */
 
@@ -2502,14 +2617,24 @@ Execute the command (a string) in a subshell.");
 static PyObject *
 posix_system(PyObject *self, PyObject *args)
 {
-	char *command;
 	long sts;
+#ifdef MS_WINDOWS
+	wchar_t *command;
+	if (!PyArg_ParseTuple(args, "u:system", &command))
+		return NULL;
+#else
+	char *command;
 	if (!PyArg_ParseTuple(args, "s:system", &command))
 		return NULL;
+#endif
 	Py_BEGIN_ALLOW_THREADS
+#ifdef MS_WINDOWS
+	sts = _wsystem(command);
+#else
 	sts = system(command);
+#endif
 	Py_END_ALLOW_THREADS
-	return PyInt_FromLong(sts);
+	return PyLong_FromLong(sts);
 }
 #endif
 
@@ -2527,7 +2652,7 @@ posix_umask(PyObject *self, PyObject *args)
 	i = (int)umask(i);
 	if (i < 0)
 		return posix_error();
-	return PyInt_FromLong((long)i);
+	return PyLong_FromLong((long)i);
 }
 
 
@@ -2581,10 +2706,10 @@ extract_time(PyObject *t, long* sec, long* usec)
 	long intval;
 	if (PyFloat_Check(t)) {
 		double tval = PyFloat_AsDouble(t);
-		PyObject *intobj = Py_Type(t)->tp_as_number->nb_int(t);
+		PyObject *intobj = Py_TYPE(t)->tp_as_number->nb_int(t);
 		if (!intobj)
 			return -1;
-		intval = PyInt_AsLong(intobj);
+		intval = PyLong_AsLong(intobj);
 		Py_DECREF(intobj);
 		if (intval == -1 && PyErr_Occurred())
 			return -1;
@@ -2596,7 +2721,7 @@ extract_time(PyObject *t, long* sec, long* usec)
 			*usec = 0;
 		return 0;
 	}
-	intval = PyInt_AsLong(t);
+	intval = PyLong_AsLong(t);
 	if (intval == -1 && PyErr_Occurred())
 		return -1;
 	*sec = intval;
@@ -2978,7 +3103,7 @@ posix_execve(PyObject *self, PyObject *args)
         /* Omit Pseudo-Env Vars that Would Confuse Programs if Passed On */
         if (stricmp(k, "BEGINLIBPATH") != 0 && stricmp(k, "ENDLIBPATH") != 0) {
 #endif
-		len = PyString_Size(key) + PyString_Size(val) + 2;
+		len = PyUnicode_GetSize(key) + PyUnicode_GetSize(val) + 2;
 		p = PyMem_NEW(char, len);
 		if (p == NULL) {
 			PyErr_NoMemory();
@@ -3208,7 +3333,7 @@ posix_spawnve(PyObject *self, PyObject *args)
 		{
 			goto fail_2;
 		}
-		len = PyString_Size(key) + PyString_Size(val) + 2;
+		len = PyUnicode_GetSize(key) + PyUnicode_GetSize(val) + 2;
 		p = PyMem_NEW(char, len);
 		if (p == NULL) {
 			PyErr_NoMemory();
@@ -3441,7 +3566,7 @@ posix_spawnvpe(PyObject *self, PyObject *args)
 		{
 			goto fail_2;
 		}
-		len = PyString_Size(key) + PyString_Size(val) + 2;
+		len = PyUnicode_GetSize(key) + PyUnicode_GetSize(val) + 2;
 		p = PyMem_NEW(char, len);
 		if (p == NULL) {
 			PyErr_NoMemory();
@@ -3454,9 +3579,9 @@ posix_spawnvpe(PyObject *self, PyObject *args)
 
 	Py_BEGIN_ALLOW_THREADS
 #if defined(PYCC_GCC)
-	spawnval = spawnve(mode, path, argvlist, envlist);
+	spawnval = spawnvpe(mode, path, argvlist, envlist);
 #else
-	spawnval = _spawnve(mode, path, argvlist, envlist);
+	spawnval = _spawnvpe(mode, path, argvlist, envlist);
 #endif
 	Py_END_ALLOW_THREADS
 
@@ -3491,11 +3616,11 @@ Return 0 to child process and PID of child to parent process.");
 static PyObject *
 posix_fork1(PyObject *self, PyObject *noargs)
 {
-	int pid = fork1();
+	pid_t pid = fork1();
 	if (pid == -1)
 		return posix_error();
 	PyOS_AfterFork();
-	return PyInt_FromLong((long)pid);
+	return PyLong_FromLong(pid);
 }
 #endif
 
@@ -3509,12 +3634,12 @@ Return 0 to child process and PID of child to parent process.");
 static PyObject *
 posix_fork(PyObject *self, PyObject *noargs)
 {
-	int pid = fork();
+	pid_t pid = fork();
 	if (pid == -1)
 		return posix_error();
 	if (pid == 0)
 		PyOS_AfterFork();
-	return PyInt_FromLong((long)pid);
+	return PyLong_FromLong(pid);
 }
 #endif
 
@@ -3616,14 +3741,15 @@ To both, return fd of newly opened pseudo-terminal.\n");
 static PyObject *
 posix_forkpty(PyObject *self, PyObject *noargs)
 {
-	int master_fd = -1, pid;
+	int master_fd = -1;
+	pid_t pid;
 
 	pid = forkpty(&master_fd, NULL, NULL, NULL);
 	if (pid == -1)
 		return posix_error();
 	if (pid == 0)
 		PyOS_AfterFork();
-	return Py_BuildValue("(ii)", pid, master_fd);
+	return Py_BuildValue("(li)", pid, master_fd);
 }
 #endif
 
@@ -3635,7 +3761,7 @@ Return the current process's effective group id.");
 static PyObject *
 posix_getegid(PyObject *self, PyObject *noargs)
 {
-	return PyInt_FromLong((long)getegid());
+	return PyLong_FromLong((long)getegid());
 }
 #endif
 
@@ -3648,7 +3774,7 @@ Return the current process's effective user id.");
 static PyObject *
 posix_geteuid(PyObject *self, PyObject *noargs)
 {
-	return PyInt_FromLong((long)geteuid());
+	return PyLong_FromLong((long)geteuid());
 }
 #endif
 
@@ -3661,7 +3787,7 @@ Return the current process's group id.");
 static PyObject *
 posix_getgid(PyObject *self, PyObject *noargs)
 {
-	return PyInt_FromLong((long)getgid());
+	return PyLong_FromLong((long)getgid());
 }
 #endif
 
@@ -3673,7 +3799,7 @@ Return the current process id");
 static PyObject *
 posix_getpid(PyObject *self, PyObject *noargs)
 {
-	return PyInt_FromLong((long)getpid());
+	return PyLong_FromLong((long)getpid());
 }
 
 
@@ -3704,7 +3830,7 @@ posix_getgroups(PyObject *self, PyObject *noargs)
             if (result != NULL) {
                 int i;
                 for (i = 0; i < n; ++i) {
-                    PyObject *o = PyInt_FromLong((long)grouplist[i]);
+                    PyObject *o = PyLong_FromLong((long)grouplist[i]);
                     if (o == NULL) {
                         Py_DECREF(result);
                         result = NULL;
@@ -3733,7 +3859,7 @@ posix_getpgid(PyObject *self, PyObject *args)
 	pgid = getpgid(pid);
 	if (pgid < 0)
 		return posix_error();
-	return PyInt_FromLong((long)pgid);
+	return PyLong_FromLong((long)pgid);
 }
 #endif /* HAVE_GETPGID */
 
@@ -3747,9 +3873,9 @@ static PyObject *
 posix_getpgrp(PyObject *self, PyObject *noargs)
 {
 #ifdef GETPGRP_HAVE_ARG
-	return PyInt_FromLong((long)getpgrp(0));
+	return PyLong_FromLong((long)getpgrp(0));
 #else /* GETPGRP_HAVE_ARG */
-	return PyInt_FromLong((long)getpgrp());
+	return PyLong_FromLong((long)getpgrp());
 #endif /* GETPGRP_HAVE_ARG */
 }
 #endif /* HAVE_GETPGRP */
@@ -3783,7 +3909,7 @@ Return the parent's process id.");
 static PyObject *
 posix_getppid(PyObject *self, PyObject *noargs)
 {
-	return PyInt_FromLong((long)getppid());
+	return PyLong_FromLong((long)getppid());
 }
 #endif
 
@@ -3825,7 +3951,7 @@ Return the current process's user id.");
 static PyObject *
 posix_getuid(PyObject *self, PyObject *noargs)
 {
-	return PyInt_FromLong((long)getuid());
+	return PyLong_FromLong((long)getuid());
 }
 #endif
 
@@ -3838,7 +3964,8 @@ Kill a process with a signal.");
 static PyObject *
 posix_kill(PyObject *self, PyObject *args)
 {
-	int pid, sig;
+	pid_t pid;
+	int sig;
 	if (!PyArg_ParseTuple(args, "ii:kill", &pid, &sig))
 		return NULL;
 #if defined(PYOS_OS2) && !defined(PYCC_GCC)
@@ -4083,7 +4210,7 @@ posix_setgroups(PyObject *self, PyObject *groups)
 
 #if defined(HAVE_WAIT3) || defined(HAVE_WAIT4)
 static PyObject *
-wait_helper(int pid, int status, struct rusage *ru)
+wait_helper(pid_t pid, int status, struct rusage *ru)
 {
 	PyObject *result;
    	static PyObject *struct_rusage;
@@ -4092,7 +4219,7 @@ wait_helper(int pid, int status, struct rusage *ru)
 		return posix_error();
 
 	if (struct_rusage == NULL) {
-		PyObject *m = PyImport_ImportModule("resource");
+		PyObject *m = PyImport_ImportModuleNoBlock("resource");
 		if (m == NULL)
 			return NULL;
 		struct_rusage = PyObject_GetAttrString(m, "struct_rusage");
@@ -4115,7 +4242,7 @@ wait_helper(int pid, int status, struct rusage *ru)
 	PyStructSequence_SET_ITEM(result, 1,
 			PyFloat_FromDouble(doubletime(ru->ru_stime)));
 #define SET_INT(result, index, value)\
-		PyStructSequence_SET_ITEM(result, index, PyInt_FromLong(value))
+		PyStructSequence_SET_ITEM(result, index, PyLong_FromLong(value))
 	SET_INT(result, 2, ru->ru_maxrss);
 	SET_INT(result, 3, ru->ru_ixrss);
 	SET_INT(result, 4, ru->ru_idrss);
@@ -4149,7 +4276,8 @@ Wait for completion of a child process.");
 static PyObject *
 posix_wait3(PyObject *self, PyObject *args)
 {
-	int pid, options;
+	pid_t pid;
+	int options;
 	struct rusage ru;
 	WAIT_TYPE status;
 	WAIT_STATUS_INT(status) = 0;
@@ -4173,7 +4301,8 @@ Wait for completion of a given child process.");
 static PyObject *
 posix_wait4(PyObject *self, PyObject *args)
 {
-	int pid, options;
+	pid_t pid;
+	int options;
 	struct rusage ru;
 	WAIT_TYPE status;
 	WAIT_STATUS_INT(status) = 0;
@@ -4197,7 +4326,8 @@ Wait for completion of a given child process.");
 static PyObject *
 posix_waitpid(PyObject *self, PyObject *args)
 {
-	int pid, options;
+	pid_t pid;
+	int options;
 	WAIT_TYPE status;
 	WAIT_STATUS_INT(status) = 0;
 
@@ -4246,7 +4376,7 @@ Wait for completion of a child process.");
 static PyObject *
 posix_wait(PyObject *self, PyObject *noargs)
 {
-	int pid;
+	pid_t pid;
 	WAIT_TYPE status;
 	WAIT_STATUS_INT(status) = 0;
 
@@ -4416,10 +4546,10 @@ posix_times(PyObject *self, PyObject *noargs)
 	*/
 	return Py_BuildValue(
 		"ddddd",
-		(double)(kernel.dwHighDateTime*429.4967296 +
-		         kernel.dwLowDateTime*1e-7),
 		(double)(user.dwHighDateTime*429.4967296 +
 		         user.dwLowDateTime*1e-7),
+		(double)(kernel.dwHighDateTime*429.4967296 +
+		         kernel.dwLowDateTime*1e-7),
 		(double)0,
 		(double)0,
 		(double)0);
@@ -4441,13 +4571,14 @@ Call the system call getsid().");
 static PyObject *
 posix_getsid(PyObject *self, PyObject *args)
 {
-	int pid, sid;
+	pid_t pid;
+	int sid;
 	if (!PyArg_ParseTuple(args, "i:getsid", &pid))
 		return NULL;
 	sid = getsid(pid);
 	if (sid < 0)
 		return posix_error();
-	return PyInt_FromLong((long)sid);
+	return PyLong_FromLong((long)sid);
 }
 #endif /* HAVE_GETSID */
 
@@ -4475,7 +4606,8 @@ Call the system call setpgid().");
 static PyObject *
 posix_setpgid(PyObject *self, PyObject *args)
 {
-	int pid, pgrp;
+	pid_t pid;
+	int pgrp;
 	if (!PyArg_ParseTuple(args, "ii:setpgid", &pid, &pgrp))
 		return NULL;
 	if (setpgid(pid, pgrp) < 0)
@@ -4494,13 +4626,14 @@ Return the process group associated with the terminal given by a fd.");
 static PyObject *
 posix_tcgetpgrp(PyObject *self, PyObject *args)
 {
-	int fd, pgid;
+	int fd;
+	pid_t pgid;
 	if (!PyArg_ParseTuple(args, "i:tcgetpgrp", &fd))
 		return NULL;
 	pgid = tcgetpgrp(fd);
 	if (pgid < 0)
 		return posix_error();
-	return PyInt_FromLong((long)pgid);
+	return PyLong_FromLong((long)pgid);
 }
 #endif /* HAVE_TCGETPGRP */
 
@@ -4548,7 +4681,7 @@ posix_open(PyObject *self, PyObject *args)
 			Py_END_ALLOW_THREADS
 			if (fd < 0)
 				return posix_error();
-			return PyInt_FromLong((long)fd);
+			return PyLong_FromLong((long)fd);
 		}
 		/* Drop the argument parsing error as narrow strings
 		   are also valid. */
@@ -4567,7 +4700,7 @@ posix_open(PyObject *self, PyObject *args)
 	if (fd < 0)
 		return posix_error_with_allocated_filename(file);
 	PyMem_Free(file);
-	return PyInt_FromLong((long)fd);
+	return PyLong_FromLong((long)fd);
 }
 
 
@@ -4591,6 +4724,24 @@ posix_close(PyObject *self, PyObject *args)
 }
 
 
+PyDoc_STRVAR(posix_closerange__doc__, 
+"closerange(fd_low, fd_high)\n\n\
+Closes all file descriptors in [fd_low, fd_high), ignoring errors.");
+
+static PyObject *
+posix_closerange(PyObject *self, PyObject *args)
+{
+	int fd_from, fd_to, i;
+	if (!PyArg_ParseTuple(args, "ii:closerange", &fd_from, &fd_to))
+		return NULL;
+	Py_BEGIN_ALLOW_THREADS
+	for (i = fd_from; i < fd_to; i++)
+		close(i);
+	Py_END_ALLOW_THREADS
+	Py_RETURN_NONE;
+}
+
+
 PyDoc_STRVAR(posix_dup__doc__,
 "dup(fd) -> fd2\n\n\
 Return a duplicate of a file descriptor.");
@@ -4606,7 +4757,7 @@ posix_dup(PyObject *self, PyObject *args)
 	Py_END_ALLOW_THREADS
 	if (fd < 0)
 		return posix_error();
-	return PyInt_FromLong((long)fd);
+	return PyLong_FromLong((long)fd);
 }
 
 
@@ -4656,10 +4807,10 @@ posix_lseek(PyObject *self, PyObject *args)
 #endif /* SEEK_END */
 
 #if !defined(HAVE_LARGEFILE_SUPPORT)
-	pos = PyInt_AsLong(posobj);
+	pos = PyLong_AsLong(posobj);
 #else
 	pos = PyLong_Check(posobj) ?
-		PyLong_AsLongLong(posobj) : PyInt_AsLong(posobj);
+		PyLong_AsLongLong(posobj) : PyLong_AsLong(posobj);
 #endif
 	if (PyErr_Occurred())
 		return NULL;
@@ -4675,7 +4826,7 @@ posix_lseek(PyObject *self, PyObject *args)
 		return posix_error();
 
 #if !defined(HAVE_LARGEFILE_SUPPORT)
-	return PyInt_FromLong(res);
+	return PyLong_FromLong(res);
 #else
 	return PyLong_FromLongLong(res);
 #endif
@@ -4698,18 +4849,18 @@ posix_read(PyObject *self, PyObject *args)
 		errno = EINVAL;
 		return posix_error();
 	}
-	buffer = PyBytes_FromStringAndSize((char *)NULL, size);
+	buffer = PyString_FromStringAndSize((char *)NULL, size);
 	if (buffer == NULL)
 		return NULL;
 	Py_BEGIN_ALLOW_THREADS
-	n = read(fd, PyBytes_AsString(buffer), size);
+	n = read(fd, PyString_AS_STRING(buffer), size);
 	Py_END_ALLOW_THREADS
 	if (n < 0) {
 		Py_DECREF(buffer);
 		return posix_error();
 	}
 	if (n != size)
-		PyBytes_Resize(buffer, n);
+		_PyString_Resize(&buffer, n);
 	return buffer;
 }
 
@@ -4732,7 +4883,7 @@ posix_write(PyObject *self, PyObject *args)
 	Py_END_ALLOW_THREADS
 	if (size < 0)
 		return posix_error();
-	return PyInt_FromSsize_t(size);
+	return PyLong_FromSsize_t(size);
 }
 
 
@@ -4892,7 +5043,7 @@ posix_major(PyObject *self, PyObject *args)
 	int device;
 	if (!PyArg_ParseTuple(args, "i:major", &device))
 		return NULL;
-	return PyInt_FromLong((long)major(device));
+	return PyLong_FromLong((long)major(device));
 }
 
 PyDoc_STRVAR(posix_minor__doc__,
@@ -4905,7 +5056,7 @@ posix_minor(PyObject *self, PyObject *args)
 	int device;
 	if (!PyArg_ParseTuple(args, "i:minor", &device))
 		return NULL;
-	return PyInt_FromLong((long)minor(device));
+	return PyLong_FromLong((long)minor(device));
 }
 
 PyDoc_STRVAR(posix_makedev__doc__,
@@ -4918,7 +5069,7 @@ posix_makedev(PyObject *self, PyObject *args)
 	int major, minor;
 	if (!PyArg_ParseTuple(args, "ii:makedev", &major, &minor))
 		return NULL;
-	return PyInt_FromLong((long)makedev(major, minor));
+	return PyLong_FromLong((long)makedev(major, minor));
 }
 #endif /* device macros */
 
@@ -4940,10 +5091,10 @@ posix_ftruncate(PyObject *self, PyObject *args)
 		return NULL;
 
 #if !defined(HAVE_LARGEFILE_SUPPORT)
-	length = PyInt_AsLong(lenobj);
+	length = PyLong_AsLong(lenobj);
 #else
 	length = PyLong_Check(lenobj) ?
-		PyLong_AsLongLong(lenobj) : PyInt_AsLong(lenobj);
+		PyLong_AsLongLong(lenobj) : PyLong_AsLong(lenobj);
 #endif
 	if (PyErr_Occurred())
 		return NULL;
@@ -4972,12 +5123,23 @@ static PyObject *posix_putenv_garbage;
 static PyObject *
 posix_putenv(PyObject *self, PyObject *args)
 {
+#ifdef MS_WINDOWS
+        wchar_t *s1, *s2;
+        wchar_t *newenv;
+#else
         char *s1, *s2;
         char *newenv;
+#endif
 	PyObject *newstr;
 	size_t len;
 
-	if (!PyArg_ParseTuple(args, "ss:putenv", &s1, &s2))
+	if (!PyArg_ParseTuple(args,
+#ifdef MS_WINDOWS
+			      "uu:putenv",
+#else
+			      "ss:putenv",
+#endif
+			      &s1, &s2))
 		return NULL;
 
 #if defined(PYOS_OS2)
@@ -4996,14 +5158,27 @@ posix_putenv(PyObject *self, PyObject *args)
             return os2_error(rc);
     } else {
 #endif
-
 	/* XXX This can leak memory -- not easy to fix :-( */
-	len = strlen(s1) + strlen(s2) + 2;
 	/* len includes space for a trailing \0; the size arg to
 	   PyString_FromStringAndSize does not count that */
+#ifdef MS_WINDOWS
+	len = wcslen(s1) + wcslen(s2) + 2;
+	newstr = PyUnicode_FromUnicode(NULL, (int)len - 1);
+#else
+	len = strlen(s1) + strlen(s2) + 2;
 	newstr = PyString_FromStringAndSize(NULL, (int)len - 1);
+#endif
 	if (newstr == NULL)
 		return PyErr_NoMemory();
+#ifdef MS_WINDOWS
+	newenv = PyUnicode_AsUnicode(newstr);
+	_snwprintf(newenv, len, L"%s=%s", s1, s2);
+	if (_wputenv(newenv)) {
+                Py_DECREF(newstr);
+                posix_error();
+                return NULL;
+	}
+#else
 	newenv = PyString_AS_STRING(newstr);
 	PyOS_snprintf(newenv, len, "%s=%s", s1, s2);
 	if (putenv(newenv)) {
@@ -5011,6 +5186,7 @@ posix_putenv(PyObject *self, PyObject *args)
                 posix_error();
                 return NULL;
 	}
+#endif
 	/* Install the first arg and newstr in posix_putenv_garbage;
 	 * this will cause previous value to be collected.  This has to
 	 * happen after the real putenv() call because the old value
@@ -5254,19 +5430,19 @@ _pystatvfs_fromstructstatvfs(struct statvfs st) {
 		return NULL;
 
 #if !defined(HAVE_LARGEFILE_SUPPORT)
-        PyStructSequence_SET_ITEM(v, 0, PyInt_FromLong((long) st.f_bsize));
-        PyStructSequence_SET_ITEM(v, 1, PyInt_FromLong((long) st.f_frsize));
-        PyStructSequence_SET_ITEM(v, 2, PyInt_FromLong((long) st.f_blocks));
-        PyStructSequence_SET_ITEM(v, 3, PyInt_FromLong((long) st.f_bfree));
-        PyStructSequence_SET_ITEM(v, 4, PyInt_FromLong((long) st.f_bavail));
-        PyStructSequence_SET_ITEM(v, 5, PyInt_FromLong((long) st.f_files));
-        PyStructSequence_SET_ITEM(v, 6, PyInt_FromLong((long) st.f_ffree));
-        PyStructSequence_SET_ITEM(v, 7, PyInt_FromLong((long) st.f_favail));
-        PyStructSequence_SET_ITEM(v, 8, PyInt_FromLong((long) st.f_flag));
-        PyStructSequence_SET_ITEM(v, 9, PyInt_FromLong((long) st.f_namemax));
+        PyStructSequence_SET_ITEM(v, 0, PyLong_FromLong((long) st.f_bsize));
+        PyStructSequence_SET_ITEM(v, 1, PyLong_FromLong((long) st.f_frsize));
+        PyStructSequence_SET_ITEM(v, 2, PyLong_FromLong((long) st.f_blocks));
+        PyStructSequence_SET_ITEM(v, 3, PyLong_FromLong((long) st.f_bfree));
+        PyStructSequence_SET_ITEM(v, 4, PyLong_FromLong((long) st.f_bavail));
+        PyStructSequence_SET_ITEM(v, 5, PyLong_FromLong((long) st.f_files));
+        PyStructSequence_SET_ITEM(v, 6, PyLong_FromLong((long) st.f_ffree));
+        PyStructSequence_SET_ITEM(v, 7, PyLong_FromLong((long) st.f_favail));
+        PyStructSequence_SET_ITEM(v, 8, PyLong_FromLong((long) st.f_flag));
+        PyStructSequence_SET_ITEM(v, 9, PyLong_FromLong((long) st.f_namemax));
 #else
-        PyStructSequence_SET_ITEM(v, 0, PyInt_FromLong((long) st.f_bsize));
-        PyStructSequence_SET_ITEM(v, 1, PyInt_FromLong((long) st.f_frsize));
+        PyStructSequence_SET_ITEM(v, 0, PyLong_FromLong((long) st.f_bsize));
+        PyStructSequence_SET_ITEM(v, 1, PyLong_FromLong((long) st.f_frsize));
         PyStructSequence_SET_ITEM(v, 2,
 			       PyLong_FromLongLong((PY_LONG_LONG) st.f_blocks));
         PyStructSequence_SET_ITEM(v, 3,
@@ -5279,8 +5455,8 @@ _pystatvfs_fromstructstatvfs(struct statvfs st) {
 			       PyLong_FromLongLong((PY_LONG_LONG) st.f_ffree));
         PyStructSequence_SET_ITEM(v, 7,
 			       PyLong_FromLongLong((PY_LONG_LONG) st.f_favail));
-        PyStructSequence_SET_ITEM(v, 8, PyInt_FromLong((long) st.f_flag));
-        PyStructSequence_SET_ITEM(v, 9, PyInt_FromLong((long) st.f_namemax));
+        PyStructSequence_SET_ITEM(v, 8, PyLong_FromLong((long) st.f_flag));
+        PyStructSequence_SET_ITEM(v, 9, PyLong_FromLong((long) st.f_namemax));
 #endif
 
         return v;
@@ -5334,100 +5510,6 @@ posix_statvfs(PyObject *self, PyObject *args)
 }
 #endif /* HAVE_STATVFS */
 
-
-#ifdef HAVE_TEMPNAM
-PyDoc_STRVAR(posix_tempnam__doc__,
-"tempnam([dir[, prefix]]) -> string\n\n\
-Return a unique name for a temporary file.\n\
-The directory and a prefix may be specified as strings; they may be omitted\n\
-or None if not needed.");
-
-static PyObject *
-posix_tempnam(PyObject *self, PyObject *args)
-{
-    PyObject *result = NULL;
-    char *dir = NULL;
-    char *pfx = NULL;
-    char *name;
-
-    if (!PyArg_ParseTuple(args, "|zz:tempnam", &dir, &pfx))
-        return NULL;
-
-    if (PyErr_WarnEx(PyExc_RuntimeWarning,
-		     "tempnam is a potential security risk to your program",
-		     1) < 0)
-	    return NULL;
-
-#ifdef MS_WINDOWS
-    name = _tempnam(dir, pfx);
-#else
-    name = tempnam(dir, pfx);
-#endif
-    if (name == NULL)
-        return PyErr_NoMemory();
-    result = PyString_FromString(name);
-    free(name);
-    return result;
-}
-#endif
-
-
-#ifdef HAVE_TMPFILE
-PyDoc_STRVAR(posix_tmpfile__doc__,
-"tmpfile() -> file object\n\n\
-Create a temporary file with no directory entries.");
-
-static PyObject *
-posix_tmpfile(PyObject *self, PyObject *noargs)
-{
-    FILE *fp;
-
-    fp = tmpfile();
-    if (fp == NULL)
-        return posix_error();
-    return PyFile_FromFile(fp, "<tmpfile>", "w+b", fclose);
-}
-#endif
-
-
-#ifdef HAVE_TMPNAM
-PyDoc_STRVAR(posix_tmpnam__doc__,
-"tmpnam() -> string\n\n\
-Return a unique name for a temporary file.");
-
-static PyObject *
-posix_tmpnam(PyObject *self, PyObject *noargs)
-{
-    char buffer[L_tmpnam];
-    char *name;
-
-    if (PyErr_WarnEx(PyExc_RuntimeWarning,
-		     "tmpnam is a potential security risk to your program",
-		     1) < 0)
-	    return NULL;
-
-#ifdef USE_TMPNAM_R
-    name = tmpnam_r(buffer);
-#else
-    name = tmpnam(buffer);
-#endif
-    if (name == NULL) {
-	PyObject *err = Py_BuildValue("is", 0,
-#ifdef USE_TMPNAM_R
-                                      "unexpected NULL from tmpnam_r"
-#else
-                                      "unexpected NULL from tmpnam"
-#endif
-                                      );
-	PyErr_SetObject(PyExc_OSError, err);
-	Py_XDECREF(err);
-	return NULL;
-    }
-    return PyString_FromString(buffer);
-}
-#endif
-
-
 /* This is used for fpathconf(), pathconf(), confstr() and sysconf().
  * It maps strings representing configuration variable names to
  * integer values, allowing those functions to be called with the
@@ -5448,8 +5530,8 @@ static int
 conv_confname(PyObject *arg, int *valuep, struct constdef *table,
               size_t tablesize)
 {
-    if (PyInt_Check(arg)) {
-        *valuep = PyInt_AS_LONG(arg);
+    if (PyLong_Check(arg)) {
+        *valuep = PyLong_AS_LONG(arg);
         return 1;
     }
     else {
@@ -5572,7 +5654,7 @@ posix_fpathconf(PyObject *self, PyObject *args)
         if (limit == -1 && errno != 0)
             posix_error();
         else
-            result = PyInt_FromLong(limit);
+            result = PyLong_FromLong(limit);
     }
     return result;
 }
@@ -5606,7 +5688,7 @@ posix_pathconf(PyObject *self, PyObject *args)
                 posix_error_with_filename(path);
         }
         else
-            result = PyInt_FromLong(limit);
+            result = PyLong_FromLong(limit);
     }
     return result;
 }
@@ -6330,7 +6412,7 @@ posix_sysconf(PyObject *self, PyObject *args)
         if (value == -1 && errno != 0)
             posix_error();
         else
-            result = PyInt_FromLong(value);
+            result = PyLong_FromLong(value);
     }
     return result;
 }
@@ -6371,7 +6453,7 @@ setup_confname_table(struct constdef *table, size_t tablesize,
 	    return -1;
 
     for (i=0; i < tablesize; ++i) {
-            PyObject *o = PyInt_FromLong(table[i].value);
+            PyObject *o = PyLong_FromLong(table[i].value);
             if (o == NULL || PyDict_SetItemString(d, table[i].name, o) == -1) {
 		    Py_XDECREF(o);
 		    Py_DECREF(d);
@@ -6589,11 +6671,11 @@ win32_urandom(PyObject *self, PyObject *args)
 	}
 
 	/* Allocate bytes */
-	result = PyBytes_FromStringAndSize(NULL, howMany);
+	result = PyString_FromStringAndSize(NULL, howMany);
 	if (result != NULL) {
 		/* Get random data */
 		if (! pCryptGenRandom(hCryptProv, howMany, (unsigned char*)
-				      PyBytes_AS_STRING(result))) {
+				      PyString_AS_STRING(result))) {
 			Py_DECREF(result);
 			return win32_error("CryptGenRandom", NULL);
 		}
@@ -6660,11 +6742,11 @@ vms_urandom(PyObject *self, PyObject *args)
 				    "negative argument not allowed");
 
 	/* Allocate bytes */
-	result = PyBytes_FromStringAndSize(NULL, howMany);
+	result = PyString_FromStringAndSize(NULL, howMany);
 	if (result != NULL) {
 		/* Get random data */
 		if (RAND_pseudo_bytes((unsigned char*)
-				      PyBytes_AS_STRING(result),
+				      PyString_AS_STRING(result),
 				      howMany) < 0) {
 			Py_DECREF(result);
 			return PyErr_Format(PyExc_ValueError,
@@ -6685,9 +6767,18 @@ static PyMethodDef posix_methods[] = {
 	{"chflags",	posix_chflags, METH_VARARGS, posix_chflags__doc__},
 #endif /* HAVE_CHFLAGS */
 	{"chmod",	posix_chmod, METH_VARARGS, posix_chmod__doc__},
+#ifdef HAVE_FCHMOD
+	{"fchmod",	posix_fchmod, METH_VARARGS, posix_fchmod__doc__},
+#endif /* HAVE_FCHMOD */
 #ifdef HAVE_CHOWN
 	{"chown",	posix_chown, METH_VARARGS, posix_chown__doc__},
 #endif /* HAVE_CHOWN */
+#ifdef HAVE_LCHMOD
+	{"lchmod",	posix_lchmod, METH_VARARGS, posix_lchmod__doc__},
+#endif /* HAVE_LCHMOD */
+#ifdef HAVE_FCHOWN
+	{"fchown",	posix_fchown, METH_VARARGS, posix_fchown__doc__},
+#endif /* HAVE_FCHOWN */
 #ifdef HAVE_LCHFLAGS
 	{"lchflags",	posix_lchflags, METH_VARARGS, posix_lchflags__doc__},
 #endif /* HAVE_LCHFLAGS */
@@ -6854,6 +6945,7 @@ static PyMethodDef posix_methods[] = {
 #endif /* HAVE_TCSETPGRP */
 	{"open",	posix_open, METH_VARARGS, posix_open__doc__},
 	{"close",	posix_close, METH_VARARGS, posix_close__doc__},
+	{"closerange",	posix_closerange, METH_VARARGS, posix_closerange__doc__},
 	{"device_encoding", device_encoding, METH_VARARGS, device_encoding__doc__},
 	{"dup",		posix_dup, METH_VARARGS, posix_dup__doc__},
 	{"dup2",	posix_dup2, METH_VARARGS, posix_dup2__doc__},
@@ -6928,15 +7020,6 @@ static PyMethodDef posix_methods[] = {
 #endif
 #if defined(HAVE_STATVFS) && defined(HAVE_SYS_STATVFS_H)
 	{"statvfs",	posix_statvfs, METH_VARARGS, posix_statvfs__doc__},
-#endif
-#ifdef HAVE_TMPFILE
-	{"tmpfile",	posix_tmpfile, METH_NOARGS, posix_tmpfile__doc__},
-#endif
-#ifdef HAVE_TEMPNAM
-	{"tempnam",	posix_tempnam, METH_VARARGS, posix_tempnam__doc__},
-#endif
-#ifdef HAVE_TMPNAM
-	{"tmpnam",	posix_tmpnam, METH_NOARGS, posix_tmpnam__doc__},
 #endif
 #ifdef HAVE_CONFSTR
 	{"confstr",	posix_confstr, METH_VARARGS, posix_confstr__doc__},
@@ -7146,6 +7229,10 @@ all_ins(PyObject *d)
 #ifdef O_NOFOLLOW
         /* Do not follow links.	 */
         if (ins(d, "O_NOFOLLOW", (long)O_NOFOLLOW)) return -1;
+#endif
+#ifdef O_NOATIME
+	/* Do not update the access time. */
+	if (ins(d, "O_NOATIME", (long)O_NOATIME)) return -1;
 #endif
 
 	/* These come from sysexits.h */

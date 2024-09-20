@@ -36,7 +36,7 @@ PyMac_StrError(int err)
 	PyObject *m;
 	PyObject *rv;
 
-	m = PyImport_ImportModule("MacOS");
+	m = PyImport_ImportModuleNoBlock("MacOS");
 	if (!m) {
 		if (Py_VerboseFlag)
 			PyErr_Print();
@@ -194,7 +194,7 @@ PyObject *
 PyMac_BuildOSType(OSType t)
 {
 	uint32_t tmp = htonl((uint32_t)t);
-	return PyBytes_FromStringAndSize((char *)&tmp, 4);
+	return PyString_FromStringAndSize((char *)&tmp, 4);
 }
 
 /* Convert an NumVersion value to a 4-element tuple */
@@ -348,9 +348,9 @@ PyMac_BuildFixed(Fixed f)
 int
 PyMac_Getwide(PyObject *v, wide *rv)
 {
-	if (PyInt_Check(v)) {
+	if (PyLong_Check(v)) {
 		rv->hi = 0;
-		rv->lo = PyInt_AsLong(v);
+		rv->lo = PyLong_AsLong(v);
 		if( rv->lo & 0x80000000 )
 			rv->hi = -1;
 		return 1;
@@ -364,7 +364,7 @@ PyMac_Buildwide(wide *w)
 {
 	if ( (w->hi == 0 && (w->lo & 0x80000000) == 0) ||
 	     (w->hi == -1 && (w->lo & 0x80000000) ) )
-		return PyInt_FromLong(w->lo);
+		return PyLong_FromLong(w->lo);
 	return Py_BuildValue("(ll)", w->hi, w->lo);
 }
 

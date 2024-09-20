@@ -1,12 +1,13 @@
 
 /* Support for dynamic loading of extension modules */
 
+#include "Python.h"
+
 #ifdef HAVE_DIRECT_H
 #include <direct.h>
 #endif
 #include <ctype.h>
 
-#include "Python.h"
 #include "importdl.h"
 #include <windows.h>
 
@@ -170,11 +171,16 @@ dl_funcptr _PyImport_GetDynLoadFunc(const char *fqname, const char *shortname,
 		HINSTANCE hDLL = NULL;
 		char pathbuf[260];
 		LPTSTR dummy;
+		unsigned int old_mode;
 		/* We use LoadLibraryEx so Windows looks for dependent DLLs 
 		    in directory of pathname first.  However, Windows95
 		    can sometimes not work correctly unless the absolute
 		    path is used.  If GetFullPathName() fails, the LoadLibrary
 		    will certainly fail too, so use its error code */
+
+		/* Don't display a message box when Python can't load a DLL */
+		old_mode = SetErrorMode(SEM_FAILCRITICALERRORS);
+
 		if (GetFullPathName(pathname,
 				    sizeof(pathbuf),
 				    pathbuf,
@@ -182,34 +188,40 @@ dl_funcptr _PyImport_GetDynLoadFunc(const char *fqname, const char *shortname,
 			/* XXX This call doesn't exist in Windows CE */
 			hDLL = LoadLibraryEx(pathname, NULL,
 					     LOAD_WITH_ALTERED_SEARCH_PATH);
+
+		/* restore old error mode settings */
+		SetErrorMode(old_mode);
+
 		if (hDLL==NULL){
-			char errBuf[256];
+			PyObject *message;
 			unsigned int errorCode;
 
 			/* Get an error string from Win32 error code */
-			char theInfo[256]; /* Pointer to error text
+			wchar_t theInfo[256]; /* Pointer to error text
 					      from system */
 			int theLength; /* Length of error text */
 
 			errorCode = GetLastError();
 
-			theLength = FormatMessage(
-				FORMAT_MESSAGE_FROM_SYSTEM, /* flags */
+			theLength = FormatMessageW(
+				FORMAT_MESSAGE_FROM_SYSTEM |
+				FORMAT_MESSAGE_IGNORE_INSERTS, /* flags */
 				NULL, /* message source */
 				errorCode, /* the message (error) ID */
-				0, /* default language environment */
-				(LPTSTR) theInfo, /* the buffer */
+				MAKELANGID(LANG_NEUTRAL,
+					   SUBLANG_DEFAULT),
+				           /* Default language */
+				theInfo, /* the buffer */
 				sizeof(theInfo), /* the buffer size */
 				NULL); /* no additional format args. */
 
 			/* Problem: could not get the error message.
 			   This should not happen if called correctly. */
 			if (theLength == 0) {
-				PyOS_snprintf(errBuf, sizeof(errBuf),
-				      "DLL load failed with error code %d",
-					      errorCode);
+				message = PyUnicode_FromFormat(
+					"DLL load failed with error code %d",
+					errorCode);
 			} else {
-				size_t len;
 				/* For some reason a \r\n
 				   is appended to the text */
 				if (theLength >= 2 &&
@@ -218,13 +230,16 @@ dl_funcptr _PyImport_GetDynLoadFunc(const char *fqname, const char *shortname,
 					theLength -= 2;
 					theInfo[theLength] = '\0';
 				}
-				strcpy(errBuf, "DLL load failed: ");
-				len = strlen(errBuf);
-				strncpy(errBuf+len, theInfo,
-					sizeof(errBuf)-len);
-				errBuf[sizeof(errBuf)-1] = '\0';
+				message = PyUnicode_FromString(
+					"DLL load failed: ");
+
+				PyUnicode_AppendAndDel(&message, 
+					PyUnicode_FromUnicode(
+						theInfo, 
+						theLength));
 			}
-			PyErr_SetString(PyExc_ImportError, errBuf);
+			PyErr_SetObject(PyExc_ImportError, message);
+			Py_XDECREF(message);
 			return NULL;
 		} else {
 			char buffer[256];

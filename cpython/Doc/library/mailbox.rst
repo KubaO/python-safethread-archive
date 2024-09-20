@@ -432,7 +432,7 @@ the original. In the interest of compatibility, :class:`mbox` implements the
 original format, which is sometimes referred to as :dfn:`mboxo`. This means that
 the :mailheader:`Content-Length` header, if present, is ignored and that any
 occurrences of "From " at the beginning of a line in a message body are
-transformed to ">From " when storing the message, although occurences of ">From
+transformed to ">From " when storing the message, although occurrences of ">From
 " are not transformed to "From " when reading the message.
 
 Some :class:`Mailbox` methods implemented by :class:`mbox` deserve special
@@ -580,7 +580,7 @@ remarks:
 
 .. method:: MH.close()
 
-   :class:`MH` instances do not keep any open files, so this method is equivelant
+   :class:`MH` instances do not keep any open files, so this method is equivalent
    to :meth:`unlock`.
 
 
@@ -805,7 +805,7 @@ follows:
 
       A message is typically moved from :file:`new` to :file:`cur` after its mailbox
       has been accessed, whether or not the message is has been read. A message
-      ``msg`` has been read if ``"S" not in msg.get_flags()`` is ``True``.
+      ``msg`` has been read if ``"S" in msg.get_flags()`` is ``True``.
 
 
 .. method:: MaildirMessage.set_subdir(subdir)
@@ -1643,7 +1643,7 @@ due to malformed messages in the mailbox::
 
    list_names = ('python-list', 'python-dev', 'python-bugs')
 
-   boxes = dict((name, mailbox.mbox('~/email/%s' % name)) for name in list_names)
+   boxes = {name: mailbox.mbox('~/email/%s' % name) for name in list_names}
    inbox = mailbox.Maildir('~/Maildir', factory=None)
 
    for key in inbox.iterkeys():

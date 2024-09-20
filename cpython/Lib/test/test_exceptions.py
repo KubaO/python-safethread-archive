@@ -253,6 +253,12 @@ class ExceptionTests(unittest.TestCase):
                                            'ordinal not in range'),
                  'encoding' : 'ascii', 'object' : 'a',
                  'start' : 0, 'reason' : 'ordinal not in range'}),
+            (UnicodeDecodeError, ('ascii', bytearray(b'\xff'), 0, 1,
+                                  'ordinal not in range'),
+                {'args' : ('ascii', bytearray(b'\xff'), 0, 1,
+                                           'ordinal not in range'),
+                 'encoding' : 'ascii', 'object' : b'\xff',
+                 'start' : 0, 'reason' : 'ordinal not in range'}),
             (UnicodeDecodeError, ('ascii', b'\xff', 0, 1,
                                   'ordinal not in range'),
                 {'args' : ('ascii', b'\xff', 0, 1,
@@ -278,11 +284,11 @@ class ExceptionTests(unittest.TestCase):
             try:
                 e = exc(*args)
             except:
-                print("\nexc=%r, args=%r" % (exc, args))
+                print("\nexc=%r, args=%r" % (exc, args), file=sys.stderr)
                 raise
             else:
                 # Verify module name
-                self.assertEquals(type(e).__module__, '__builtin__')
+                self.assertEquals(type(e).__module__, 'builtins')
                 # Verify no ref leaks in Exc_str()
                 s = str(e)
                 for checkArgName in expected:

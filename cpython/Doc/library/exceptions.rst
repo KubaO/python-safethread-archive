@@ -111,16 +111,15 @@ The following exceptions are the exceptions that are actually raised.
 
 .. exception:: AttributeError
 
-   Raised when an attribute reference or assignment fails.  (When an object does
-   not support attribute references or attribute assignments at all,
-   :exc:`TypeError` is raised.)
-
-   .. % xref to attribute reference?
+   Raised when an attribute reference (see :ref:`attribute-references`) or
+   assignment fails.  (When an object does not support attribute references or
+   attribute assignments at all, :exc:`TypeError` is raised.)
 
 
 .. exception:: EOFError
 
-   Raised when attempting to read beyond the end of a file. (N.B.: the
+   Raised when one of the built-in functions (:func:`input` or :func:`raw_input`)
+   hits an end-of-file condition (EOF) without reading any data. (N.B.: the
    :meth:`file.read` and :meth:`file.readline` methods return an empty string
    when they hit EOF.)
 
@@ -135,7 +134,9 @@ The following exceptions are the exceptions that are actually raised.
 
 .. exception:: GeneratorExit
 
-   Raise when a generator's :meth:`close` method is called.
+   Raise when a :term:`generator`\'s :meth:`close` method is called.  It
+   directly inherits from :exc:`BaseException` instead of :exc:`Exception` since
+   it is technically not an error.
 
 
 .. exception:: IOError
@@ -146,9 +147,6 @@ The following exceptions are the exceptions that are actually raised.
 
    This class is derived from :exc:`EnvironmentError`.  See the discussion above
    for more information on exception instance attributes.
-
-   .. versionchanged:: 2.6
-      Changed :exc:`socket.error` to use this as a base class.
 
 
 .. exception:: ImportError
@@ -163,14 +161,14 @@ The following exceptions are the exceptions that are actually raised.
    truncated to fall in the allowed range; if an index is not a plain integer,
    :exc:`TypeError` is raised.)
 
-   .. % XXXJH xref to sequences
+   .. XXX xref to sequences
 
 
 .. exception:: KeyError
 
    Raised when a mapping (dictionary) key is not found in the set of existing keys.
 
-   .. % XXXJH xref to mapping objects?
+   .. XXX xref to mapping objects?
 
 
 .. exception:: KeyboardInterrupt
@@ -209,15 +207,25 @@ The following exceptions are the exceptions that are actually raised.
 
 .. exception:: OSError
 
-   This class is derived from :exc:`EnvironmentError` and is used primarily as the
-   :mod:`os` module's ``os.error`` exception. See :exc:`EnvironmentError` above for
-   a description of the possible associated values.
+   .. index:: module: errno
+
+   This exception is derived from :exc:`EnvironmentError`.  It is raised when a
+   function returns a system-related error (not for illegal argument types or
+   other incidental errors).  The :attr:`errno` attribute is a numeric error
+   code from :cdata:`errno`, and the :attr:`strerror` attribute is the
+   corresponding string, as would be printed by the C function :cfunc:`perror`.
+   See the module :mod:`errno`, which contains names for the error codes defined
+   by the underlying operating system.
+
+   For exceptions that involve a file system path (such as :func:`chdir` or
+   :func:`unlink`), the exception instance will contain a third attribute,
+   :attr:`filename`, which is the file name passed to the function.
 
 
 .. exception:: OverflowError
 
    Raised when the result of an arithmetic operation is too large to be
-   represented.  This cannot occur for long integers (which would rather raise
+   represented.  This cannot occur for integers (which would rather raise
    :exc:`MemoryError` than give up).  Because of the lack of standardization of
    floating point exception handling in C, most floating point operations also
    aren't checked.
@@ -241,8 +249,8 @@ The following exceptions are the exceptions that are actually raised.
 
 .. exception:: StopIteration
 
-   Raised by builtin :func:`next` and an iterator's :meth:`__next__` method to
-   signal that there are no further values.
+   Raised by builtin :func:`next` and an :term:`iterator`\'s :meth:`__next__`
+   method to signal that there are no further values.
 
 
 .. exception:: SyntaxError
@@ -405,7 +413,11 @@ module for more information.
 
    Base class for warnings related to Unicode.
 
-The class hierarchy for built-in exceptions is:
+.. exception:: BytesWarning
 
+   Base class for warnings related to :class:`bytes` and :class:`buffer`.
+
+
+The class hierarchy for built-in exceptions is:
 
 .. literalinclude:: ../../Lib/test/exception_hierarchy.txt

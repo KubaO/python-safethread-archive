@@ -10,18 +10,17 @@
 :Release: |version|
 :Date: |today|
 
-.. % TODO:
-.. % Fill in XXX comments
+.. TODO: Fill in XXX comments
 
-.. % The audience for this document includes people who don't know anything
-.. % about Python and aren't about to learn the language just in order to
-.. % install and maintain it for their users, i.e. system administrators.
-.. % Thus, I have to be sure to explain the basics at some point:
-.. % sys.path and PYTHONPATH at least.  Should probably give pointers to
-.. % other docs on "import site", PYTHONSTARTUP, PYTHONHOME, etc.
-.. % 
-.. % Finally, it might be useful to include all the material from my "Care
-.. % and Feeding of a Python Installation" talk in here somewhere.  Yow!
+.. The audience for this document includes people who don't know anything
+   about Python and aren't about to learn the language just in order to
+   install and maintain it for their users, i.e. system administrators.
+   Thus, I have to be sure to explain the basics at some point:
+   sys.path and PYTHONPATH at least.  Should probably give pointers to
+   other docs on "import site", PYTHONSTARTUP, PYTHONHOME, etc.
+   
+   Finally, it might be useful to include all the material from my "Care
+   and Feeding of a Python Installation" talk in here somewhere.  Yow!
 
 .. topic:: Abstract
 
@@ -565,11 +564,11 @@ environment variables, such as Mac OS 9, the configuration variables supplied by
 the Distutils are the only ones you can use.) See section :ref:`inst-config-files`
 for details.
 
-.. % XXX need some Windows examples---when would custom
-.. % installation schemes be needed on those platforms?
+.. XXX need some Windows examples---when would custom installation schemes be
+   needed on those platforms?
 
-.. % XXX I'm not sure where this section should go.
 
+.. XXX I'm not sure where this section should go.
 
 .. _inst-search-path:
 
@@ -612,8 +611,7 @@ will not override standard modules.  This means you can't use this mechanism for
 installing fixed versions of standard modules.)
 
 Paths can be absolute or relative, in which case they're relative to the
-directory containing the :file:`.pth` file.  Any directories added to the search
-path will be scanned in turn for :file:`.pth` files.  See the documentation of
+directory containing the :file:`.pth` file.  See the documentation of
 the :mod:`site` module for more information.
 
 A slightly less convenient way is to edit the :file:`site.py` file in Python's
@@ -882,8 +880,8 @@ Microsoft Visual C++, which uses COFF as the object file format.) For this
 reason you have to convert Python's library :file:`python25.lib` into the
 Borland format.  You can do this as follows:
 
-.. % Should we mention that users have to create cfg-files for the compiler?
-.. % see also http://community.borland.com/article/0,1410,21205,00.html
+.. Should we mention that users have to create cfg-files for the compiler?
+.. see also http://community.borland.com/article/0,1410,21205,00.html
 
 ::
 
@@ -941,8 +939,8 @@ a good program for this task at
 http://starship.python.net/crew/kernr/mingw32/Notes.html, see at  PExports 0.42h
 there.)
 
-.. % I don't understand what the next line means. --amk
-.. % (inclusive the references on data structures.)
+.. I don't understand what the next line means. --amk
+.. (inclusive the references on data structures.)
 
 ::
 

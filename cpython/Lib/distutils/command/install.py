@@ -14,7 +14,6 @@ from distutils.errors import DistutilsPlatformError
 from distutils.file_util import write_file
 from distutils.util import convert_path, subst_vars, change_root
 from distutils.errors import DistutilsOptionError
-from glob import glob
 
 if sys.version < "2.2":
     WINDOWS_SCHEME = {
@@ -449,7 +448,7 @@ class install (Command):
             self.extra_path = self.distribution.extra_path
 
         if self.extra_path is not None:
-            if isinstance(self.extra_path, basestring):
+            if isinstance(self.extra_path, str):
                 self.extra_path = self.extra_path.split(',')
 
             if len(self.extra_path) == 1:

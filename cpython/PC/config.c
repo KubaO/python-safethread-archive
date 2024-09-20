@@ -14,9 +14,11 @@ extern void initcmath(void);
 extern void initerrno(void);
 extern void initgc(void);
 extern void initmath(void);
+extern void init_md5(void);
 extern void initnt(void);
 extern void initoperator(void);
 extern void initsignal(void);
+extern void init_sha1(void);
 extern void init_sha256(void);
 extern void init_sha512(void);
 extern void inittime(void);
@@ -28,7 +30,6 @@ extern void init_locale(void);
 #endif
 extern void init_codecs(void);
 extern void init_weakref(void);
-extern void init_hotshot(void);
 extern void initxxsubtype(void);
 extern void initzipimport(void);
 extern void init_random(void);
@@ -84,6 +85,8 @@ struct _inittab _PyImport_Inittab[] = {
         {"nt", initnt}, /* Use the NT os functions, not posix */
         {"operator", initoperator},
         {"signal", initsignal},
+        {"_md5", init_md5},
+        {"_sha1", init_sha1},
         {"_sha256", init_sha256},
         {"_sha512", init_sha512},
         {"time", inittime},
@@ -100,7 +103,6 @@ struct _inittab _PyImport_Inittab[] = {
 
         {"_codecs", init_codecs},
 	{"_weakref", init_weakref},
-	{"_hotshot", init_hotshot},
 	{"_random", init_random},
         {"_bisect", init_bisect},
         {"_heapq", init_heapq},
@@ -141,7 +143,7 @@ struct _inittab _PyImport_Inittab[] = {
 
         /* These entries are here for sys.builtin_module_names */
         {"__main__", NULL},
-        {"__builtin__", NULL},
+        {"builtins", NULL},
         {"sys", NULL},
         
         {"_types", init_types},

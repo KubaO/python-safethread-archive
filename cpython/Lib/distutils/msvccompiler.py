@@ -93,10 +93,10 @@ def read_values(base, key):
     return d
 
 def convert_mbcs(s):
-    enc = getattr(s, "encode", None)
-    if enc is not None:
+    dec = getattr(s, "decode", None)
+    if dec is not None:
         try:
-            s = enc("mbcs")
+            s = dec("mbcs")
         except UnicodeError:
             pass
     return s
@@ -632,3 +632,11 @@ class MSVCCompiler(CCompiler) :
             p = self.get_msvc_paths(name)
         if p:
             os.environ[name] = ';'.join(p)
+
+
+if get_build_version() >= 8.0:
+    log.debug("Importing new compiler from distutils.msvc9compiler")
+    OldMSVCCompiler = MSVCCompiler
+    from distutils.msvc9compiler import MSVCCompiler
+    from distutils.msvc9compiler import get_build_architecture
+    from distutils.msvc9compiler import MacroExpander

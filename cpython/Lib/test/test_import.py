@@ -3,10 +3,12 @@ from test.test_support import TESTFN, run_unittest, catch_warning
 import unittest
 import os
 import random
+import shutil
 import sys
 import py_compile
 import warnings
-from test.test_support import unlink
+import imp
+from test.test_support import unlink, TESTFN, unload
 
 
 def remove_files(name):
@@ -53,6 +55,8 @@ class ImportTest(unittest.TestCase):
             print("b =", b, file=f)
             f.close()
 
+            if TESTFN in sys.modules:
+                del sys.modules[TESTFN]
             try:
                 try:
                     mod = __import__(TESTFN)
@@ -157,8 +161,102 @@ class ImportTest(unittest.TestCase):
             warnings.simplefilter('error', ImportWarning)
             self.assertRaises(ImportWarning, __import__, "site-packages")
 
+    def test_failing_reload(self):
+        # A failing reload should leave the module object in sys.modules.
+        source = TESTFN + ".py"
+        with open(source, "w") as f:
+            f.write("a = 1\nb=2\n")
+
+        sys.path.insert(0, os.curdir)
+        try:
+            mod = __import__(TESTFN)
+            self.assert_(TESTFN in sys.modules, "expected module in sys.modules")
+            self.assertEquals(mod.a, 1, "module has wrong attribute values")
+            self.assertEquals(mod.b, 2, "module has wrong attribute values")
+
+            # On WinXP, just replacing the .py file wasn't enough to
+            # convince reload() to reparse it.  Maybe the timestamp didn't
+            # move enough.  We force it to get reparsed by removing the
+            # compiled file too.
+            remove_files(TESTFN)
+
+            # Now damage the module.
+            with open(source, "w") as f:
+                f.write("a = 10\nb=20//0\n")
+
+            self.assertRaises(ZeroDivisionError, imp.reload, mod)
+            # But we still expect the module to be in sys.modules.
+            mod = sys.modules.get(TESTFN)
+            self.failIf(mod is None, "expected module to still be in sys.modules")
+
+            # We should have replaced a w/ 10, but the old b value should
+            # stick.
+            self.assertEquals(mod.a, 10, "module has wrong attribute values")
+            self.assertEquals(mod.b, 2, "module has wrong attribute values")
+
+        finally:
+            sys.path.pop(0)
+            remove_files(TESTFN)
+            if TESTFN in sys.modules:
+                del sys.modules[TESTFN]
+
+    def test_file_to_source(self):
+        # check if __file__ points to the source file where available
+        source = TESTFN + ".py"
+        with open(source, "w") as f:
+            f.write("test = None\n")
+
+        sys.path.insert(0, os.curdir)
+        try:
+            mod = __import__(TESTFN)
+            self.failUnless(mod.__file__.endswith('.py'))
+            os.remove(source)
+            del sys.modules[TESTFN]
+            mod = __import__(TESTFN)
+            ext = mod.__file__[-4:]
+            self.failUnless(ext in ('.pyc', '.pyo'), ext)
+        finally:
+            sys.path.pop(0)
+            remove_files(TESTFN)
+            if TESTFN in sys.modules:
+                del sys.modules[TESTFN]
+
+
+    def test_importbyfilename(self):
+        path = os.path.abspath(TESTFN)
+        try:
+            __import__(path)
+        except ImportError as err:
+            self.assertEqual("Import by filename is not supported.",
+                              err.args[0])
+        else:
+            self.fail("import by path didn't raise an exception")
+
+class PathsTests(unittest.TestCase):
+    SAMPLES = ('test', 'test\u00e4\u00f6\u00fc\u00df', 'test\u00e9\u00e8',
+               'test\u00b0\u00b3\u00b2')
+    path = TESTFN
+
+    def setUp(self):
+        os.mkdir(self.path)
+        self.syspath = sys.path[:]
+
+    def tearDown(self):
+        shutil.rmtree(self.path)
+        sys.path = self.syspath
+
+    # http://bugs.python.org/issue1293
+    def test_trailing_slash(self):
+        f = open(os.path.join(self.path, 'test_trailing_slash.py'), 'w')
+        f.write("testdata = 'test_trailing_slash'")
+        f.close()
+        sys.path.append(self.path+'/')
+        mod = __import__("test_trailing_slash")
+        self.assertEqual(mod.testdata, 'test_trailing_slash')
+        unload("test_trailing_slash")
+
 def test_main(verbose=None):
-    run_unittest(ImportTest)
+    run_unittest(ImportTest, PathsTests)
 
 if __name__ == '__main__':
     test_main()

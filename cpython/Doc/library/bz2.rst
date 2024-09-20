@@ -12,7 +12,10 @@ This module provides a comprehensive interface for the bz2 compression library.
 It implements a complete file interface, one-shot (de)compression functions, and
 types for sequential (de)compression.
 
-Here is a resume of the features offered by the bz2 module:
+For other archive formats, see the :mod:`gzip`, :mod:`zipfile`, and
+:mod:`tarfile` modules.
+
+Here is a summary of the features offered by the bz2 module:
 
 * :class:`BZ2File` class implements a complete file interface, including
   :meth:`readline`, :meth:`readlines`, :meth:`writelines`, :meth:`seek`, etc;
@@ -30,9 +33,7 @@ Here is a resume of the features offered by the bz2 module:
 * One-shot (de)compression supported by :func:`compress` and :func:`decompress`
   functions;
 
-* Thread safety uses individual locking mechanism;
-
-* Complete inline documentation;
+* Thread safety uses individual locking mechanism.
 
 
 (De)compression of files
@@ -98,7 +99,7 @@ Handling of compressed files is offered by the :class:`BZ2File` class.
 
 .. method:: BZ2File.tell()
 
-   Return the current file position, an integer (may be a long integer).
+   Return the current file position, an integer.
 
 
 .. method:: BZ2File.write(data)

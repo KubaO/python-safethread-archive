@@ -367,7 +367,7 @@ def split_header_words(header_values):
     [[('Basic', None), ('realm', '"foobar"')]]
 
     """
-    assert not isinstance(header_values, basestring)
+    assert not isinstance(header_values, str)
     result = []
     for text in header_values:
         orig_text = text
@@ -1255,8 +1255,7 @@ class CookieJar:
 
         """
         # add cookies in order of most specific (ie. longest) path first
-        def decreasing_size(a, b): return cmp(len(b.path), len(a.path))
-        cookies.sort(decreasing_size)
+        cookies.sort(key=lambda a: len(a.path), reverse=True)
 
         version_set = False
 

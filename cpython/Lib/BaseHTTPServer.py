@@ -77,7 +77,7 @@ import socket # For gethostbyaddr()
 import mimetools
 import SocketServer
 
-# Default error message
+# Default error message template
 DEFAULT_ERROR_MESSAGE = """\
 <head>
 <title>Error response</title>
@@ -89,6 +89,8 @@ DEFAULT_ERROR_MESSAGE = """\
 <p>Error code explanation: %(code)s = %(explain)s.
 </body>
 """
+
+DEFAULT_ERROR_CONTENT_TYPE = "text/html;charset=utf-8"
 
 def _quote_html(html):
     return html.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -216,6 +218,9 @@ class BaseHTTPRequestHandler(SocketServer.StreamRequestHandler):
     # The format is multiple whitespace-separated strings,
     # where each string is of the form name[/version].
     server_version = "BaseHTTP/" + __version__
+
+    error_message_format = DEFAULT_ERROR_MESSAGE
+    error_content_type = DEFAULT_ERROR_CONTENT_TYPE
 
     def parse_request(self):
         """Parse a request (internal).
@@ -356,13 +361,11 @@ class BaseHTTPRequestHandler(SocketServer.StreamRequestHandler):
         content = (self.error_message_format %
                    {'code': code, 'message': _quote_html(message), 'explain': explain})
         self.send_response(code, message)
-        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Type", self.error_content_type)
         self.send_header('Connection', 'close')
         self.end_headers()
         if self.command != 'HEAD' and code >= 200 and code not in (204, 304):
-            self.wfile.write(content)
-
-    error_message_format = DEFAULT_ERROR_MESSAGE
+            self.wfile.write(content.encode('UTF-8', 'replace'))
 
     def send_response(self, code, message=None):
         """Send the response header and log the response code.
@@ -378,8 +381,8 @@ class BaseHTTPRequestHandler(SocketServer.StreamRequestHandler):
             else:
                 message = ''
         if self.request_version != 'HTTP/0.9':
-            self.wfile.write("%s %d %s\r\n" %
-                             (self.protocol_version, code, message))
+            self.wfile.write(("%s %d %s\r\n" %
+                              (self.protocol_version, code, message)).encode('ASCII', 'strict'))
             # print (self.protocol_version, code, message)
         self.send_header('Server', self.version_string())
         self.send_header('Date', self.date_time_string())
@@ -387,7 +390,7 @@ class BaseHTTPRequestHandler(SocketServer.StreamRequestHandler):
     def send_header(self, keyword, value):
         """Send a MIME header."""
         if self.request_version != 'HTTP/0.9':
-            self.wfile.write("%s: %s\r\n" % (keyword, value))
+            self.wfile.write(("%s: %s\r\n" % (keyword, value)).encode('ASCII', 'strict'))
 
         if keyword.lower() == 'connection':
             if value.lower() == 'close':
@@ -398,7 +401,7 @@ class BaseHTTPRequestHandler(SocketServer.StreamRequestHandler):
     def end_headers(self):
         """Send the blank line ending the MIME headers."""
         if self.request_version != 'HTTP/0.9':
-            self.wfile.write("\r\n")
+            self.wfile.write(b"\r\n")
 
     def log_request(self, code='-', size='-'):
         """Log an accepted request.

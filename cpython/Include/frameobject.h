@@ -51,7 +51,7 @@ typedef struct _frame {
 
 PyAPI_DATA(PyTypeObject) PyFrame_Type;
 
-#define PyFrame_Check(op) (Py_Type(op) == &PyFrame_Type)
+#define PyFrame_Check(op) (Py_TYPE(op) == &PyFrame_Type)
 
 PyAPI_FUNC(PyFrameObject *) PyFrame_New(PyThreadState *, PyCodeObject *,
                                        PyObject *, PyObject *);
@@ -72,6 +72,8 @@ PyAPI_FUNC(PyObject **) PyFrame_ExtendStack(PyFrameObject *, int, int);
 
 PyAPI_FUNC(void) PyFrame_LocalsToFast(PyFrameObject *, int);
 PyAPI_FUNC(void) PyFrame_FastToLocals(PyFrameObject *);
+
+PyAPI_FUNC(int) PyFrame_ClearFreeList(void);
 
 #ifdef __cplusplus
 }

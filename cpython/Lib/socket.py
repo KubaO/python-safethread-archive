@@ -21,7 +21,6 @@ ntohs(), ntohl() -- convert 16, 32 bit int from network to host byte order
 htons(), htonl() -- convert 16, 32 bit int from host to network byte order
 inet_aton() -- convert IP addr string (123.45.67.89) to 32-bit packed format
 inet_ntoa() -- convert 32-bit packed format IP to string (123.45.67.89)
-ssl() -- secure socket layer support (only available if configured)
 socket.getdefaulttimeout() -- get the default timeout value
 socket.setdefaulttimeout() -- set the default timeout value
 create_connection() -- connects to an address, with an optional timeout
@@ -45,36 +44,6 @@ the setsockopt() and getsockopt() methods.
 
 import _socket
 from _socket import *
-
-try:
-    import _ssl
-    import ssl as _realssl
-except ImportError:
-    # no SSL support
-    pass
-else:
-    def ssl(sock, keyfile=None, certfile=None):
-        # we do an internal import here because the ssl
-        # module imports the socket module
-        warnings.warn("socket.ssl() is deprecated.  Use ssl.wrap_socket() instead.",
-                      DeprecationWarning, stacklevel=2)
-        return _realssl.sslwrap_simple(sock, keyfile, certfile)
-
-    # we need to import the same constants we used to...
-    from _ssl import SSLError as sslerror
-    from _ssl import \
-         RAND_add, \
-         RAND_egd, \
-         RAND_status, \
-         SSL_ERROR_ZERO_RETURN, \
-         SSL_ERROR_WANT_READ, \
-         SSL_ERROR_WANT_WRITE, \
-         SSL_ERROR_WANT_X509_LOOKUP, \
-         SSL_ERROR_SYSCALL, \
-         SSL_ERROR_SSL, \
-         SSL_ERROR_WANT_CONNECT, \
-         SSL_ERROR_EOF, \
-         SSL_ERROR_INVALID_ERROR_CODE
 
 import os, sys, io
 
@@ -110,95 +79,50 @@ if sys.platform.lower().startswith("win"):
     __all__.append("errorTab")
 
 
-# True if os.dup() can duplicate socket descriptors.
-# (On Windows at least, os.dup only works on files)
-_can_dup_socket = hasattr(_socket.socket, "dup")
-
-if _can_dup_socket:
-    def fromfd(fd, family=AF_INET, type=SOCK_STREAM, proto=0):
-        nfd = os.dup(fd)
-        return socket(family, type, proto, fileno=nfd)
-
-class SocketCloser:
-
-    """Helper to manage socket close() logic for makefile().
-
-    The OS socket should not be closed until the socket and all
-    of its makefile-children are closed.  If the refcount is zero
-    when socket.close() is called, this is easy: Just close the
-    socket.  If the refcount is non-zero when socket.close() is
-    called, then the real close should not occur until the last
-    makefile-child is closed.
-    """
-
-    def __init__(self, sock):
-        self._sock = sock
-        self._makefile_refs = 0
-        # Test whether the socket is open.
-        try:
-            sock.fileno()
-            self._socket_open = True
-        except error:
-            self._socket_open = False
-
-    def socket_close(self):
-        self._socket_open = False
-        self.close()
-
-    def makefile_open(self):
-        self._makefile_refs += 1
-
-    def makefile_close(self):
-        self._makefile_refs -= 1
-        self.close()
-
-    def close(self):
-        if not (self._socket_open or self._makefile_refs):
-            self._sock._real_close()
-
-
 class socket(_socket.socket):
 
     """A subclass of _socket.socket adding the makefile() method."""
 
-    __slots__ = ["__weakref__", "_closer"]
-    if not _can_dup_socket:
-        __slots__.append("_base")
+    __slots__ = ["__weakref__", "_io_refs", "_closed"]
 
     def __init__(self, family=AF_INET, type=SOCK_STREAM, proto=0, fileno=None):
-        if fileno is None:
-            _socket.socket.__init__(self, family, type, proto)
-        else:
-            _socket.socket.__init__(self, family, type, proto, fileno)
-        # Defer creating a SocketCloser until makefile() is actually called.
-        self._closer = None
+        _socket.socket.__init__(self, family, type, proto, fileno)
+        self._io_refs = 0
+        self._closed = False
 
     def __repr__(self):
         """Wrap __repr__() to reveal the real class name."""
         s = _socket.socket.__repr__(self)
         if s.startswith("<socket object"):
-            s = "<%s.%s%s" % (self.__class__.__module__,
-                              self.__class__.__name__,
-                              s[7:])
+            s = "<%s.%s%s%s" % (self.__class__.__module__,
+                                self.__class__.__name__,
+                                (self._closed and " [closed] ") or "",
+                                s[7:])
         return s
 
+    def dup(self):
+        """dup() -> socket object
+
+        Return a new socket object connected to the same system resource.
+        """
+        fd = dup(self.fileno())
+        sock = self.__class__(self.family, self.type, self.proto, fileno=fd)
+        sock.settimeout(self.gettimeout())
+        return sock
+
     def accept(self):
-        """Wrap accept() to give the connection the right type."""
-        conn, addr = _socket.socket.accept(self)
-        fd = conn.fileno()
-        nfd = fd
-        if _can_dup_socket:
-            nfd = os.dup(fd)
-        wrapper = socket(self.family, self.type, self.proto, fileno=nfd)
-        if fd == nfd:
-            wrapper._base = conn  # Keep the base alive
-        else:
-            conn.close()
-        return wrapper, addr
+        """accept() -> (socket object, address info)
+
+        Wait for an incoming connection.  Return a new socket
+        representing the connection, and the address of the client.
+        For IP sockets, the address info is a pair (hostaddr, port).
+        """
+        fd, addr = self._accept()
+        return socket(self.family, self.type, self.proto, fileno=fd), addr
 
     def makefile(self, mode="r", buffering=None, *,
                  encoding=None, newline=None):
-        """Return an I/O stream connected to the socket.
+        """makefile(...) -> an I/O stream connected to the socket
 
         The arguments are as for io.open() after the filename,
         except the only mode characters supported are 'r', 'w' and 'b'.
@@ -216,9 +140,8 @@ class socket(_socket.socket):
             rawmode += "r"
         if writing:
             rawmode += "w"
-        if self._closer is None:
-            self._closer = SocketCloser(self)
-        raw = SocketIO(self, rawmode, self._closer)
+        raw = SocketIO(self, rawmode)
+        self._io_refs += 1
         if buffering is None:
             buffering = -1
         if buffering < 0:
@@ -245,24 +168,28 @@ class socket(_socket.socket):
         text.mode = mode
         return text
 
+    def _decref_socketios(self):
+        if self._io_refs > 0:
+            self._io_refs -= 1
+        if self._closed:
+            self.close()
+
+    def _real_close(self):
+        _socket.socket.close(self)
+
     def close(self):
-        if self._closer is None:
+        self._closed = True
+        if self._io_refs <= 0:
             self._real_close()
-        else:
-            self._closer.socket_close()
 
-    # _real_close calls close on the _socket.socket base class.
+def fromfd(fd, family, type, proto=0):
+    """ fromfd(fd, family, type[, proto]) -> socket object
 
-    if not _can_dup_socket:
-        def _real_close(self):
-            _socket.socket.close(self)
-            base = getattr(self, "_base", None)
-            if base is not None:
-                self._base = None
-                base.close()
-    else:
-        def _real_close(self):
-            _socket.socket.close(self)
+    Create a socket object from a duplicate of the given file
+    descriptor.  The remaining arguments are the same as for socket().
+    """
+    nfd = dup(fd)
+    return socket(family, type, proto, nfd)
 
 
 class SocketIO(io.RawIOBase):
@@ -275,16 +202,14 @@ class SocketIO(io.RawIOBase):
 
     # XXX More docs
 
-    def __init__(self, sock, mode, closer):
+    def __init__(self, sock, mode):
         if mode not in ("r", "w", "rw"):
             raise ValueError("invalid mode: %r" % mode)
         io.RawIOBase.__init__(self)
         self._sock = sock
         self._mode = mode
-        self._closer = closer
         self._reading = "r" in mode
         self._writing = "w" in mode
-        closer.makefile_open()
 
     def readinto(self, b):
         self._checkClosed()
@@ -308,8 +233,10 @@ class SocketIO(io.RawIOBase):
     def close(self):
         if self.closed:
             return
-        self._closer.makefile_close()
         io.RawIOBase.close(self)
+
+    def __del__(self):
+        self._sock._decref_socketios()
 
 
 def getfqdn(name=''):

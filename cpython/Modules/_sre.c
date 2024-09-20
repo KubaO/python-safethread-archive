@@ -95,6 +95,7 @@ static char copyright[] =
 #define SRE_ERROR_STATE -2 /* illegal state */
 #define SRE_ERROR_RECURSION_LIMIT -3 /* runaway recursion */
 #define SRE_ERROR_MEMORY -9 /* out of memory */
+#define SRE_ERROR_INTERRUPTED -10 /* signal handler raised exception */
 
 #if defined(VERBOSE)
 #define TRACE(v) printf v
@@ -805,6 +806,7 @@ SRE_MATCH(SRE_STATE* state, SRE_CODE* pattern)
     Py_ssize_t alloc_pos, ctx_pos = -1;
     Py_ssize_t i, ret = 0;
     Py_ssize_t jump;
+    unsigned int sigcount=0;
 
     SRE_MATCH_CONTEXT* ctx;
     SRE_MATCH_CONTEXT* nextctx;
@@ -833,6 +835,9 @@ entrance:
     }
 
     for (;;) {
+        ++sigcount;
+        if ((0 == (sigcount & 0xfff)) && PyErr_CheckSignals())
+            RETURN_ERROR(SRE_ERROR_INTERRUPTED);
 
         switch (*ctx->pattern++) {
 
@@ -1674,9 +1679,18 @@ getstring(PyObject* string, Py_ssize_t* p_length, int* p_charsize)
     void* ptr;
     Py_buffer view;
 
+    /* Unicode objects do not support the buffer API. So, get the data
+       directly instead. */
+    if (PyUnicode_Check(string)) {
+        ptr = (void *)PyUnicode_AS_DATA(string);
+        *p_length = PyUnicode_GET_SIZE(string);
+        *p_charsize = sizeof(Py_UNICODE);
+        return ptr;
+    }
+
     /* get pointer to string buffer */
     view.len = -1;
-    buffer = Py_Type(string)->tp_as_buffer;
+    buffer = Py_TYPE(string)->tp_as_buffer;
     if (!buffer || !buffer->bf_getbuffer || 
         (*buffer->bf_getbuffer)(string, &view, PyBUF_SIMPLE) < 0) {
             PyErr_SetString(PyExc_TypeError, "expected string or buffer");
@@ -1823,6 +1837,9 @@ pattern_error(int status)
         break;
     case SRE_ERROR_MEMORY:
         PyErr_NoMemory();
+        break;
+    case SRE_ERROR_INTERRUPTED:
+    /* An exception has already been raised, so let it fly */
         break;
     default:
         /* other error codes indicate compiler/engine bugs */
@@ -2660,7 +2677,7 @@ _compile(PyObject* self_, PyObject* args)
         return NULL;
 
     n = PyList_GET_SIZE(code);
-
+    /* coverity[ampersand_in_size] */
     self = PyObject_NEW_VAR(PatternObject, &Pattern_Type, n);
     if (!self)
         return NULL;
@@ -2747,8 +2764,8 @@ match_getindex(MatchObject* self, PyObject* index)
 	/* Default value */
 	return 0;
 
-    if (PyInt_Check(index))
-        return PyInt_AsSsize_t(index);
+    if (PyLong_Check(index))
+        return PyLong_AsSsize_t(index);
 
     i = -1;
 
@@ -2756,7 +2773,7 @@ match_getindex(MatchObject* self, PyObject* index)
         index = PyObject_GetItem(self->pattern->groupindex, index);
         if (index) {
             if (PyLong_Check(index))
-                i = PyInt_AsSsize_t(index);
+                i = PyLong_AsSsize_t(index);
             Py_DECREF(index);
         } else
             PyErr_Clear();
@@ -2948,12 +2965,12 @@ _pair(Py_ssize_t i1, Py_ssize_t i2)
     if (!pair)
         return NULL;
 
-    item = PyInt_FromSsize_t(i1);
+    item = PyLong_FromSsize_t(i1);
     if (!item)
         goto error;
     PyTuple_SET_ITEM(pair, 0, item);
 
-    item = PyInt_FromSsize_t(i2);
+    item = PyLong_FromSsize_t(i2);
     if (!item)
         goto error;
     PyTuple_SET_ITEM(pair, 1, item);
@@ -3170,6 +3187,7 @@ pattern_new_match(PatternObject* pattern, SRE_STATE* state, int status)
     if (status > 0) {
 
         /* create match object (with room for extra group marks) */
+        /* coverity[ampersand_in_size] */
         match = PyObject_NEW_VAR(MatchObject, &Match_Type,
                                  2*(pattern->groups+1));
         if (!match)
@@ -3388,13 +3406,13 @@ PyMODINIT_FUNC init_sre(void)
     	return;
     d = PyModule_GetDict(m);
 
-    x = PyInt_FromLong(SRE_MAGIC);
+    x = PyLong_FromLong(SRE_MAGIC);
     if (x) {
         PyDict_SetItemString(d, "MAGIC", x);
         Py_DECREF(x);
     }
 
-    x = PyInt_FromLong(sizeof(SRE_CODE));
+    x = PyLong_FromLong(sizeof(SRE_CODE));
     if (x) {
         PyDict_SetItemString(d, "CODESIZE", x);
         Py_DECREF(x);

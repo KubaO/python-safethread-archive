@@ -25,7 +25,9 @@ transfer of Python objects through RPC calls, see the modules :mod:`pickle` and
 writing the "pseudo-compiled" code for Python modules of :file:`.pyc` files.
 Therefore, the Python maintainers reserve the right to modify the marshal format
 in backward incompatible ways should the need arise.  If you're serializing and
-de-serializing Python objects, use the :mod:`pickle` module instead.
+de-serializing Python objects, use the :mod:`pickle` module instead -- the
+performance is comparable, version independence is guaranteed, and pickle
+supports a substantially wider range of objects than marshal.
 
 .. warning::
 
@@ -35,23 +37,12 @@ de-serializing Python objects, use the :mod:`pickle` module instead.
 
 Not all Python object types are supported; in general, only objects whose value
 is independent from a particular invocation of Python can be written and read by
-this module.  The following types are supported: ``None``, integers, long
-integers, floating point numbers, strings, Unicode objects, tuples, lists,
+this module.  The following types are supported: ``None``, integers,
+floating point numbers, strings, bytes, bytearrays, tuples, lists, sets,
 dictionaries, and code objects, where it should be understood that tuples, lists
 and dictionaries are only supported as long as the values contained therein are
 themselves supported; and recursive lists and dictionaries should not be written
 (they will cause infinite loops).
-
-.. warning::
-   
-   On machines where C's ``long int`` type has more than 32 bits (such as the
-   DEC Alpha), it is possible to create plain Python integers that are longer
-   than 32 bits. If such an integer is marshaled and read back in on a machine
-   where C's ``long int`` type has only 32 bits, a Python long integer object
-   is returned instead.  While of a different type, the numeric value is the
-   same.  (This behavior is new in Python 2.2.  In earlier versions, all but the
-   least-significant 32 bits of the value were lost, and a warning message was
-   printed.)
 
 There are functions that read/write files as well as functions operating on
 strings.

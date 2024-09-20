@@ -1,6 +1,6 @@
 
-:mod:`decimal` --- Decimal floating point arithmetic
-====================================================
+:mod:`decimal` --- Decimal fixed point and floating point arithmetic
+====================================================================
 
 .. module:: decimal
    :synopsis: Implementation of the General Decimal Arithmetic  Specification.
@@ -16,6 +16,11 @@
 The :mod:`decimal` module provides support for decimal floating point
 arithmetic.  It offers several advantages over the :class:`float` datatype:
 
+* Decimal "is based on a floating-point model which was designed with people
+  in mind, and necessarily has a paramount guiding principle -- computers must
+  provide an arithmetic that works in the same way as the arithmetic that
+  people learn at school." -- excerpt from the decimal arithmetic specification.
+
 * Decimal numbers can be represented exactly.  In contrast, numbers like
   :const:`1.1` do not have an exact representation in binary floating point. End
   users typically would not expect :const:`1.1` to display as
@@ -25,7 +30,7 @@ arithmetic.  It offers several advantages over the :class:`float` datatype:
   + 0.1 + 0.1 - 0.3`` is exactly equal to zero.  In binary floating point, the result
   is :const:`5.5511151231257827e-017`.  While near to zero, the differences
   prevent reliable equality testing and differences can accumulate. For this
-  reason, decimal would be preferred in accounting applications which have strict
+  reason, decimal is preferred in accounting applications which have strict
   equality invariants.
 
 * The decimal module incorporates a notion of significant places so that ``1.30
@@ -41,15 +46,22 @@ arithmetic.  It offers several advantages over the :class:`float` datatype:
 
      >>> getcontext().prec = 6
      >>> Decimal(1) / Decimal(7)
-     Decimal("0.142857")
+     Decimal('0.142857')
      >>> getcontext().prec = 28
      >>> Decimal(1) / Decimal(7)
-     Decimal("0.1428571428571428571428571429")
+     Decimal('0.1428571428571428571428571429')
 
 * Both binary and decimal floating point are implemented in terms of published
   standards.  While the built-in float type exposes only a modest portion of its
   capabilities, the decimal module exposes all required parts of the standard.
   When needed, the programmer has full control over rounding and signal handling.
+  This includes an option to enforce exact arithmetic by using exceptions
+  to block any inexact operations.
+
+* The decimal module was designed to support "without prejudice, both exact
+  unrounded decimal arithmetic (sometimes called fixed-point arithmetic)
+  and rounded floating-point arithmetic."  -- excerpt from the decimal
+  arithmetic specification.
 
 The module design is centered around three concepts:  the decimal number, the
 context for arithmetic, and signals.
@@ -75,7 +87,7 @@ decimal module are: :const:`Clamped`, :const:`InvalidOperation`,
 :const:`Overflow`, and :const:`Underflow`.
 
 For each signal there is a flag and a trap enabler.  When a signal is
-encountered, its flag is incremented from zero and, then, if the trap enabler is
+encountered, its flag is set to one, then, if the trap enabler is
 set to one, an exception is raised.  Flags are sticky, so the user needs to
 reset them before monitoring a calculation.
 
@@ -86,9 +98,9 @@ reset them before monitoring a calculation.
      Specification <http://www2.hursley.ibm.com/decimal/decarith.html>`_.
 
    * IEEE standard 854-1987, `Unofficial IEEE 854 Text
-     <http://www.cs.berkeley.edu/~ejr/projects/754/private/drafts/854-1987/dir.html>`_.
+     <http://754r.ucbtest.org/standards/854.pdf>`_.
 
-.. % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+.. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 .. _decimal-tutorial:
@@ -116,19 +128,19 @@ representation error).  Decimal numbers include special values such as
 :const:`Infinity`, and :const:`-0`.         ::
 
    >>> Decimal(10)
-   Decimal("10")
-   >>> Decimal("3.14")
-   Decimal("3.14")
+   Decimal('10')
+   >>> Decimal('3.14')
+   Decimal('3.14')
    >>> Decimal((0, (3, 1, 4), -2))
-   Decimal("3.14")
+   Decimal('3.14')
    >>> Decimal(str(2.0 ** 0.5))
-   Decimal("1.41421356237")
-   >>> Decimal(2) ** Decimal("0.5")
-   Decimal("1.414213562373095048801688724")
-   >>> Decimal("NaN")
-   Decimal("NaN")
-   >>> Decimal("-Infinity")
-   Decimal("-Infinity")
+   Decimal('1.41421356237')
+   >>> Decimal(2) ** Decimal('0.5')
+   Decimal('1.414213562373095048801688724')
+   >>> Decimal('NaN')
+   Decimal('NaN')
+   >>> Decimal('-Infinity')
+   Decimal('-Infinity')
 
 The significance of a new Decimal is determined solely by the number of digits
 input.  Context precision and rounding only come into play during arithmetic
@@ -136,28 +148,28 @@ operations. ::
 
    >>> getcontext().prec = 6
    >>> Decimal('3.0')
-   Decimal("3.0")
+   Decimal('3.0')
    >>> Decimal('3.1415926535')
-   Decimal("3.1415926535")
+   Decimal('3.1415926535')
    >>> Decimal('3.1415926535') + Decimal('2.7182818285')
-   Decimal("5.85987")
+   Decimal('5.85987')
    >>> getcontext().rounding = ROUND_UP
    >>> Decimal('3.1415926535') + Decimal('2.7182818285')
-   Decimal("5.85988")
+   Decimal('5.85988')
 
 Decimals interact well with much of the rest of Python.  Here is a small decimal
 floating point flying circus::
 
    >>> data = map(Decimal, '1.34 1.87 3.45 2.35 1.00 0.03 9.25'.split())
    >>> max(data)
-   Decimal("9.25")
+   Decimal('9.25')
    >>> min(data)
-   Decimal("0.03")
+   Decimal('0.03')
    >>> sorted(data)
-   [Decimal("0.03"), Decimal("1.00"), Decimal("1.34"), Decimal("1.87"),
-    Decimal("2.35"), Decimal("3.45"), Decimal("9.25")]
+   [Decimal('0.03'), Decimal('1.00'), Decimal('1.34'), Decimal('1.87'),
+    Decimal('2.35'), Decimal('3.45'), Decimal('9.25')]
    >>> sum(data)
-   Decimal("19.29")
+   Decimal('19.29')
    >>> a,b,c = data[:3]
    >>> str(a)
    '1.34'
@@ -168,31 +180,31 @@ floating point flying circus::
    >>> int(a)
    1
    >>> a * 5
-   Decimal("6.70")
+   Decimal('6.70')
    >>> a * b
-   Decimal("2.5058")
+   Decimal('2.5058')
    >>> c % a
-   Decimal("0.77")
+   Decimal('0.77')
 
-And some mathematic functions are also available to Decimal::
+And some mathematical functions are also available to Decimal::
 
    >>> Decimal(2).sqrt()
-   Decimal("1.414213562373095048801688724")
+   Decimal('1.414213562373095048801688724')
    >>> Decimal(1).exp()
-   Decimal("2.718281828459045235360287471")
-   >>> Decimal("10").ln()
-   Decimal("2.302585092994045684017991455")
-   >>> Decimal("10").log10()
-   Decimal("1")
+   Decimal('2.718281828459045235360287471')
+   >>> Decimal('10').ln()
+   Decimal('2.302585092994045684017991455')
+   >>> Decimal('10').log10()
+   Decimal('1')
 
 The :meth:`quantize` method rounds a number to a fixed exponent.  This method is
 useful for monetary applications that often round results to a fixed number of
 places::
 
    >>> Decimal('7.325').quantize(Decimal('.01'), rounding=ROUND_DOWN)
-   Decimal("7.32")
+   Decimal('7.32')
    >>> Decimal('7.325').quantize(Decimal('1.'), rounding=ROUND_UP)
-   Decimal("8")
+   Decimal('8')
 
 As shown above, the :func:`getcontext` function accesses the current context and
 allows the settings to be changed.  This approach meets the needs of most
@@ -210,16 +222,16 @@ enabled::
    >>> myothercontext = Context(prec=60, rounding=ROUND_HALF_DOWN)
    >>> setcontext(myothercontext)
    >>> Decimal(1) / Decimal(7)
-   Decimal("0.142857142857142857142857142857142857142857142857142857142857")
+   Decimal('0.142857142857142857142857142857142857142857142857142857142857')
 
    >>> ExtendedContext
    Context(prec=9, rounding=ROUND_HALF_EVEN, Emin=-999999999, Emax=999999999,
            capitals=1, flags=[], traps=[])
    >>> setcontext(ExtendedContext)
    >>> Decimal(1) / Decimal(7)
-   Decimal("0.142857143")
+   Decimal('0.142857143')
    >>> Decimal(42) / Decimal(0)
-   Decimal("Infinity")
+   Decimal('Infinity')
 
    >>> setcontext(BasicContext)
    >>> Decimal(42) / Decimal(0)
@@ -236,7 +248,7 @@ using the :meth:`clear_flags` method. ::
    >>> setcontext(ExtendedContext)
    >>> getcontext().clear_flags()
    >>> Decimal(355) / Decimal(113)
-   Decimal("3.14159292")
+   Decimal('3.14159292')
    >>> getcontext()
    Context(prec=9, rounding=ROUND_HALF_EVEN, Emin=-999999999, Emax=999999999,
            capitals=1, flags=[Inexact, Rounded], traps=[])
@@ -249,7 +261,7 @@ Individual traps are set using the dictionary in the :attr:`traps` field of a
 context::
 
    >>> Decimal(1) / Decimal(0)
-   Decimal("Infinity")
+   Decimal('Infinity')
    >>> getcontext().traps[DivisionByZero] = 1
    >>> Decimal(1) / Decimal(0)
    Traceback (most recent call last):
@@ -263,7 +275,7 @@ a single cast inside a loop.  With context set and decimals created, the bulk of
 the program manipulates the data no differently than with other Python numeric
 types.
 
-.. % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+.. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 .. _decimal-decimal:
@@ -274,11 +286,12 @@ Decimal objects
 
 .. class:: Decimal([value [, context]])
 
-   Constructs a new :class:`Decimal` object based from *value*.
+   Construct a new :class:`Decimal` object based from *value*.
 
-   *value* can be an integer, string, tuple, or another :class:`Decimal` object. If
-   no *value* is given, returns ``Decimal("0")``.  If *value* is a string, it
-   should conform to the decimal numeric string syntax::
+   *value* can be an integer, string, tuple, or another :class:`Decimal`
+   object. If no *value* is given, returns ``Decimal('0')``.  If *value* is a
+   string, it should conform to the decimal numeric string syntax after leading
+   and trailing whitespace characters are removed::
 
       sign           ::=  '+' | '-'
       digit          ::=  '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
@@ -294,11 +307,11 @@ Decimal objects
    If *value* is a :class:`tuple`, it should have three components, a sign
    (:const:`0` for positive or :const:`1` for negative), a :class:`tuple` of
    digits, and an integer exponent. For example, ``Decimal((0, (1, 4, 1, 4), -3))``
-   returns ``Decimal("1.414")``.
+   returns ``Decimal('1.414')``.
 
    The *context* precision does not affect how many digits are stored. That is
    determined exclusively by the number of digits in *value*. For example,
-   ``Decimal("3.00000")`` records all five zeros even if the context precision is
+   ``Decimal('3.00000')`` records all five zeros even if the context precision is
    only three.
 
    The purpose of the *context* argument is determining what to do if *value* is a
@@ -307,6 +320,10 @@ Decimal objects
    :const:`NaN`.
 
    Once constructed, :class:`Decimal` objects are immutable.
+
+   .. versionchanged:: 2.6
+      leading and trailing whitespace characters are permitted when
+      creating a Decimal instance from a string.
 
 Decimal floating point objects share many properties with the other built-in
 numeric types such as :class:`float` and :class:`int`.  All of the usual math
@@ -321,14 +338,18 @@ also have a number of specialized methods:
 .. method:: Decimal.adjusted()
 
    Return the adjusted exponent after shifting out the coefficient's rightmost
-   digits until only the lead digit remains: ``Decimal("321e+5").adjusted()``
+   digits until only the lead digit remains: ``Decimal('321e+5').adjusted()``
    returns seven.  Used for determining the position of the most significant digit
    with respect to the decimal point.
 
 
 .. method:: Decimal.as_tuple()
 
-   Return a tuple representation of the number: ``(sign, digit_tuple, exponent)``.
+   Return a :term:`named tuple` representation of the number:
+   ``DecimalTuple(sign, digits, exponent)``.
+
+   .. versionchanged:: 2.6
+      Use a named tuple.
 
 
 .. method:: Decimal.canonical()
@@ -337,7 +358,6 @@ also have a number of specialized methods:
    encoding of a :class:`Decimal` instance is always canonical, so
    this operation returns its argument unchanged.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.compare(other[, context])
 
@@ -347,10 +367,10 @@ also have a number of specialized methods:
    instance rather than an integer, and if either operand is a NaN
    then the result is a NaN::
 
-      a or b is a NaN ==> Decimal("NaN")
-      a < b           ==> Decimal("-1")
-      a == b          ==> Decimal("0")
-      a > b           ==> Decimal("1")
+      a or b is a NaN ==> Decimal('NaN')
+      a < b           ==> Decimal('-1')
+      a == b          ==> Decimal('0')
+      a > b           ==> Decimal('1')
 
 .. method:: Decimal.compare_signal(other[, context])
 
@@ -359,7 +379,6 @@ also have a number of specialized methods:
    NaN then any quiet NaN operand is treated as though it were a
    signaling NaN.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.compare_total(other)
 
@@ -370,18 +389,17 @@ also have a number of specialized methods:
    value but different representations compare unequal in this
    ordering::
    
-      >>> Decimal("12.0").compare_total(Decimal("12"))
-      Decimal("-1")
+      >>> Decimal('12.0').compare_total(Decimal('12'))
+      Decimal('-1')
 
    Quiet and signaling NaNs are also included in the total ordering.
-   The result of this function is ``Decimal("0")`` if both operands
-   have the same representation, ``Decimal("-1")`` if the first
+   The result of this function is ``Decimal('0')`` if both operands
+   have the same representation, ``Decimal('-1')`` if the first
    operand is lower in the total order than the second, and
-   ``Decimal("1")`` if the first operand is higher in the total order
+   ``Decimal('1')`` if the first operand is higher in the total order
    than the second operand.  See the specification for details of the
    total order.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.compare_total_mag(other)
 
@@ -390,7 +408,6 @@ also have a number of specialized methods:
    of each operand.  ``x.compare_total_mag(y)`` is equivalent to
    ``x.copy_abs().compare_total(y.copy_abs())``.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.copy_abs()
 
@@ -398,7 +415,6 @@ also have a number of specialized methods:
    unaffected by the context and is quiet: no flags are changed and no
    rounding is performed.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.copy_negate()
 
@@ -406,20 +422,18 @@ also have a number of specialized methods:
    by the context and is quiet: no flags are changed and no rounding
    is performed.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.copy_sign(other)
 
    Return a copy of the first operand with the sign set to be the
    same as the sign of the second operand.  For example::
 
-      >>> Decimal("2.3").copy_sign(Decimal("-1.5"))
-      Decimal("-2.3")
+      >>> Decimal('2.3').copy_sign(Decimal('-1.5'))
+      Decimal('-2.3')
    
    This operation is unaffected by the context and is quiet: no flags
    are changed and no rounding is performed.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.exp([context])
 
@@ -428,11 +442,10 @@ also have a number of specialized methods:
    :const:`ROUND_HALF_EVEN` rounding mode.
 
    >>> Decimal(1).exp()
-   Decimal("2.718281828459045235360287471")
+   Decimal('2.718281828459045235360287471')
    >>> Decimal(321).exp()
-   Decimal("2.561702493119680037517373933E+139")
+   Decimal('2.561702493119680037517373933E+139')
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.fma(other, third[, context])
 
@@ -440,9 +453,8 @@ also have a number of specialized methods:
    the intermediate product self*other.
 
    >>> Decimal(2).fma(3, 5)
-   Decimal("11")
+   Decimal('11')
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.is_canonical()
 
@@ -451,28 +463,24 @@ also have a number of specialized methods:
    is always canonical, so this operation always returns
    :const:`True`.
 
-   .. versionadded:: 2.6
 
 .. method:: is_finite()
 
    Return :const:`True` if the argument is a finite number, and
    :const:`False` if the argument is an infinity or a NaN.
 
-   .. versionadded:: 2.6
 
 .. method:: is_infinite()
 
    Return :const:`True` if the argument is either positive or
    negative infinity and :const:`False` otherwise.
 
-   .. versionadded:: 2.6
 
 .. method:: is_nan()
 
    Return :const:`True` if the argument is a (quiet or signaling)
    NaN and :const:`False` otherwise.
 
-   .. versionadded:: 2.6
 
 .. method:: is_normal()
 
@@ -480,14 +488,12 @@ also have a number of specialized methods:
    Return :const:`False` if the argument is zero, subnormal, infinite
    or a NaN.
 
-   .. versionadded:: 2.6
 
 .. method:: is_qnan()
 
    Return :const:`True` if the argument is a quiet NaN, and
    :const:`False` otherwise.
 
-   .. versionadded:: 2.6
 
 .. method:: is_signed()
 
@@ -495,28 +501,24 @@ also have a number of specialized methods:
    :const:`False` otherwise.  Note that zeros and NaNs can both carry
    signs.
 
-   .. versionadded:: 2.6
 
 .. method:: is_snan()
 
    Return :const:`True` if the argument is a signaling NaN and
    :const:`False` otherwise.
 
-   .. versionadded:: 2.6
 
 .. method:: is_subnormal()
 
    Return :const:`True` if the argument is subnormal, and
    :const:`False` otherwise.
 
-   .. versionadded:: 2.6
 
 .. method:: is_zero()
 
    Return :const:`True` if the argument is a (positive or negative)
    zero and :const:`False` otherwise.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.ln([context])
 
@@ -524,24 +526,21 @@ also have a number of specialized methods:
    is correctly rounded using the :const:`ROUND_HALF_EVEN` rounding
    mode.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.log10([context])
 
    Return the base ten logarithm of the operand.  The result is
    correctly rounded using the :const:`ROUND_HALF_EVEN` rounding mode.
 
-   .. versionadded:: 2.6
 
-.. method:  Decimal.logb([context])
+.. method:: Decimal.logb([context])
 
    For a nonzero number, return the adjusted exponent of its operand
    as a :class:`Decimal` instance.  If the operand is a zero then
-   ``Decimal("-Infinity")`` is returned and the
+   ``Decimal('-Infinity')`` is returned and the
    :const:`DivisionByZero` flag is raised.  If the operand is an
-   infinity then ``Decimal("Infinity")`` is returned.
+   infinity then ``Decimal('Infinity')`` is returned.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.logical_and(other[, context])
 
@@ -549,7 +548,6 @@ also have a number of specialized methods:
    *logical operands* (see :ref:`logical_operands_label`).  The result
    is the digit-wise ``and`` of the two operands.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.logical_invert(other[, context])
 
@@ -557,7 +555,6 @@ also have a number of specialized methods:
    be a *logical operand* (see :ref:`logical_operands_label`).  The
    result is the digit-wise inversion of the operand.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.logical_or(other[, context])
 
@@ -565,7 +562,6 @@ also have a number of specialized methods:
    operands* (see :ref:`logical_operands_label`).  The result is the
    digit-wise ``or`` of the two operands.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.logical_xor(other[, context])
 
@@ -573,7 +569,6 @@ also have a number of specialized methods:
    *logical operands* (see :ref:`logical_operands_label`).  The result
    is the digit-wise exclusive or of the two operands.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.max(other[, context])
 
@@ -581,12 +576,12 @@ also have a number of specialized methods:
    before returning and that :const:`NaN` values are either signaled or ignored
    (depending on the context and whether they are signaling or quiet).
 
+
 .. method:: Decimal.max_mag(other[, context])
 
    Similar to the :meth:`max` method, but the comparison is done using
    the absolute values of the operands.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.min(other[, context])
 
@@ -599,7 +594,6 @@ also have a number of specialized methods:
    Similar to the :meth:`min` method, but the comparison is done using
    the absolute values of the operands.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.next_minus([context])
 
@@ -607,7 +601,6 @@ also have a number of specialized methods:
    in the current thread's context if no context is given) that is smaller
    than the given operand.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.next_plus([context])
 
@@ -615,7 +608,6 @@ also have a number of specialized methods:
    in the current thread's context if no context is given) that is
    larger than the given operand.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.next_toward(other[, context])
 
@@ -624,15 +616,15 @@ also have a number of specialized methods:
    operands are numerically equal, return a copy of the first operand
    with the sign set to be the same as the sign of the second operand.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.normalize([context])
 
    Normalize the number by stripping the rightmost trailing zeros and converting
-   any result equal to :const:`Decimal("0")` to :const:`Decimal("0e0")`. Used for
+   any result equal to :const:`Decimal('0')` to :const:`Decimal('0e0')`. Used for
    producing canonical values for members of an equivalence class. For example,
-   ``Decimal("32.100")`` and ``Decimal("0.321000e+2")`` both normalize to the
-   equivalent value ``Decimal("32.1")``.
+   ``Decimal('32.100')`` and ``Decimal('0.321000e+2')`` both normalize to the
+   equivalent value ``Decimal('32.1')``.
+
 
 .. method:: Decimal.number_class([context])
 
@@ -650,15 +642,14 @@ also have a number of specialized methods:
    * ``"NaN"``, indicating that the operand is a quiet NaN (Not a Number).
    * ``"sNaN"``, indicating that the operand is a signaling NaN.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.quantize(exp[, rounding[, context[, watchexp]]])
 
-   Returns a value equal to the first operand after rounding and
+   Return a value equal to the first operand after rounding and
    having the exponent of the second operand.
 
-   >>> Decimal("1.41421356").quantize(Decimal("1.000"))
-   Decimal("1.414")
+   >>> Decimal('1.41421356').quantize(Decimal('1.000'))
+   Decimal('1.414')
 
    Unlike other operations, if the length of the coefficient after the
    quantize operation would be greater than precision, then an
@@ -675,8 +666,8 @@ also have a number of specialized methods:
    the given ``context`` argument; if neither argument is given the
    rounding mode of the current thread's context is used.
 
-   If watchexp is set (default), then an error is returned whenever 
-   the resulting exponent is greater than Emax or less than Etiny.
+   If *watchexp* is set (default), then an error is returned whenever the
+   resulting exponent is greater than :attr:`Emax` or less than :attr:`Etiny`.
 
 .. method:: Decimal.radix()
 
@@ -684,13 +675,12 @@ also have a number of specialized methods:
    :class:`Decimal` class does all its arithmetic.  Included for
    compatibility with the specification.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.remainder_near(other[, context])
 
-   Computes the modulo as either a positive or negative value depending on which is
+   Compute the modulo as either a positive or negative value depending on which is
    closest to zero.  For instance, ``Decimal(10).remainder_near(6)`` returns
-   ``Decimal("-2")`` which is closer to zero than ``Decimal("4")``.
+   ``Decimal('-2')`` which is closer to zero than ``Decimal('4')``.
 
    If both are equally close, the one chosen will have the same sign as *self*.
 
@@ -706,7 +696,6 @@ also have a number of specialized methods:
    if necessary.  The sign and exponent of the first operand are
    unchanged.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.same_quantum(other[, context])
 
@@ -719,7 +708,6 @@ also have a number of specialized methods:
    Equivalently, return the first operand multiplied by ``10**other``.
    The second operand must be an integer.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.shift(other[, context])
 
@@ -732,7 +720,6 @@ also have a number of specialized methods:
    coefficient are zeros.  The sign and exponent of the first operand
    are unchanged.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.sqrt([context])
 
@@ -745,7 +732,7 @@ also have a number of specialized methods:
 
    Engineering notation has an exponent which is a multiple of 3, so there are up
    to 3 digits left of the decimal place.  For example, converts
-   ``Decimal('123E+1')`` to ``Decimal("1.23E+3")``
+   ``Decimal('123E+1')`` to ``Decimal('1.23E+3')``
 
 .. method:: Decimal.to_integral([rounding[, context]])
 
@@ -754,34 +741,29 @@ also have a number of specialized methods:
 
 .. method:: Decimal.to_integral_exact([rounding[, context]])
 
-   Round the argument to the nearest integer, signaling
+   Round to the nearest integer, signaling
    :const:`Inexact` or :const:`Rounded` as appropriate if rounding
    occurs.  The rounding mode is determined by the ``rounding``
    parameter if given, else by the given ``context``.  If neither
    parameter is given then the rounding mode of the current context is
    used.
 
-   .. versionadded:: 2.6
 
 .. method:: Decimal.to_integral_value([rounding[, context]])
 
-   Rounds to the nearest integer without signaling :const:`Inexact` or
+   Round to the nearest integer without signaling :const:`Inexact` or
    :const:`Rounded`.  If given, applies *rounding*; otherwise, uses the rounding
    method in either the supplied *context* or the current context.
 
-   .. versionchanged:: 2.6
-      renamed from ``to_integral`` to ``to_integral_value``.  The old name
-      remains valid for compatibility.
 
 .. method:: Decimal.trim()
 
-   Returns its argument with *insignificant* trailing zeros removed.
+   Return the decimal with *insignificant* trailing zeros removed.
    Here, a trailing zero is considered insignificant either if it
    follows the decimal point, or if the exponent of the argument (that
    is, the last element of the :meth:`as_tuple` representation) is
    positive.
 
-   .. versionadded:: 2.6
 
 .. _logical_operands_label:
 
@@ -794,7 +776,7 @@ operands*.  A *logical operand* is a :class:`Decimal` instance whose
 exponent and sign are both zero, and whose digits are all either
 :const:`0` or :const:`1`.
 
-.. % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+.. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 .. _decimal-context:
@@ -833,7 +815,6 @@ the :func:`localcontext` function to temporarily change the active context.
    For example, the following code sets the current decimal precision to 42 places,
    performs a calculation, and then automatically restores the previous context::
 
-      from __future__ import with_statement
       from decimal import localcontext
 
       with localcontext() as ctx:
@@ -863,7 +844,7 @@ described below. In addition, the module provides three pre-made contexts:
    :const:`ROUND_HALF_EVEN`.  All flags are cleared.  No traps are enabled (so that
    exceptions are not raised during computations).
 
-   Because the trapped are disabled, this context is useful for applications that
+   Because the traps are disabled, this context is useful for applications that
    prefer to have result value of :const:`NaN` or :const:`Infinity` instead of
    raising exceptions.  This allows an application to complete a run in the
    presence of conditions that would otherwise halt the program.
@@ -921,8 +902,6 @@ In addition to the three supplied contexts, new contexts can be created with the
    :const:`1`, exponents are printed with a capital :const:`E`; otherwise, a
    lowercase :const:`e` is used: :const:`Decimal('6.02e+23')`.
 
-   .. versionchanged:: 2.6
-      The :const:`ROUND_05UP` rounding mode was added.
 
 The :class:`Context` class defines several general purpose methods as
 well as a large number of methods for doing arithmetic directly in a
@@ -958,11 +937,14 @@ method.  For example, ``C.exp(x)`` is equivalent to
    change the result::
 
       >>> getcontext().prec = 3
-      >>> Decimal("3.4445") + Decimal("1.0023")
-      Decimal("4.45")
-      >>> Decimal("3.4445") + Decimal(0) + Decimal("1.0023")
-      Decimal("4.44")
+      >>> Decimal('3.4445') + Decimal('1.0023')
+      Decimal('4.45')
+      >>> Decimal('3.4445') + Decimal(0) + Decimal('1.0023')
+      Decimal('4.44')
 
+   This method implements the to-number operation of the IBM
+   specification.  If the argument is a string, no leading or trailing
+   whitespace is permitted.
 
 .. method:: Context.Etiny()
 
@@ -1048,10 +1030,6 @@ those for the :class:`Decimal` class and are only briefly recounted here.
    modulo`` with unbounded precision, but is computed more
    efficiently.  It is always exact.
 
-   .. versionchanged:: 2.6 
-      ``y`` may now be nonintegral in ``x**y``.
-      Stricter requirements for the three-argument version.
-
 
 .. method:: Context.remainder(x, y)
 
@@ -1068,7 +1046,7 @@ those for the :class:`Decimal` class and are only briefly recounted here.
 
    Converts a number to a string using scientific notation.
 
-.. % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+.. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 .. _decimal-signals:
@@ -1079,7 +1057,7 @@ Signals
 Signals represent conditions that arise during computation. Each corresponds to
 one context flag and one context trap enabler.
 
-The context flag is incremented whenever the condition is encountered. After the
+The context flag is set whenever the condition is encountered. After the
 computation, flags may be checked for informational purposes (for instance, to
 determine whether a computation was exact). After checking the flags, be sure to
 clear all flags before starting the next computation.
@@ -1189,7 +1167,7 @@ The following table summarizes the hierarchy of signals::
            Rounded
            Subnormal
 
-.. % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+.. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 .. _decimal-notes:
@@ -1217,15 +1195,15 @@ properties of addition::
 
    >>> u, v, w = Decimal(11111113), Decimal(-11111111), Decimal('7.51111111')
    >>> (u + v) + w
-   Decimal("9.5111111")
+   Decimal('9.5111111')
    >>> u + (v + w)
-   Decimal("10")
+   Decimal('10')
 
    >>> u, v, w = Decimal(20000), Decimal(-6), Decimal('6.0000003')
    >>> (u*v) + (u*w)
-   Decimal("0.01")
+   Decimal('0.01')
    >>> u * (v+w)
-   Decimal("0.0060000")
+   Decimal('0.0060000')
 
 The :mod:`decimal` module makes it possible to restore the identities by
 expanding the precision sufficiently to avoid loss of significance::
@@ -1233,15 +1211,15 @@ expanding the precision sufficiently to avoid loss of significance::
    >>> getcontext().prec = 20
    >>> u, v, w = Decimal(11111113), Decimal(-11111111), Decimal('7.51111111')
    >>> (u + v) + w
-   Decimal("9.51111111")
+   Decimal('9.51111111')
    >>> u + (v + w)
-   Decimal("9.51111111")
+   Decimal('9.51111111')
    >>> 
    >>> u, v, w = Decimal(20000), Decimal(-6), Decimal('6.0000003')
    >>> (u*v) + (u*w)
-   Decimal("0.0060000")
+   Decimal('0.0060000')
    >>> u * (v+w)
-   Decimal("0.0060000")
+   Decimal('0.0060000')
 
 
 Special values
@@ -1272,6 +1250,19 @@ A variant is :const:`sNaN` which signals rather than remaining quiet after every
 operation.  This is a useful return value when an invalid result needs to
 interrupt a calculation for special handling.
 
+The behavior of Python's comparison operators can be a little surprising where a
+:const:`NaN` is involved.  A test for equality where one of the operands is a
+quiet or signaling :const:`NaN` always returns :const:`False` (even when doing
+``Decimal('NaN')==Decimal('NaN')``), while a test for inequality always returns
+:const:`True`.  An attempt to compare two Decimals using any of the ``<``,
+``<=``, ``>`` or ``>=`` operators will raise the :exc:`InvalidOperation` signal
+if either operand is a :const:`NaN`, and return :const:`False` if this signal is
+not trapped.  Note that the General Decimal Arithmetic specification does not
+specify the behavior of direct comparisons; these rules for comparisons
+involving a :const:`NaN` were taken from the IEEE 854 standard (see Table 3 in
+section 5.7).  To ensure strict standards-compliance, use the :meth:`compare`
+and :meth:`compare-signal` methods instead.
+
 The signed zeros can result from calculations that underflow. They keep the sign
 that would have resulted if the calculation had been carried out to greater
 precision.  Since their magnitude is zero, both positive and negative zeros are
@@ -1284,9 +1275,9 @@ normalized floating point representations, it is not immediately obvious that
 the following calculation returns a value equal to zero::
 
    >>> 1 / Decimal('Infinity')
-   Decimal("0E-1000000026")
+   Decimal('0E-1000000026')
 
-.. % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+.. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 .. _decimal-threads:
@@ -1324,7 +1315,7 @@ threads calling :func:`getcontext`. For example::
    t3.start()
     . . .
 
-.. % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+.. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 .. _decimal-recipes:
@@ -1361,19 +1352,15 @@ to work with the :class:`Decimal` class::
        '<.02>'
 
        """
-       q = Decimal((0, (1,), -places))    # 2 places --> '0.01'
-       sign, digits, exp = value.quantize(q).as_tuple()
-       assert exp == -places    
+       q = Decimal(10) ** -places      # 2 places --> '0.01'
+       sign, digits, exp = value.quantize(q).as_tuple()  
        result = []
        digits = map(str, digits)
        build, next = result.append, digits.pop
        if sign:
            build(trailneg)
        for i in range(places):
-           if digits:
-               build(next())
-           else:
-               build('0')
+           build(next() if digits else '0')
        build(dp)
        i = 0
        while digits:
@@ -1383,12 +1370,8 @@ to work with the :class:`Decimal` class::
                i = 0
                build(sep)
        build(curr)
-       if sign:
-           build(neg)
-       else:
-           build(pos)
-       result.reverse()
-       return ''.join(result)
+       build(neg if sign else pos)
+       return ''.join(reversed(result))
 
    def pi():
        """Compute Pi to the current precision.
@@ -1480,7 +1463,7 @@ to work with the :class:`Decimal` class::
        return +s
 
 
-.. % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+.. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 .. _decimal-faq:
@@ -1491,11 +1474,11 @@ Decimal FAQ
 Q. It is cumbersome to type ``decimal.Decimal('1234.5')``.  Is there a way to
 minimize typing when using the interactive interpreter?
 
-\A. Some users abbreviate the constructor to just a single letter::
+A. Some users abbreviate the constructor to just a single letter::
 
    >>> D = decimal.Decimal
    >>> D('1.23') + D('3.45')
-   Decimal("4.68")
+   Decimal('4.68')
 
 Q. In a fixed-point application with two decimal places, some inputs have many
 places and need to be rounded.  Others are not supposed to have excess digits
@@ -1507,14 +1490,14 @@ the :const:`Inexact` trap is set, it is also useful for validation::
    >>> TWOPLACES = Decimal(10) ** -2       # same as Decimal('0.01')
 
    >>> # Round to two places
-   >>> Decimal("3.214").quantize(TWOPLACES)
-   Decimal("3.21")
+   >>> Decimal('3.214').quantize(TWOPLACES)
+   Decimal('3.21')
 
    >>> # Validate that a number does not exceed two places 
-   >>> Decimal("3.21").quantize(TWOPLACES, context=Context(traps=[Inexact]))
-   Decimal("3.21")
+   >>> Decimal('3.21').quantize(TWOPLACES, context=Context(traps=[Inexact]))
+   Decimal('3.21')
 
-   >>> Decimal("3.214").quantize(TWOPLACES, context=Context(traps=[Inexact]))
+   >>> Decimal('3.214').quantize(TWOPLACES, context=Context(traps=[Inexact]))
    Traceback (most recent call last):
       ...
    Inexact: Changed in rounding
@@ -1522,9 +1505,36 @@ the :const:`Inexact` trap is set, it is also useful for validation::
 Q. Once I have valid two place inputs, how do I maintain that invariant
 throughout an application?
 
-A. Some operations like addition and subtraction automatically preserve fixed
-point.  Others, like multiplication and division, change the number of decimal
-places and need to be followed-up with a :meth:`quantize` step.
+A. Some operations like addition, subtraction, and multiplication by an integer
+will automatically preserve fixed point.  Others operations, like division and
+non-integer multiplication, will change the number of decimal places and need to
+be followed-up with a :meth:`quantize` step::
+
+    >>> a = Decimal('102.72')           # Initial fixed-point values
+    >>> b = Decimal('3.17')
+    >>> a + b                           # Addition preserves fixed-point
+    Decimal('105.89')
+    >>> a - b
+    Decimal('99.55')
+    >>> a * 42                          # So does integer multiplication
+    Decimal('4314.24')
+    >>> (a * b).quantize(TWOPLACES)     # Must quantize non-integer multiplication
+    Decimal('325.62')
+    >>> (b / a).quantize(TWOPLACES)     # And quantize division
+    Decimal('0.03')
+
+In developing fixed-point applications, it is convenient to define functions
+to handle the :meth:`quantize` step::
+
+    >>> def mul(x, y, fp=TWOPLACES):
+    ...     return (x * y).quantize(fp)
+    >>> def div(x, y, fp=TWOPLACES):
+    ...     return (x / y).quantize(fp)
+
+    >>> mul(a, b)                       # Automatically preserve fixed-point
+    Decimal('325.62')
+    >>> div(b, a)
+    Decimal('0.03')
 
 Q. There are many ways to express the same value.  The numbers :const:`200`,
 :const:`200.000`, :const:`2E2`, and :const:`.02E+4` all have the same value at
@@ -1536,7 +1546,7 @@ representative::
 
    >>> values = map(Decimal, '200 200.000 2E2 .02E+4'.split())
    >>> [v.normalize() for v in values]
-   [Decimal("2E+2"), Decimal("2E+2"), Decimal("2E+2"), Decimal("2E+2")]
+   [Decimal('2E+2'), Decimal('2E+2'), Decimal('2E+2'), Decimal('2E+2')]
 
 Q. Some decimal values always print with exponential notation.  Is there a way
 to get a non-exponential representation?
@@ -1546,44 +1556,44 @@ of significant places in the coefficient.  For example, expressing
 :const:`5.0E+3` as :const:`5000` keeps the value constant but cannot show the
 original's two-place significance.
 
+If an application does not care about tracking significance, it is easy to
+remove the exponent and trailing zeroes, losing significance, but keeping the
+value unchanged::
+
+    >>> def remove_exponent(d):
+    ...     return d.quantize(Decimal(1)) if d == d.to_integral() else d.normalize()
+
+    >>> remove_exponent(Decimal('5E+3'))
+    Decimal('5000')
+
 Q. Is there a way to convert a regular float to a :class:`Decimal`?
 
 A. Yes, all binary floating point numbers can be exactly expressed as a
 Decimal.  An exact conversion may take more precision than intuition would
-suggest, so trapping :const:`Inexact` will signal a need for more precision::
+suggest, so we trap :const:`Inexact` to signal a need for more precision::
 
-   def floatToDecimal(f):
-       "Convert a floating point number to a Decimal with no loss of information"
-       # Transform (exactly) a float to a mantissa (0.5 <= abs(m) < 1.0) and an
-       # exponent.  Double the mantissa until it is an integer.  Use the integer
-       # mantissa and exponent to compute an equivalent Decimal.  If this cannot
-       # be done exactly, then retry with more precision.
+    def float_to_decimal(f):
+        "Convert a floating point number to a Decimal with no loss of information"
+        n, d = f.as_integer_ratio()
+        with localcontext() as ctx:
+            ctx.traps[Inexact] = True
+            while True:
+                try:
+                   return Decimal(n) / Decimal(d)
+                except Inexact:
+                    ctx.prec += 1
 
-       mantissa, exponent = math.frexp(f)
-       while mantissa != int(mantissa):
-           mantissa *= 2.0
-           exponent -= 1
-       mantissa = int(mantissa)
+    >>> float_to_decimal(math.pi)
+    Decimal('3.141592653589793115997963468544185161590576171875')
 
-       oldcontext = getcontext()
-       setcontext(Context(traps=[Inexact]))
-       try:
-           while True:
-               try:
-                  return mantissa * Decimal(2) ** exponent
-               except Inexact:
-                   getcontext().prec += 1
-       finally:
-           setcontext(oldcontext)
-
-Q. Why isn't the :func:`floatToDecimal` routine included in the module?
+Q. Why isn't the :func:`float_to_decimal` routine included in the module?
 
 A. There is some question about whether it is advisable to mix binary and
 decimal floating point.  Also, its use requires some care to avoid the
 representation issues associated with binary floating point::
 
-   >>> floatToDecimal(1.1)
-   Decimal("1.100000000000000088817841970012523233890533447265625")
+   >>> float_to_decimal(1.1)
+   Decimal('1.100000000000000088817841970012523233890533447265625')
 
 Q. Within a complex calculation, how can I make sure that I haven't gotten a
 spurious result because of insufficient precision or rounding anomalies.
@@ -1604,20 +1614,20 @@ results can look odd if you forget that the inputs haven't been rounded::
 
    >>> getcontext().prec = 3
    >>> Decimal('3.104') + D('2.104')
-   Decimal("5.21")
+   Decimal('5.21')
    >>> Decimal('3.104') + D('0.000') + D('2.104')
-   Decimal("5.20")
+   Decimal('5.20')
 
 The solution is either to increase precision or to force rounding of inputs
 using the unary plus operation::
 
    >>> getcontext().prec = 3
    >>> +Decimal('1.23456789')      # unary plus triggers rounding
-   Decimal("1.23")
+   Decimal('1.23')
 
 Alternatively, inputs can be rounded upon creation using the
 :meth:`Context.create_decimal` method::
 
    >>> Context(prec=5, rounding=ROUND_DOWN).create_decimal('1.2345678')
-   Decimal("1.2345")
+   Decimal('1.2345')
 

@@ -26,24 +26,29 @@ extern "C" {
 /* External C interface */
 
 PyObject *
-PyFile_FromFile(FILE *fp, char *name, char *mode, int (*close)(FILE *))
+PyFile_FromFd(int fd, char *name, char *mode, int buffering, char *encoding,
+	      char *errors, char *newline, int closefd)
 {
-	PyObject *io, *stream, *nameobj;
+	PyObject *io, *stream, *nameobj = NULL;
 
 	io = PyImport_ImportModule("io");
 	if (io == NULL)
 		return NULL;
-	stream = PyObject_CallMethod(io, "open", "is", fileno(fp), mode);
-        Py_DECREF(io);
+	stream = PyObject_CallMethod(io, "open", "isisssi", fd, mode,
+				     buffering, encoding, errors,
+				     newline, closefd);
+	Py_DECREF(io);
 	if (stream == NULL)
 		return NULL;
-        nameobj = PyUnicode_FromString(name);
-        if (nameobj == NULL)
-		PyErr_Clear();
-	else {
-		if (PyObject_SetAttrString(stream, "name", nameobj) < 0)
+	if (name != NULL) {
+		nameobj = PyUnicode_FromString(name);
+		if (nameobj == NULL)
 			PyErr_Clear();
-		Py_DECREF(nameobj);
+		else {
+			if (PyObject_SetAttrString(stream, "name", nameobj) < 0)
+				PyErr_Clear();
+			Py_DECREF(nameobj);
+		}
 	}
 	return stream;
 }
@@ -142,10 +147,10 @@ PyFile_WriteObject(PyObject *v, PyObject *f, int flags)
 	if (writer == NULL)
 		return -1;
 	if (flags & Py_PRINT_RAW) {
-		value = _PyObject_Str(v);
+		value = PyObject_Str(v);
 	}
 	else
-		value = PyObject_ReprStr8(v);
+		value = PyObject_Repr(v);
 	if (value == NULL) {
 		Py_DECREF(writer);
 		return -1;
@@ -202,10 +207,7 @@ PyObject_AsFileDescriptor(PyObject *o)
 	int fd;
 	PyObject *meth;
 
-	if (PyInt_Check(o)) {
-		fd = PyInt_AsLong(o);
-	}
-	else if (PyLong_Check(o)) {
+	if (PyLong_Check(o)) {
 		fd = PyLong_AsLong(o);
 	}
 	else if ((meth = PyObject_GetAttrString(o, "fileno")) != NULL)
@@ -215,11 +217,7 @@ PyObject_AsFileDescriptor(PyObject *o)
 		if (fno == NULL)
 			return -1;
 
-		if (PyInt_Check(fno)) {
-			fd = PyInt_AsLong(fno);
-			Py_DECREF(fno);
-		}
-		else if (PyLong_Check(fno)) {
+		if (PyLong_Check(fno)) {
 			fd = PyLong_AsLong(fno);
 			Py_DECREF(fno);
 		}
@@ -327,6 +325,204 @@ Py_UniversalNewlineFgets(char *buf, int n, FILE *stream, PyObject *fobj)
 		return NULL;
 	return buf;
 }
+
+/* **************************** std printer ****************************
+ * The stdprinter is used during the boot strapping phase as a preliminary
+ * file like object for sys.stderr.
+ */
+
+typedef struct {
+	PyObject_HEAD
+	int fd;
+} PyStdPrinter_Object;
+
+static PyObject *
+stdprinter_new(PyTypeObject *type, PyObject *args, PyObject *kews)
+{
+	PyStdPrinter_Object *self;
+
+	assert(type != NULL && type->tp_alloc != NULL);
+
+	self = (PyStdPrinter_Object *) type->tp_alloc(type, 0);
+	if (self != NULL) {
+		self->fd = -1;
+	}
+
+	return (PyObject *) self;
+}
+
+static int
+fileio_init(PyObject *self, PyObject *args, PyObject *kwds)
+{
+	PyErr_SetString(PyExc_TypeError,
+			"cannot create 'stderrprinter' instances");
+	return -1;
+}
+
+PyObject *
+PyFile_NewStdPrinter(int fd)
+{
+	PyStdPrinter_Object *self;
+
+	if (fd != fileno(stdout) && fd != fileno(stderr)) {
+		/* not enough infrastructure for PyErr_BadInternalCall() */
+		return NULL;
+	}
+
+	self = PyObject_New(PyStdPrinter_Object,
+			    &PyStdPrinter_Type);
+        if (self != NULL) {
+		self->fd = fd;
+	}
+	return (PyObject*)self;
+}
+
+PyObject *
+stdprinter_write(PyStdPrinter_Object *self, PyObject *args)
+{
+	char *c;
+	Py_ssize_t n;
+
+	if (self->fd < 0) {
+		/* fd might be invalid on Windows
+		 * I can't raise an exception here. It may lead to an
+		 * unlimited recursion in the case stderr is invalid.
+		 */
+		Py_RETURN_NONE;
+	}
+
+	if (!PyArg_ParseTuple(args, "s", &c)) {
+		return NULL;
+	}
+	n = strlen(c);
+
+	Py_BEGIN_ALLOW_THREADS
+	errno = 0;
+	n = write(self->fd, c, n);
+	Py_END_ALLOW_THREADS
+
+	if (n < 0) {
+		if (errno == EAGAIN)
+			Py_RETURN_NONE;
+		PyErr_SetFromErrno(PyExc_IOError);
+		return NULL;
+	}
+
+	return PyLong_FromSsize_t(n);
+}
+
+static PyObject *
+stdprinter_fileno(PyStdPrinter_Object *self)
+{
+	return PyLong_FromLong((long) self->fd);
+}
+
+static PyObject *
+stdprinter_repr(PyStdPrinter_Object *self)
+{
+	return PyUnicode_FromFormat("<stdprinter(fd=%d) object at 0x%x>",
+				    self->fd, self);
+}
+
+static PyObject *
+stdprinter_noop(PyStdPrinter_Object *self)
+{
+	Py_RETURN_NONE;
+}
+
+static PyObject *
+stdprinter_isatty(PyStdPrinter_Object *self)
+{
+	long res;
+	if (self->fd < 0) {
+		Py_RETURN_FALSE;
+	}
+
+	Py_BEGIN_ALLOW_THREADS
+	res = isatty(self->fd);
+	Py_END_ALLOW_THREADS
+
+	return PyBool_FromLong(res);
+}
+
+static PyMethodDef stdprinter_methods[] = {
+	{"close",	(PyCFunction)stdprinter_noop, METH_NOARGS, ""},
+	{"flush",	(PyCFunction)stdprinter_noop, METH_NOARGS, ""},
+	{"fileno",	(PyCFunction)stdprinter_fileno, METH_NOARGS, ""},
+	{"isatty",	(PyCFunction)stdprinter_isatty, METH_NOARGS, ""},
+	{"write",	(PyCFunction)stdprinter_write, METH_VARARGS, ""},
+	{NULL,		NULL}  /*sentinel */
+};
+
+static PyObject *
+get_closed(PyStdPrinter_Object *self, void *closure)
+{
+	Py_INCREF(Py_False);
+	return Py_False;
+}
+
+static PyObject *
+get_mode(PyStdPrinter_Object *self, void *closure)
+{
+	return PyUnicode_FromString("w");
+}
+
+static PyObject *
+get_encoding(PyStdPrinter_Object *self, void *closure)
+{
+	Py_RETURN_NONE;
+}
+
+static PyGetSetDef stdprinter_getsetlist[] = {
+	{"closed", (getter)get_closed, NULL, "True if the file is closed"},
+	{"encoding", (getter)get_encoding, NULL, "Encoding of the file"},
+	{"mode", (getter)get_mode, NULL, "String giving the file mode"},
+	{0},
+};
+
+PyTypeObject PyStdPrinter_Type = {
+	PyVarObject_HEAD_INIT(&PyType_Type, 0)
+	"stderrprinter",			/* tp_name */
+	sizeof(PyStdPrinter_Object),		/* tp_basicsize */
+	0,					/* tp_itemsize */
+	/* methods */
+	0,					/* tp_dealloc */
+	0,					/* tp_print */
+	0,					/* tp_getattr */
+	0,					/* tp_setattr */
+	0,					/* tp_compare */
+	(reprfunc)stdprinter_repr,		/* tp_repr */
+	0,					/* tp_as_number */
+	0,					/* tp_as_sequence */
+	0,					/* tp_as_mapping */
+	0,					/* tp_hash */
+	0,					/* tp_call */
+	0,					/* tp_str */
+	PyObject_GenericGetAttr,		/* tp_getattro */
+	0,					/* tp_setattro */
+	0,					/* tp_as_buffer */
+	Py_TPFLAGS_DEFAULT,			/* tp_flags */
+	0,					/* tp_doc */
+	0,					/* tp_traverse */
+	0,					/* tp_clear */
+	0,					/* tp_richcompare */
+	0,					/* tp_weaklistoffset */
+	0,					/* tp_iter */
+	0,					/* tp_iternext */
+	stdprinter_methods,			/* tp_methods */
+	0,					/* tp_members */
+	stdprinter_getsetlist,			/* tp_getset */
+	0,					/* tp_base */
+	0,					/* tp_dict */
+	0,					/* tp_descr_get */
+	0,					/* tp_descr_set */
+	0,					/* tp_dictoffset */
+	fileio_init,				/* tp_init */
+	PyType_GenericAlloc,			/* tp_alloc */
+	stdprinter_new,				/* tp_new */
+	PyObject_Del,				/* tp_free */
+};
+
 
 #ifdef __cplusplus
 }

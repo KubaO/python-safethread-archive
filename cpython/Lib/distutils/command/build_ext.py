@@ -14,6 +14,10 @@ from distutils.dep_util import newer_group
 from distutils.extension import Extension
 from distutils import log
 
+if os.name == 'nt':
+    from distutils.msvccompiler import get_build_version
+    MSVC_VERSION = int(get_build_version())
+
 # An extension name is just a dot-separated list of Python NAMEs (ie.
 # the same as a fully-qualified module name).
 extension_name_re = re.compile \
@@ -133,7 +137,7 @@ class build_ext(Command):
         plat_py_include = sysconfig.get_python_inc(plat_specific=1)
         if self.include_dirs is None:
             self.include_dirs = self.distribution.include_dirs or []
-        if isinstance(self.include_dirs, basestring):
+        if isinstance(self.include_dirs, str):
             self.include_dirs = self.include_dirs.split(os.pathsep)
 
         # Put the Python "system" include dir at the end, so that
@@ -142,7 +146,7 @@ class build_ext(Command):
         if plat_py_include != py_include:
             self.include_dirs.append(plat_py_include)
 
-        if isinstance(self.libraries, basestring):
+        if isinstance(self.libraries, str):
             self.libraries = [self.libraries]
 
         # Life is easier if we're not forever checking for None, so
@@ -151,12 +155,12 @@ class build_ext(Command):
             self.libraries = []
         if self.library_dirs is None:
             self.library_dirs = []
-        elif isinstance(self.library_dirs, basestring):
+        elif isinstance(self.library_dirs, str):
             self.library_dirs = self.library_dirs.split(os.pathsep)
 
         if self.rpath is None:
             self.rpath = []
-        elif isinstance(self.rpath, basestring):
+        elif isinstance(self.rpath, str):
             self.rpath = self.rpath.split(os.pathsep)
 
         # for extensions under windows use different directories
@@ -172,7 +176,15 @@ class build_ext(Command):
             # Append the source distribution include and library directories,
             # this allows distutils on windows to work in the source tree
             self.include_dirs.append(os.path.join(sys.exec_prefix, 'PC'))
-            self.library_dirs.append(os.path.join(sys.exec_prefix, 'PCBuild'))
+            if MSVC_VERSION == 9:
+                self.library_dirs.append(os.path.join(sys.exec_prefix,
+                                         'PCbuild'))
+            elif MSVC_VERSION == 8:
+                self.library_dirs.append(os.path.join(sys.exec_prefix,
+                                         'PC', 'VS8.0', 'win32release'))
+            else:
+                self.library_dirs.append(os.path.join(sys.exec_prefix,
+                                         'PC', 'VS7.1'))
 
         # OS/2 (EMX) doesn't support Debug vs Release builds, but has the
         # import libraries in its "Config" subdirectory
@@ -309,7 +321,7 @@ class build_ext(Command):
                        "each element of 'ext_modules' option must be an "
                        "Extension instance or 2-tuple")
 
-            if not (isinstance(ext_name, basestring) and
+            if not (isinstance(ext_name, str) and
                     extension_name_re.match(ext_name)):
                 raise DistutilsSetupError(
                        "first element of each tuple in 'ext_modules' "

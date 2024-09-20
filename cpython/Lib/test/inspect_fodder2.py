@@ -96,4 +96,12 @@ def f():
             "doc"
             return 42
     return X
-method_in_dynamic_class = f().g.im_func
+method_in_dynamic_class = f().g
+
+#line 101
+def keyworded(*arg1, arg2=1):
+    pass
+
+#line 105
+def annotated(arg1: list):
+    pass

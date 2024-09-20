@@ -33,7 +33,9 @@ simple statements is:
 Expression statements
 =====================
 
-.. index:: pair: expression; statement
+.. index::
+   pair: expression; statement
+   pair: expression; list
 .. index:: pair: expression; list
 
 Expression statements are used (mostly interactively) to compute and write a
@@ -142,6 +144,19 @@ Assignment of an object to a single target is recursively defined as follows.
   The name is rebound if it was already bound.  This may cause the reference
   count for the object previously bound to the name to reach zero, causing the
   object to be deallocated and its destructor (if it has one) to be called.
+
+  .. index:: single: destructor
+
+  The name is rebound if it was already bound.  This may cause the reference count
+  for the object previously bound to the name to reach zero, causing the object to
+  be deallocated and its destructor (if it has one) to be called.
+
+* If the target is a target list enclosed in parentheses or in square brackets:
+  The object must be a sequence with the same number of items as there are targets
+  in the target list, and its items are assigned, from left to right, to the
+  corresponding targets.
+
+  .. index:: pair: attribute; assignment
 
 * If the target is an attribute reference: The primary expression in the
   reference is evaluated.  It should yield an object with assignable attributes;
@@ -290,22 +305,22 @@ The simple form, ``assert expression``, is equivalent to ::
 The extended form, ``assert expression1, expression2``, is equivalent to ::
 
    if __debug__:
-      if not expression1: raise AssertionError, expression2
+      if not expression1: raise AssertionError(expression2)
 
 .. index::
    single: __debug__
    exception: AssertionError
 
-These equivalences assume that ``__debug__`` and :exc:`AssertionError` refer to
+These equivalences assume that :const:`__debug__` and :exc:`AssertionError` refer to
 the built-in variables with those names.  In the current implementation, the
-built-in variable ``__debug__`` is ``True`` under normal circumstances,
+built-in variable :const:`__debug__` is ``True`` under normal circumstances,
 ``False`` when optimization is requested (command line option -O).  The current
 code generator emits no code for an assert statement when optimization is
 requested at compile time.  Note that it is unnecessary to include the source
 code for the expression that failed in the error message; it will be displayed
 as part of the stack trace.
 
-Assignments to ``__debug__`` are illegal.  The value for the built-in variable
+Assignments to :const:`__debug__` are illegal.  The value for the built-in variable
 is determined when the interpreter starts.
 
 
@@ -314,7 +329,9 @@ is determined when the interpreter starts.
 The :keyword:`pass` statement
 =============================
 
-.. index:: statement: pass
+.. index::
+   statement: pass
+   pair: null; operation
            pair: null; operation
 
 .. productionlist::
@@ -334,9 +351,10 @@ code needs to be executed, for example::
 The :keyword:`del` statement
 ============================
 
-.. index:: statement: del
-           pair: deletion; target
-           triple: deletion; target; list
+.. index::
+   statement: del
+   pair: deletion; target
+   triple: deletion; target; list
 
 .. productionlist::
    del_stmt: "del" `target_list`
@@ -373,9 +391,10 @@ the sliced object).
 The :keyword:`return` statement
 ===============================
 
-.. index:: statement: return
-           pair: function; definition
-           pair: class; definition
+.. index::
+   statement: return
+   pair: function; definition
+   pair: class; definition
 
 .. productionlist::
    return_stmt: "return" [`expression_list`]
@@ -405,23 +424,34 @@ raised.
 The :keyword:`yield` statement
 ==============================
 
+.. index::
+   statement: yield
+   single: generator; function
+   single: generator; iterator
+   single: function; generator
+   exception: StopIteration
+
 .. productionlist::
    yield_stmt: `yield_expression`
 
-The yield statement is nothing but a yield expression used as a statement,
-see :ref:`yieldexpr`.
-
+The :keyword:`yield` statement is only used when defining a generator function,
+and is only used in the body of the generator function. Using a :keyword:`yield`
+statement in a function definition is sufficient to cause that definition to
+create a generator function instead of a normal function.
+>>>>>>> .merge-right.r59773
 
 .. _raise:
 
 The :keyword:`raise` statement
 ==============================
 
-.. index:: statement: raise
-           pair: raising; exception
+.. index::
+   statement: raise
+   single: exception
+   pair: raising; exception
 
 .. productionlist::
-   raise_stmt: "raise" [`expression` ["from" `expression`]]
+   raise_stmt: "raise" [`expression` ["," `expression` ["," `expression`]]]
 
 If no expressions are present, :keyword:`raise` re-raises the last exception
 that was active in the current scope.  If no exception is active in the current
@@ -463,10 +493,11 @@ and information about handling exceptions is in section :ref:`try`.
 The :keyword:`break` statement
 ==============================
 
-.. index:: statement: break
-           statement: for
-           statement: while
-           pair: loop; statement
+.. index::
+   statement: break
+   statement: for
+   statement: while
+   pair: loop; statement
 
 .. productionlist::
    break_stmt: "break"
@@ -496,11 +527,12 @@ really leaving the loop.
 The :keyword:`continue` statement
 =================================
 
-.. index:: statement: continue
-           statement: for
-           statement: while
-           pair: loop; statement
-           keyword: finally
+.. index::
+   statement: continue
+   statement: for
+   statement: while
+   pair: loop; statement
+   keyword: finally
 
 .. productionlist::
    continue_stmt: "continue"
@@ -512,6 +544,7 @@ cycle of the nearest enclosing loop.
 
 
 .. _import:
+.. _from:
 
 The :keyword:`import` statement
 ===============================
@@ -617,6 +650,7 @@ raise a :exc:`SyntaxError`.
 
 .. index::
    keyword: from
+   statement: from
    triple: hierarchical; module; names
    single: packages
    single: __init__.py
@@ -717,12 +751,12 @@ after the script is executed.
 The :keyword:`global` statement
 ===============================
 
-.. index:: statement: global
+.. index::
+   statement: global
+   triple: global; name; binding
 
 .. productionlist::
    global_stmt: "global" `identifier` ("," `identifier`)*
-
-.. index:: triple: global; name; binding
 
 The :keyword:`global` statement is a declaration which holds for the entire
 current code block.  It means that the listed identifiers are to be interpreted
@@ -765,12 +799,37 @@ The :keyword:`nonlocal` statement
 .. productionlist::
    nonlocal_stmt: "nonlocal" `identifier` ("," `identifier`)*
 
-XXX: To be documented.
+.. XXX add when implemented
+                : ["=" (`target_list` "=")+ `expression_list`]
+                : | "nonlocal" `identifier` `augop` `expression_list`
+
+The :keyword:`nonlocal` statement causes the listed identifiers to refer to 
+previously bound variables in the nearest enclosing scope.  This is important 
+because the default behavior for binding is to search the local namespace 
+first.  The statement allows encapsulated code to rebind variables outside of
+the local scope besides the global (module) scope.
+
+.. XXX not implemented
+   The :keyword:`nonlocal` statement may prepend an assignment or augmented
+   assignment, but not an expression.
+
+Names listed in a :keyword:`nonlocal` statement, unlike to those listed in a
+:keyword:`global` statement, must refer to pre-existing bindings in an
+enclosing scope (the scope in which a new binding should be created cannot
+be determined unambiguously).
+
+Names listed in a :keyword:`nonlocal` statement must not collide with 
+pre-existing bindings in the local scope.
+
+.. seealso::
+
+   :pep:`3104` - Access to Names in Outer Scopes
+      The specification for the :keyword:`nonlocal` statement.
 
 
 .. rubric:: Footnotes
 
 .. [#] It may occur within an :keyword:`except` or :keyword:`else` clause.  The
-   restriction on occurring in the :keyword:`try` clause is implementor's laziness
-   and will eventually be lifted.
+   restriction on occurring in the :keyword:`try` clause is implementor's
+   laziness and will eventually be lifted.
 

@@ -27,7 +27,7 @@ to a file named "<name>.html".
 
 Module docs for core modules are assumed to be in
 
-    http://www.python.org/doc/current/lib/
+    http://docs.python.org/library/
 
 This can be overridden by setting the PYTHONDOCS environment variable
 to a different URL or to a local directory containing the Library
@@ -52,7 +52,7 @@ Richard Chamberlain, for the first implementation of textdoc.
 #     the current directory is changed with os.chdir(), an incorrect
 #     path will be displayed.
 
-import sys, imp, os, re, inspect, __builtin__, pkgutil
+import sys, imp, os, re, inspect, builtins, pkgutil
 from repr import Repr
 try:
     from collections import deque
@@ -341,7 +341,7 @@ class Doc:
             file = '(built-in)'
 
         docloc = os.environ.get("PYTHONDOCS",
-                                "http://www.python.org/doc/current/lib")
+                                "http://docs.python.org/library")
         basedir = os.path.join(sys.exec_prefix, "lib",
                                "python"+sys.version[0:3])
         if (isinstance(object, type(os)) and
@@ -350,11 +350,10 @@ class Doc:
                                  'thread', 'zipimport') or
              (file.startswith(basedir) and
               not file.startswith(os.path.join(basedir, 'site-packages'))))):
-            htmlfile = "module-%s.html" % object.__name__
             if docloc.startswith("http://"):
-                docloc = "%s/%s" % (docloc.rstrip("/"), htmlfile)
+                docloc = "%s/%s" % (docloc.rstrip("/"), object.__name__)
             else:
-                docloc = os.path.join(docloc, htmlfile)
+                docloc = os.path.join(docloc, object.__name__ + ".html")
         else:
             docloc = None
         return docloc
@@ -537,7 +536,7 @@ class HTMLDoc(Doc):
                 url = 'http://www.rfc-editor.org/rfc/rfc%d.txt' % int(rfc)
                 results.append('<a href="%s">%s</a>' % (url, escape(all)))
             elif pep:
-                url = 'http://www.python.org/peps/pep-%04d.html' % int(pep)
+                url = 'http://www.python.org/dev/peps/pep-%04d/' % int(pep)
                 results.append('<a href="%s">%s</a>' % (url, escape(all)))
             elif text[end:end+1] == '(':
                 results.append(self.namelink(name, methods, funcs, classes))
@@ -661,7 +660,7 @@ class HTMLDoc(Doc):
             contents = self.multicolumn(
                 modules, lambda t: self.modulelink(t[1]))
             result = result + self.bigsection(
-                'Modules', '#fffff', '#aa55cc', contents)
+                'Modules', '#ffffff', '#aa55cc', contents)
 
         if classes:
             classlist = [value for (key, value) in classes]
@@ -787,7 +786,7 @@ class HTMLDoc(Doc):
                 thisclass = attrs[0][2]
             attrs, inherited = _split_list(attrs, lambda t: t[2] is thisclass)
 
-            if thisclass is __builtin__.object:
+            if thisclass is builtins.object:
                 attrs = inherited
                 continue
             elif thisclass is object:
@@ -798,10 +797,7 @@ class HTMLDoc(Doc):
             tag += ':<br>\n'
 
             # Sort attrs by name.
-            try:
-                attrs.sort(key=lambda t: t[0])
-            except TypeError:
-                attrs.sort(lambda t1, t2: cmp(t1[0], t2[0]))    # 2.3 compat
+            attrs.sort(key=lambda t: t[0])
 
             # Pump out the attrs, segregated by kind.
             attrs = spill('Methods %s' % tag, attrs,
@@ -848,17 +844,17 @@ class HTMLDoc(Doc):
         note = ''
         skipdocs = 0
         if inspect.ismethod(object):
-            imclass = object.im_class
+            imclass = object.__self__.__class__
             if cl:
                 if imclass is not cl:
                     note = ' from ' + self.classlink(imclass, mod)
             else:
-                if object.im_self is not None:
+                if object.__self__ is not None:
                     note = ' method of %s instance' % self.classlink(
-                        object.im_self.__class__, mod)
+                        object.__self__.__class__, mod)
                 else:
                     note = ' unbound %s method' % self.classlink(imclass,mod)
-            object = object.im_func
+            object = object.__func__
 
         if name == realname:
             title = '<a name="%s"><strong>%s</strong></a>' % (anchor, realname)
@@ -1056,9 +1052,11 @@ class TextDoc(Doc):
             if visiblename(key, all):
                 data.append((key, value))
 
+        modpkgs = []
+        modpkgs_names = set()
         if hasattr(object, '__path__'):
-            modpkgs = []
             for importer, modname, ispkg in pkgutil.iter_modules(object.__path__):
+                modpkgs_names.add(modname)
                 if ispkg:
                     modpkgs.append(modname + ' (package)')
                 else:
@@ -1067,6 +1065,16 @@ class TextDoc(Doc):
             modpkgs.sort()
             result = result + self.section(
                 'PACKAGE CONTENTS', '\n'.join(modpkgs))
+
+        # Detect submodules as sometimes created by C extensions
+        submodules = []
+        for key, value in inspect.getmembers(object, inspect.ismodule):
+            if value.__name__.startswith(name + '.') and key not in modpkgs_names:
+                submodules.append(key)
+        if submodules:
+            submodules.sort()
+            result = result + self.section(
+                'SUBMODULES', join(submodules, '\n'))
 
         if classes:
             classlist = [value for key, value in classes]
@@ -1184,7 +1192,7 @@ class TextDoc(Doc):
                 thisclass = attrs[0][2]
             attrs, inherited = _split_list(attrs, lambda t: t[2] is thisclass)
 
-            if thisclass is __builtin__.object:
+            if thisclass is builtins.object:
                 attrs = inherited
                 continue
             elif thisclass is object:
@@ -1192,7 +1200,6 @@ class TextDoc(Doc):
             else:
                 tag = "inherited from %s" % classname(thisclass,
                                                       object.__module__)
-            filter(lambda t: not t[0].startswith('_'), attrs)
 
             # Sort attrs by name.
             attrs.sort()
@@ -1227,17 +1234,17 @@ class TextDoc(Doc):
         note = ''
         skipdocs = 0
         if inspect.ismethod(object):
-            imclass = object.im_class
+            imclass = object.__self__.__class__
             if cl:
                 if imclass is not cl:
                     note = ' from ' + classname(imclass, mod)
             else:
-                if object.im_self is not None:
+                if object.__self__ is not None:
                     note = ' method of %s instance' % classname(
-                        object.im_self.__class__, mod)
+                        object.__self__.__class__, mod)
                 else:
                     note = ' unbound %s method' % classname(imclass,mod)
-            object = object.im_func
+            object = object.__func__
 
         if name == realname:
             title = self.bold(realname)
@@ -1450,8 +1457,8 @@ def locate(path, forceload=0):
             except AttributeError: return None
         return object
     else:
-        if hasattr(__builtin__, path):
-            return getattr(__builtin__, path)
+        if hasattr(builtins, path):
+            return getattr(builtins, path)
 
 # --------------------------------------- interactive interpreter interface
 
@@ -1531,11 +1538,6 @@ def writedocs(dir, pkgpath='', done=None):
     for importer, modname, ispkg in pkgutil.walk_packages([dir], pkgpath):
         writedoc(modname)
     return
-
-def raw_input(prompt):
-    sys.stdout.write(prompt)
-    sys.stdout.flush()
-    return sys.stdin.readline()
 
 class Helper:
     keywords = {
@@ -1706,9 +1708,9 @@ has the same effect as typing a particular string at the help> prompt.
             self.help(request)
 
     def getline(self, prompt):
-        """Read one line, using raw_input when available."""
+        """Read one line, using input() when appropriate."""
         if self.input is sys.stdin:
-            return raw_input(prompt)
+            return input(prompt)
         else:
             self.output.write(prompt)
             self.output.flush()
@@ -1734,7 +1736,7 @@ has the same effect as typing a particular string at the help> prompt.
 Welcome to Python %s!  This is the online help utility.
 
 If this is your first time using Python, you should definitely check out
-the tutorial on the Internet at http://www.python.org/doc/tut/.
+the tutorial on the Internet at http://docs.python.org/tutorial/.
 
 Enter the name of any module, keyword, or topic to get help on writing
 Python programs and using Python modules.  To quit this help utility and
@@ -1839,7 +1841,9 @@ Please wait a moment while I gather a list of all available modules...
                     modname = modname[:-9] + ' (package)'
                 if modname.find('.') < 0:
                     modules[modname] = 1
-            ModuleScanner().run(callback)
+            def onerror(modname):
+                callback(None, modname, None)
+            ModuleScanner().run(callback, onerror=onerror)
             self.list(modules.keys())
             self.output.write('''
 Enter any module name to get more help.  Or, type "modules spam" to search
@@ -1875,7 +1879,7 @@ class Scanner:
 class ModuleScanner:
     """An interruptible scanner that searches module synopses."""
 
-    def run(self, callback, key=None, completer=None):
+    def run(self, callback, key=None, completer=None, onerror=None):
         if key: key = key.lower()
         self.quit = False
         seen = {}
@@ -1892,7 +1896,7 @@ class ModuleScanner:
                     if name.lower().find(key) >= 0:
                         callback(None, modname, desc)
 
-        for importer, modname, ispkg in pkgutil.walk_packages():
+        for importer, modname, ispkg in pkgutil.walk_packages(onerror=onerror):
             if self.quit:
                 break
             if key is None:
@@ -1949,9 +1953,9 @@ def serve(port, callback=None, completer=None):
         def send_document(self, title, contents):
             try:
                 self.send_response(200)
-                self.send_header('Content-Type', 'text/html')
+                self.send_header('Content-Type', 'text/html; charset=UTF-8')
                 self.end_headers()
-                self.wfile.write(html.page(title, contents))
+                self.wfile.write(html.page(title, contents).encode('utf-8'))
             except IOError: pass
 
         def do_GET(self):
@@ -1975,8 +1979,7 @@ def serve(port, callback=None, completer=None):
 '#ffffff', '#7799ee')
                 def bltinlink(name):
                     return '<a href="%s.html">%s</a>' % (name, name)
-                names = filter(lambda x: x != '__main__',
-                               sys.builtin_module_names)
+                names = [x for x in sys.builtin_module_names if x != '__main__']
                 contents = html.multicolumn(names, bltinlink)
                 indices = ['<p>' + html.bigsection(
                     'Built-in Modules', '#ffffff', '#ee77aa', contents)]

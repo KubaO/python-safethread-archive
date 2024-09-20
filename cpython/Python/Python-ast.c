@@ -410,7 +410,7 @@ static PyTypeObject* make_type(char *type, PyTypeObject* base, char**fields, int
         }
         PyTuple_SET_ITEM(fnames, i, field);
     }
-    result = PyObject_CallFunction((PyObject*)&PyType_Type, "s(O){sOss}",
+    result = PyObject_CallFunction((PyObject*)&PyType_Type, "U(O){sOss}",
                     type, base, "_fields", fnames, "__module__", "_ast");
     Py_DECREF(fnames);
     return (PyTypeObject*)result;
@@ -464,7 +464,7 @@ static PyObject* ast2obj_object(void *o)
 
 static PyObject* ast2obj_int(long b)
 {
-    return PyInt_FromLong(b);
+    return PyLong_FromLong(b);
 }
 
 static int init_types(void)

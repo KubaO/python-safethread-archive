@@ -242,6 +242,7 @@ tstate_delete_common(PyThreadState *tstate)
 {
 	PyInterpreterState *interp;
 	PyThreadState **p;
+	PyThreadState *prev_p = NULL;
 	if (tstate == NULL)
 		Py_FatalError("PyThreadState_Delete: NULL tstate");
 	interp = tstate->interp;
@@ -254,6 +255,15 @@ tstate_delete_common(PyThreadState *tstate)
 				"PyThreadState_Delete: invalid tstate");
 		if (*p == tstate)
 			break;
+		if (*p == prev_p)
+			Py_FatalError(
+				"PyThreadState_Delete: small circular list(!)"
+                                " and tstate not found.");
+		prev_p = *p;
+		if ((*p)->next == interp->tstate_head)
+			Py_FatalError(
+				"PyThreadState_Delete: circular list(!) and"
+                                " tstate not found.");
 	}
 	*p = tstate->next;
 	HEAD_UNLOCK();
@@ -445,7 +455,7 @@ _PyThread_CurrentFrames(void)
 			struct _frame *frame = t->frame;
 			if (frame == NULL)
 				continue;
-			id = PyInt_FromLong(t->thread_id);
+			id = PyLong_FromLong(t->thread_id);
 			if (id == NULL)
 				goto Fail;
 			stat = PyDict_SetItem(result, id, (PyObject *)frame);

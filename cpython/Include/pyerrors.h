@@ -165,6 +165,7 @@ PyAPI_DATA(PyObject *) PyExc_RuntimeWarning;
 PyAPI_DATA(PyObject *) PyExc_FutureWarning;
 PyAPI_DATA(PyObject *) PyExc_ImportWarning;
 PyAPI_DATA(PyObject *) PyExc_UnicodeWarning;
+PyAPI_DATA(PyObject *) PyExc_BytesWarning;
 
 
 /* Convenience functions */
@@ -225,6 +226,9 @@ PyAPI_FUNC(int) PyErr_WarnExplicit(PyObject *, const char *,
 /* In sigcheck.c or signalmodule.c */
 PyAPI_FUNC(int) PyErr_CheckSignals(void);
 PyAPI_FUNC(void) PyErr_SetInterrupt(void);
+
+/* In signalmodule.c */
+int PySignal_SetWakeupFd(int fd);
 
 /* Support for adding program text to SyntaxErrors */
 PyAPI_FUNC(void) PyErr_SyntaxLocation(const char *, int);

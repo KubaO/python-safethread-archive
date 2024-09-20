@@ -5,7 +5,7 @@ from array import array
 from weakref import proxy
 
 from test.test_support import TESTFN, findfile, run_unittest
-from UserList import UserList
+from collections import UserList
 
 class AutoFileTests(unittest.TestCase):
     # file tests for which a test file is automatically set up
@@ -157,7 +157,7 @@ class OtherFileTests(unittest.TestCase):
                 s = str(msg)
                 if s.find(TESTFN) != -1 or s.find(bad_mode) == -1:
                     self.fail("bad error message for invalid mode: %s" % s)
-            # if msg[0] == 0, we're probably on Windows where there may be
+            # if msg.args[0] == 0, we're probably on Windows where there may be
             # no obvious way to discover why open() failed.
         else:
             f.close()
@@ -181,12 +181,13 @@ class OtherFileTests(unittest.TestCase):
             self.assertEquals(d, s)
 
     def testTruncateOnWindows(self):
-        os.unlink(TESTFN)
+        # SF bug <http://www.python.org/sf/801631>
+        # "file.truncate fault on windows"
 
-        def bug801631():
-            # SF bug <http://www.python.org/sf/801631>
-            # "file.truncate fault on windows"
-            f = open(TESTFN, 'wb')
+        os.unlink(TESTFN)
+        f = open(TESTFN, 'wb')
+
+        try:
             f.write(b'12345678901')   # 11 bytes
             f.close()
 
@@ -205,10 +206,8 @@ class OtherFileTests(unittest.TestCase):
             size = os.path.getsize(TESTFN)
             if size != 5:
                 self.fail("File size after ftruncate wrong %d" % size)
-
-        try:
-            bug801631()
         finally:
+            f.close()
             os.unlink(TESTFN)
 
     def testIteration(self):

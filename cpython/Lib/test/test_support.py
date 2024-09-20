@@ -9,8 +9,8 @@ import socket
 import sys
 import os
 import os.path
+import shutil
 import warnings
-import types
 import unittest
 
 class Error(Exception):
@@ -65,6 +65,14 @@ def unlink(filename):
     except OSError:
         pass
 
+def rmtree(path):
+    try:
+        shutil.rmtree(path)
+    except OSError as e:
+        # Unix returns ENOENT, Windows returns ESRCH.
+        if e.errno not in (errno.ENOENT, errno.ESRCH):
+            raise
+
 def forget(modname):
     '''"Forget" a module was ever imported by removing it from sys.modules and
     deleting any .pyc and .pyo files.'''
@@ -97,19 +105,29 @@ def requires(resource, msg=None):
 
 def bind_port(sock, host='', preferred_port=54321):
     """Try to bind the sock to a port.  If we are running multiple
-    tests and we don't try multiple ports, the test can fails.  This
+    tests and we don't try multiple ports, the test can fail.  This
     makes the test more robust."""
 
-    # some random ports that hopefully no one is listening on.
-    for port in [preferred_port, 9907, 10243, 32999]:
+    # Find some random ports that hopefully no one is listening on.
+    # Ideally each test would clean up after itself and not continue listening
+    # on any ports.  However, this isn't the case.  The last port (0) is
+    # a stop-gap that asks the O/S to assign a port.  Whenever the warning
+    # message below is printed, the test that is listening on the port should
+    # be fixed to close the socket at the end of the test.
+    # Another reason why we can't use a port is another process (possibly
+    # another instance of the test suite) is using the same port.
+    for port in [preferred_port, 9907, 10243, 32999, 0]:
         try:
             sock.bind((host, port))
+            if port == 0:
+                port = sock.getsockname()[1]
             return port
         except socket.error as e:
             (err, msg) = e.args
             if err != errno.EADDRINUSE:
                 raise
-            print('  WARNING: failed to listen on port %d, trying another' % port, file=sys.__stderr__)
+            print('  WARNING: failed to listen on port %d, ' % port +
+                  'trying another', file=sys.__stderr__)
     raise TestFailed('unable to find port to listen on')
 
 FUZZ = 1e-6
@@ -170,9 +188,9 @@ else:
         except UnicodeEncodeError:
             pass
         else:
-            print('WARNING: The filename %r CAN be encoded by the filesystem.  ' \
-            'Unicode filename tests may not be effective' \
-            % TESTFN_UNICODE_UNENCODEABLE)
+            print('WARNING: The filename %r CAN be encoded by the filesystem.  '
+                  'Unicode filename tests may not be effective'
+                  % TESTFN_UNICODE_UNENCODEABLE)
 
 # Make sure we can write to TESTFN, try in /tmp if we can't
 fp = None
@@ -415,7 +433,8 @@ def run_with_locale(catstr, *locales):
     return decorator
 
 #=======================================================================
-# Big-memory-test support. Separate from 'resources' because memory use should be configurable.
+# Big-memory-test support. Separate from 'resources' because memory use
+# should be configurable.
 
 # Some handy shorthands. Note that these are used for byte-limits as well
 # as size-limits, in the various bigmem tests
@@ -519,8 +538,7 @@ def _run_suite(suite):
         elif len(result.failures) == 1 and not result.errors:
             err = result.failures[0][1]
         else:
-            msg = "errors occurred; run in verbose mode for details"
-            raise TestFailed(msg)
+            err = "errors occurred; run in verbose mode for details"
         raise TestFailed(err)
 
 
@@ -529,7 +547,7 @@ def run_unittest(*classes):
     valid_types = (unittest.TestSuite, unittest.TestCase)
     suite = unittest.TestSuite()
     for cls in classes:
-        if isinstance(cls, basestring):
+        if isinstance(cls, str):
             if cls in sys.modules:
                 suite.addTest(unittest.findTestCases(sys.modules[cls]))
             else:
@@ -570,7 +588,8 @@ def run_doctest(module, verbosity=None):
     finally:
         sys.stdout = save_stdout
     if verbose:
-        print('doctest (%s) ... %d tests with zero failures' % (module.__name__, t))
+        print('doctest (%s) ... %d tests with zero failures' %
+              (module.__name__, t))
     return f, t
 
 #=======================================================================

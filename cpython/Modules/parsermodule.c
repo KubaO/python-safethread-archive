@@ -89,7 +89,7 @@ node2tuple(node *n,                     /* node to convert               */
         v = mkseq(1 + NCH(n) + (TYPE(n) == encoding_decl));
         if (v == NULL)
             return (v);
-        w = PyInt_FromLong(TYPE(n));
+        w = PyLong_FromLong(TYPE(n));
         if (w == NULL) {
             Py_DECREF(v);
             return ((PyObject*) NULL);
@@ -111,12 +111,12 @@ node2tuple(node *n,                     /* node to convert               */
     else if (ISTERMINAL(TYPE(n))) {
         PyObject *result = mkseq(2 + lineno + col_offset);
         if (result != NULL) {
-            (void) addelem(result, 0, PyInt_FromLong(TYPE(n)));
+            (void) addelem(result, 0, PyLong_FromLong(TYPE(n)));
             (void) addelem(result, 1, PyUnicode_FromString(STR(n)));
             if (lineno == 1)
-                (void) addelem(result, 2, PyInt_FromLong(n->n_lineno));
+                (void) addelem(result, 2, PyLong_FromLong(n->n_lineno));
             if (col_offset == 1)
-                (void) addelem(result, 3, PyInt_FromLong(n->n_col_offset));
+                (void) addelem(result, 3, PyLong_FromLong(n->n_col_offset));
         }
         return (result);
     }
@@ -664,9 +664,9 @@ build_node_children(PyObject *tuple, node *root, int *line_num)
             if (temp == NULL)
                 ok = 0;
             else {
-                ok = PyInt_Check(temp);
+                ok = PyLong_Check(temp);
                 if (ok)
-                    type = PyInt_AS_LONG(temp);
+                    type = PyLong_AS_LONG(temp);
                 Py_DECREF(temp);
             }
         }
@@ -694,7 +694,7 @@ build_node_children(PyObject *tuple, node *root, int *line_num)
                 PyErr_Format(parser_error,
                              "second item in terminal node must be a string,"
                              " found %s",
-                             Py_Type(temp)->tp_name);
+                             Py_TYPE(temp)->tp_name);
                 Py_DECREF(temp);
                 Py_DECREF(elem);
                 return 0;
@@ -702,13 +702,13 @@ build_node_children(PyObject *tuple, node *root, int *line_num)
             if (len == 3) {
                 PyObject *o = PySequence_GetItem(elem, 2);
                 if (o != NULL) {
-                    if (PyInt_Check(o))
-                        *line_num = PyInt_AS_LONG(o);
+                    if (PyLong_Check(o))
+                        *line_num = PyLong_AS_LONG(o);
                     else {
                         PyErr_Format(parser_error,
                                      "third item in terminal node must be an"
                                      " integer, found %s",
-				     Py_Type(temp)->tp_name);
+				     Py_TYPE(temp)->tp_name);
                         Py_DECREF(o);
                         Py_DECREF(temp);
                         Py_DECREF(elem);
@@ -774,7 +774,7 @@ build_node_tree(PyObject *tuple)
     long num = -1;
 
     if (temp != NULL)
-        num = PyInt_AsLong(temp);
+        num = PyLong_AsLong(temp);
     Py_XDECREF(temp);
     if (ISTERMINAL(num)) {
         /*
@@ -861,7 +861,7 @@ VALIDATER(node);                VALIDATER(small_stmt);
 VALIDATER(class);               VALIDATER(node);
 VALIDATER(parameters);          VALIDATER(suite);
 VALIDATER(testlist);            VALIDATER(varargslist);
-VALIDATER(vfpdef);              
+VALIDATER(vfpdef);
 VALIDATER(stmt);                VALIDATER(simple_stmt);
 VALIDATER(expr_stmt);           VALIDATER(power);
 VALIDATER(del_stmt);
@@ -874,7 +874,7 @@ VALIDATER(while);               VALIDATER(for);
 VALIDATER(try);                 VALIDATER(except_clause);
 VALIDATER(test);                VALIDATER(and_test);
 VALIDATER(not_test);            VALIDATER(comparison);
-VALIDATER(comp_op);             
+VALIDATER(comp_op);
 VALIDATER(star_expr);           VALIDATER(expr);
 VALIDATER(xor_expr);            VALIDATER(and_expr);
 VALIDATER(shift_expr);          VALIDATER(arith_expr);
@@ -988,11 +988,11 @@ validate_class(node *tree)
     else {
         (void) validate_numnodes(tree, 4, "class");
     }
-	
+
     if (res) {
 	if (nch == 7) {
 		res = ((validate_lparen(CHILD(tree, 2)) &&
-			validate_testlist(CHILD(tree, 3)) &&
+			validate_arglist(CHILD(tree, 3)) &&
 			validate_rparen(CHILD(tree, 4))));
 	}
 	else if (nch == 6) {
@@ -1177,11 +1177,11 @@ validate_varargslist_trailer(node *tree, int start)
 	    }
             while (res && i+1 < nch) { /* validate  (',' vfpdef ['=' test])* */
                 res = validate_comma(CHILD(tree, i));
-                if (TYPE(CHILD(tree, i+1)) == DOUBLESTAR) 
+                if (TYPE(CHILD(tree, i+1)) == DOUBLESTAR)
                     break;
                 res = res && validate_vfpdef(CHILD(tree, i+1));
                 if (res && i+2 < nch && TYPE(CHILD(tree, i+2)) == EQUAL) {
-                    res = res && (i+3 < nch) 
+                    res = res && (i+3 < nch)
                           && validate_test(CHILD(tree, i+3));
                     i += 4;
                 }
@@ -1234,7 +1234,7 @@ validate_varargslist(node *tree)
     int sym;
     node *ch;
     int i = 0;
-    
+
     if (!res)
         return 0;
     if (nch < 1) {
@@ -1242,7 +1242,7 @@ validate_varargslist(node *tree)
         return 0;
     }
     while (i < nch) {
-        ch = CHILD(tree, i);      
+        ch = CHILD(tree, i);
         sym = TYPE(ch);
         if (sym == vfpdef || sym == tfpdef) {
             /* validate (vfpdef ['=' test] ',')+ */
@@ -1443,7 +1443,7 @@ validate_compound_stmt(node *tree)
 static int
 validate_yield_or_testlist(node *tree)
 {
-	if (TYPE(tree) == yield_expr) 
+	if (TYPE(tree) == yield_expr)
 		return validate_yield_expr(tree);
 	else
 		return validate_testlist(tree);
@@ -1675,7 +1675,7 @@ validate_import_name(node *tree)
 		&& validate_dotted_as_names(CHILD(tree, 1)));
 }
 
-/* Helper function to count the number of leading dots in 
+/* Helper function to count the number of leading dots in
  * 'from ...module import name'
  */
 static int
@@ -2361,7 +2361,7 @@ validate_decorator(node *tree)
 static int
 validate_decorators(node *tree)
 {
-    int i, nch, ok; 
+    int i, nch, ok;
     nch = NCH(tree);
     ok = validate_ntype(tree, decorators) && nch >= 1;
 
@@ -2372,7 +2372,7 @@ validate_decorators(node *tree)
 }
 
 /*  funcdef:
- *      
+ *
  *     -5   -4         -3  -2    -1
  *  'def' NAME parameters ':' suite
  */
@@ -3056,7 +3056,7 @@ initparser(void)
 {
     PyObject *module, *copyreg;
 
-    Py_Type(&PyST_Type) = &PyType_Type;
+    Py_TYPE(&PyST_Type) = &PyType_Type;
     module = Py_InitModule("parser", parser_functions);
     if (module == NULL)
     	return;
@@ -3093,7 +3093,7 @@ initparser(void)
      * If this fails, the import of this module will fail because an
      * exception will be raised here; should we clear the exception?
      */
-    copyreg = PyImport_ImportModule("copy_reg");
+    copyreg = PyImport_ImportModuleNoBlock("copy_reg");
     if (copyreg != NULL) {
         PyObject *func, *pickler;
 

@@ -19,16 +19,12 @@ Additional handlers for the logging package for Python. The core package is
 based on PEP 282 and comments thereto in comp.lang.python, and influenced by
 Apache's log4j system.
 
-Should work under Python versions >= 1.5.2, except that source line
-information is not available unless 'sys._getframe()' is.
-
 Copyright (C) 2001-2007 Vinay Sajip. All Rights Reserved.
 
 To use, simply 'import logging' and log away!
 """
 
-import sys, logging, socket, os, struct, time, glob
-import pickle
+import logging, socket, os, pickle, struct, time, glob
 from stat import ST_DEV, ST_INO
 
 try:
@@ -54,13 +50,13 @@ class BaseRotatingHandler(logging.FileHandler):
     Not meant to be instantiated directly.  Instead, use RotatingFileHandler
     or TimedRotatingFileHandler.
     """
-    def __init__(self, filename, mode, encoding=None):
+    def __init__(self, filename, mode, encoding=None, delay=0):
         """
         Use the specified filename for streamed logging
         """
         if codecs is None:
             encoding = None
-        logging.FileHandler.__init__(self, filename, mode, encoding)
+        logging.FileHandler.__init__(self, filename, mode, encoding, delay)
         self.mode = mode
         self.encoding = encoding
 
@@ -85,7 +81,7 @@ class RotatingFileHandler(BaseRotatingHandler):
     Handler for logging to a set of files, which switches from one file
     to the next when the current file reaches a certain size.
     """
-    def __init__(self, filename, mode='a', maxBytes=0, backupCount=0, encoding=None):
+    def __init__(self, filename, mode='a', maxBytes=0, backupCount=0, encoding=None, delay=0):
         """
         Open the specified file and use it as the stream for logging.
 
@@ -108,7 +104,7 @@ class RotatingFileHandler(BaseRotatingHandler):
         """
         if maxBytes > 0:
             mode = 'a' # doesn't make sense otherwise!
-        BaseRotatingHandler.__init__(self, filename, mode, encoding)
+        BaseRotatingHandler.__init__(self, filename, mode, encoding, delay)
         self.maxBytes = maxBytes
         self.backupCount = backupCount
 
@@ -157,8 +153,8 @@ class TimedRotatingFileHandler(BaseRotatingHandler):
     If backupCount is > 0, when rollover is done, no more than backupCount
     files are kept - the oldest ones are deleted.
     """
-    def __init__(self, filename, when='h', interval=1, backupCount=0, encoding=None):
-        BaseRotatingHandler.__init__(self, filename, 'a', encoding)
+    def __init__(self, filename, when='h', interval=1, backupCount=0, encoding=None, delay=0):
+        BaseRotatingHandler.__init__(self, filename, 'a', encoding, delay)
         self.when = when.upper()
         self.backupCount = backupCount
         # Calculate the real rollover interval, which is just the number of
@@ -229,13 +225,16 @@ class TimedRotatingFileHandler(BaseRotatingHandler):
             #         Days to rollover is 6 - 5 + 3, or 4.  In this case, it's the
             #         number of days left in the current week (1) plus the number
             #         of days in the next week until the rollover day (3).
+            # The calculations described in 2) and 3) above need to have a day added.
+            # This is because the above time calculation takes us to midnight on this
+            # day, i.e. the start of the next day.
             if when.startswith('W'):
                 day = t[6] # 0 is Monday
-                if day > self.dayOfWeek:
-                    daysToWait = (day - self.dayOfWeek) - 1
-                    self.rolloverAt = self.rolloverAt + (daysToWait * (60 * 60 * 24))
-                if day < self.dayOfWeek:
-                    daysToWait = (6 - self.dayOfWeek) + day
+                if day != self.dayOfWeek:
+                    if day < self.dayOfWeek:
+                        daysToWait = self.dayOfWeek - day
+                    else:
+                        daysToWait = 6 - day + self.dayOfWeek + 1
                     self.rolloverAt = self.rolloverAt + (daysToWait * (60 * 60 * 24))
 
         #print "Will rollover at %d, %d seconds from now" % (self.rolloverAt, self.rolloverAt - currentTime)
@@ -300,10 +299,13 @@ class WatchedFileHandler(logging.FileHandler):
     This handler is based on a suggestion and patch by Chad J.
     Schroeder.
     """
-    def __init__(self, filename, mode='a', encoding=None):
-        logging.FileHandler.__init__(self, filename, mode, encoding)
-        stat = os.stat(self.baseFilename)
-        self.dev, self.ino = stat[ST_DEV], stat[ST_INO]
+    def __init__(self, filename, mode='a', encoding=None, delay=0):
+        logging.FileHandler.__init__(self, filename, mode, encoding, delay)
+        if not os.path.exists(self.baseFilename):
+            self.dev, self.ino = -1, -1
+        else:
+            stat = os.stat(self.baseFilename)
+            self.dev, self.ino = stat[ST_DEV], stat[ST_INO]
 
     def emit(self, record):
         """
@@ -319,7 +321,7 @@ class WatchedFileHandler(logging.FileHandler):
         else:
             stat = os.stat(self.baseFilename)
             changed = (stat[ST_DEV] != self.dev) or (stat[ST_INO] != self.ino)
-        if changed:
+        if changed and self.stream is not None:
             self.stream.flush()
             self.stream.close()
             self.stream = self._open()

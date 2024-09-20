@@ -204,6 +204,8 @@ class Node(xml.dom.Node):
                 L.append(child)
                 if child.nodeType == Node.ELEMENT_NODE:
                     child.normalize()
+        if L:
+            L[-1].nextSibling = None
         self.childNodes[:] = L
 
     def cloneNode(self, deep):
@@ -498,7 +500,7 @@ class NamedNodeMap(object):
         return L
 
     def __contains__(self, key):
-        if isinstance(key, StringTypes):
+        if isinstance(key, str):
             return key in self._attrs
         else:
             return key in self._attrsNS
@@ -531,7 +533,7 @@ class NamedNodeMap(object):
 
     # same as set
     def __setitem__(self, attname, value):
-        if isinstance(value, StringTypes):
+        if isinstance(value, str):
             try:
                 node = self._attrs[attname]
             except KeyError:
@@ -960,7 +962,7 @@ class CharacterData(Childless, Node):
             dotdotdot = "..."
         else:
             dotdotdot = ""
-        return "<DOM %s node \"%s%s\">" % (
+        return '<DOM %s node "%r%s">' % (
             self.__class__.__name__, data[0:10], dotdotdot)
 
     def substringData(self, offset, count):
@@ -1606,7 +1608,7 @@ class Document(Node, DocumentLS):
         return e
 
     def createTextNode(self, data):
-        if not isinstance(data, StringTypes):
+        if not isinstance(data, str):
             raise TypeError("node contents must be a string")
         t = Text()
         t.data = data
@@ -1614,7 +1616,7 @@ class Document(Node, DocumentLS):
         return t
 
     def createCDATASection(self, data):
-        if not isinstance(data, StringTypes):
+        if not isinstance(data, str):
             raise TypeError("node contents must be a string")
         c = CDATASection()
         c.data = data
@@ -1927,7 +1929,7 @@ def parseString(string, parser=None):
 
 def getDOMImplementation(features=None):
     if features:
-        if isinstance(features, StringTypes):
+        if isinstance(features, str):
             features = domreg._parse_feature_string(features)
         for f, v in features:
             if not Document.implementation.hasFeature(f, v):

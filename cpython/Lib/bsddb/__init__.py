@@ -64,10 +64,10 @@ error = db.DBError  # So bsddb.error will mean something...
 
 #----------------------------------------------------------------------
 
-import sys, os, UserDict
+import sys, os, collections
 from weakref import ref
 
-class _iter_mixin(UserDict.DictMixin):
+class _iter_mixin(collections.MutableMapping):
     def _make_iter_cursor(self):
         cur = _DeadlockWrap(self.db.cursor)
         key = id(cur)
@@ -169,6 +169,9 @@ class _DBWithCursor(_iter_mixin):
 
     def __del__(self):
         self.close()
+
+    def __repr__(self):
+        return repr(dict(self.iteritems()))
 
     def _checkCursor(self):
         if self.dbc is None:
@@ -289,7 +292,7 @@ class _ExposedProperties:
     def _cursor_refs(self):
         return self.db._cursor_refs
 
-class StringKeys(UserDict.DictMixin, _ExposedProperties):
+class StringKeys(collections.MutableMapping, _ExposedProperties):
     """Wrapper around DB object that automatically encodes
     all keys as UTF-8; the keys must be strings."""
 
@@ -357,7 +360,7 @@ class StringKeys(UserDict.DictMixin, _ExposedProperties):
     def sync(self):
         return self.db.sync()
 
-class StringValues(UserDict.DictMixin, _ExposedProperties):
+class StringValues(collections.MutableMapping, _ExposedProperties):
     """Wrapper around DB object that automatically encodes
     and decodes all values as UTF-8; input values must be strings."""
 

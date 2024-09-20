@@ -250,7 +250,7 @@ local_dealloc(localobject *self)
 	}
 
 	local_clear(self);
-	Py_Type(self)->tp_free((PyObject*)self);
+	Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static PyObject *
@@ -282,8 +282,8 @@ _ldict(localobject *self)
 		Py_INCREF(ldict);
 		self->dict = ldict; /* still borrowed */
 
-		if (Py_Type(self)->tp_init != PyBaseObject_Type.tp_init &&
-		    Py_Type(self)->tp_init((PyObject*)self, 
+		if (Py_TYPE(self)->tp_init != PyBaseObject_Type.tp_init &&
+		    Py_TYPE(self)->tp_init((PyObject*)self, 
 					   self->args, self->kw) < 0) {
 			/* we need to get rid of ldict from thread so
 			   we create a new one the next time we do an attr
@@ -386,7 +386,7 @@ local_getattro(localobject *self, PyObject *name)
 	if (ldict == NULL) 
 		return NULL;
 
-	if (Py_Type(self) != &localtype)
+	if (Py_TYPE(self) != &localtype)
 		/* use generic lookup for subtypes */
 		return PyObject_GenericGetAttr((PyObject *)self, name);
 
@@ -429,7 +429,7 @@ t_bootstrap(void *boot_raw)
 			PySys_WriteStderr(
 				"Unhandled exception in thread started by ");
 			file = PySys_GetObject("stderr");
-			if (file)
+			if (file != NULL && file != Py_None)
 				PyFile_WriteObject(boot->func, file, 0);
 			else
 				PyObject_Print(boot->func, stderr, 0);
@@ -493,7 +493,7 @@ thread_PyThread_start_new_thread(PyObject *self, PyObject *fargs)
 		PyMem_DEL(boot);
 		return NULL;
 	}
-	return PyInt_FromLong(ident);
+	return PyLong_FromLong(ident);
 }
 
 PyDoc_STRVAR(start_new_doc,
@@ -571,7 +571,7 @@ thread_get_ident(PyObject *self)
 		PyErr_SetString(ThreadError, "no current thread ident");
 		return NULL;
 	}
-	return PyInt_FromLong(ident);
+	return PyLong_FromLong(ident);
 }
 
 PyDoc_STRVAR(get_ident_doc,
@@ -616,7 +616,7 @@ thread_stack_size(PyObject *self, PyObject *args)
 		return NULL;
 	}
 
-	return PyInt_FromSsize_t((Py_ssize_t) old_size);
+	return PyLong_FromSsize_t((Py_ssize_t) old_size);
 }
 
 PyDoc_STRVAR(stack_size_doc,

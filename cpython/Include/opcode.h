@@ -36,6 +36,7 @@ extern "C" {
 #define INPLACE_FLOOR_DIVIDE 28
 #define INPLACE_TRUE_DIVIDE 29
 
+#define STORE_MAP	54
 #define INPLACE_ADD	55
 #define INPLACE_SUBTRACT	56
 #define INPLACE_MULTIPLY	57
@@ -65,7 +66,7 @@ extern "C" {
 
 #define RETURN_VALUE	83
 #define IMPORT_STAR	84
-#define MAKE_BYTES	85
+
 #define YIELD_VALUE	86
 #define POP_BLOCK	87
 #define END_FINALLY	88

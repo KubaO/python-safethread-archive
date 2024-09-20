@@ -83,10 +83,10 @@ PyObject *
 _PySlice_FromIndices(Py_ssize_t istart, Py_ssize_t istop)
 {
 	PyObject *start, *end, *slice;
-	start = PyInt_FromSsize_t(istart);
+	start = PyLong_FromSsize_t(istart);
 	if (!start)
 		return NULL;
-	end = PyInt_FromSsize_t(istop);
+	end = PyLong_FromSsize_t(istop);
 	if (!end) {
 		Py_DECREF(start);
 		return NULL;
@@ -107,20 +107,20 @@ PySlice_GetIndices(PySliceObject *r, Py_ssize_t length,
 		*step = 1;
 	} else {
 		if (!PyLong_Check(r->step)) return -1;
-		*step = PyInt_AsSsize_t(r->step);
+		*step = PyLong_AsSsize_t(r->step);
 	}
 	if (r->start == Py_None) {
 		*start = *step < 0 ? length-1 : 0;
 	} else {
-		if (!PyInt_Check(r->start) && !PyLong_Check(r->step)) return -1;
-		*start = PyInt_AsSsize_t(r->start);
+		if (!PyLong_Check(r->start)) return -1;
+		*start = PyLong_AsSsize_t(r->start);
 		if (*start < 0) *start += length;
 	}
 	if (r->stop == Py_None) {
 		*stop = *step < 0 ? -1 : length;
 	} else {
-		if (!PyInt_Check(r->stop) && !PyLong_Check(r->step)) return -1;
-		*stop = PyInt_AsSsize_t(r->stop);
+		if (!PyLong_Check(r->stop)) return -1;
+		*stop = PyLong_AsSsize_t(r->stop);
 		if (*stop < 0) *stop += length;
 	}
 	if (*stop > length) return -1;
@@ -266,7 +266,7 @@ handling of normal slices.");
 static PyObject *
 slice_reduce(PySliceObject* self)
 {
-	return Py_BuildValue("O(OOO)", Py_Type(self), self->start, self->stop, self->step);
+	return Py_BuildValue("O(OOO)", Py_TYPE(self), self->start, self->stop, self->step);
 }
 
 PyDoc_STRVAR(reduce_doc, "Return state information for pickling.");

@@ -26,7 +26,7 @@ Types and members
 -----------------
 
 The :func:`getmembers` function retrieves the members of an object such as a
-class or module. The eleven functions whose names begin with "is" are mainly
+class or module. The fifteen functions whose names begin with "is" are mainly
 provided as convenient choices for the second argument to :func:`getmembers`.
 They also help you determine when you can expect to find the following special
 attributes:
@@ -49,14 +49,11 @@ attributes:
 |           | __name__        | name with which this      |
 |           |                 | method was defined        |
 +-----------+-----------------+---------------------------+
-|           | im_class        | class object that asked   |
-|           |                 | for this method           |
-+-----------+-----------------+---------------------------+
-|           | im_func         | function object           |
+|           | __func__        | function object           |
 |           |                 | containing implementation |
 |           |                 | of method                 |
 +-----------+-----------------+---------------------------+
-|           | im_self         | instance to which this    |
+|           | __self__        | instance to which this    |
 |           |                 | method is bound, or       |
 |           |                 | ``None``                  |
 +-----------+-----------------+---------------------------+
@@ -67,7 +64,7 @@ attributes:
 +-----------+-----------------+---------------------------+
 |           | __code__        | code object containing    |
 |           |                 | compiled function         |
-|           |                 | bytecode                  |
+|           |                 | :term:`bytecode`          |
 +-----------+-----------------+---------------------------+
 |           | __defaults__    | tuple of any default      |
 |           |                 | values for arguments      |
@@ -183,10 +180,16 @@ attributes:
    name.  If the optional *predicate* argument is supplied, only members for which
    the predicate returns a true value are included.
 
+   .. note::
+
+      :func:`getmembers` does not return metaclass attributes when the argument
+      is a class (this behavior is inherited from the :func:`dir` function).
+
 
 .. function:: getmoduleinfo(path)
 
-   Return a tuple of values that describe how Python will interpret the file
+   Returns a :term:`named tuple` ``ModuleInfo(name, suffix, mode,
+   module_type)`` of values that describe how Python will interpret the file
    identified by *path* if it is a module, or ``None`` if it would not be
    identified as a module.  The return tuple is ``(name, suffix, mode, mtype)``,
    where *name* is the name of the module without the name of any enclosing
@@ -223,7 +226,17 @@ attributes:
 
 .. function:: isfunction(object)
 
-   Return true if the object is a Python function or unnamed (lambda) function.
+   Return true if the object is a Python function or unnamed (:term:`lambda`) function.
+
+
+.. function:: isgeneratorfunction(object)
+
+   Return true if the object is a Python generator function.
+
+
+.. function:: isgenerator(object)
+
+   Return true if the object is a generator.
 
 
 .. function:: istraceback(object)
@@ -253,30 +266,31 @@ attributes:
 
 .. function:: ismethoddescriptor(object)
 
-   Return true if the object is a method descriptor, but not if ismethod() or
-   isclass() or isfunction() are true.
+   Return true if the object is a method descriptor, but not if :func:`ismethod`
+   or :func:`isclass` or :func:`isfunction` are true.
 
-   This is new as of Python 2.2, and, for example, is true of int.__add__. An
-   object passing this test has a __get__ attribute but not a __set__ attribute,
-   but beyond that the set of attributes varies.  __name__ is usually sensible, and
-   __doc__ often is.
+   This is new as of Python 2.2, and, for example, is true of
+   ``int.__add__``. An object passing this test has a :attr:`__get__` attribute
+   but not a :attr:`__set__` attribute, but beyond that the set of attributes
+   varies.  :attr:`__name__` is usually sensible, and :attr:`__doc__` often is.
 
-   Methods implemented via descriptors that also pass one of the other tests return
-   false from the ismethoddescriptor() test, simply because the other tests promise
-   more -- you can, e.g., count on having the im_func attribute (etc) when an
-   object passes ismethod().
+   Methods implemented via descriptors that also pass one of the other tests
+   return false from the :func:`ismethoddescriptor` test, simply because the
+   other tests promise more -- you can, e.g., count on having the
+   :attr:`__func__` attribute (etc) when an object passes :func:`ismethod`.
 
 
 .. function:: isdatadescriptor(object)
 
    Return true if the object is a data descriptor.
 
-   Data descriptors have both a __get__ and a __set__ attribute.  Examples are
-   properties (defined in Python), getsets, and members.  The latter two are
-   defined in C and there are more specific tests available for those types, which
-   is robust across Python implementations.  Typically, data descriptors will also
-   have __name__ and __doc__ attributes (properties, getsets, and members have both
-   of these attributes), but this is not guaranteed.
+   Data descriptors have both a :attr:`__get__` and a :attr:`__set__` attribute.
+   Examples are properties (defined in Python), getsets, and members.  The
+   latter two are defined in C and there are more specific tests available for
+   those types, which is robust across Python implementations.  Typically, data
+   descriptors will also have :attr:`__name__` and :attr:`__doc__` attributes
+   (properties, getsets, and members have both of these attributes), but this is
+   not guaranteed.
 
 
 .. function:: isgetsetdescriptor(object)
@@ -293,8 +307,8 @@ attributes:
    Return true if the object is a member descriptor.
 
    Member descriptors are attributes defined in extension modules via
-   ``PyMemberDef`` structures.  For Python implementations without such types, this
-   method will always return ``False``.
+   ``PyMemberDef`` structures.  For Python implementations without such types,
+   this method will always return ``False``.
 
 
 .. _inspect-source:
@@ -374,8 +388,9 @@ Classes and functions
 
 .. function:: getargspec(func)
 
-   Get the names and default values of a function's arguments. A tuple of four
-   things is returned: ``(args, varargs, varkw, defaults)``. *args* is a list of
+   Get the names and default values of a function's arguments. A 
+   :term:`named tuple` ``ArgSpec(args, varargs, keywords,
+   defaults)`` is returned. *args* is a list of
    the argument names. *varargs* and *varkw* are the names of the ``*`` and
    ``**`` arguments or ``None``. *defaults* is a tuple of default argument
    values or None if there are no default arguments; if this tuple has *n*
@@ -388,10 +403,10 @@ Classes and functions
 
 .. function:: getfullargspec(func)
 
-   Get the names and default values of a function's arguments.  A tuple of seven
-   things is returned:
+   Get the names and default values of a function's arguments.  A :term:`named tuple`
+   is returned:
 
-   ``(args, varargs, varkw, defaults, kwonlyargs, kwonlydefaults, annotations)``
+   ``FullArgSpec(args, varargs, varkw, defaults, kwonlyargs, kwonlydefaults, annotations)``
 
    *args* is a list of the argument names.  *varargs* and *varkw* are the names
    of the ``*`` and ``**`` arguments or ``None``.  *defaults* is an n-tuple of
@@ -405,8 +420,8 @@ Classes and functions
 
 .. function:: getargvalues(frame)
 
-   Get information about arguments passed into a particular frame. A tuple of four
-   things is returned: ``(args, varargs, varkw, locals)``. *args* is a list of the
+   Get information about arguments passed into a particular frame. A :term:`named tuple` 
+   ``ArgInfo(args, varargs, keywords, locals)`` is returned. *args* is a list of the
    argument names (it may contain nested lists). *varargs* and *varkw* are the
    names of the ``*`` and ``**`` arguments or ``None``. *locals* is the locals
    dictionary of the given frame.
@@ -473,8 +488,8 @@ line.
 
 .. function:: getframeinfo(frame[, context])
 
-   Get information about a frame or traceback object.  A 5-tuple is returned, the
-   last five elements of the frame's frame record.
+   Get information about a frame or traceback object.  A :term:`named tuple` 
+   ``Traceback(filename, lineno, function, code_context, index)`` is returned.
 
 
 .. function:: getouterframes(frame[, context])

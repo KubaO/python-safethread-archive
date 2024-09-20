@@ -259,7 +259,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
 	 string representation on success, NULL on failure.  This is
 	 the equivalent of the Python expression: repr(o).
 
-	 Called by the repr() built-in function and by reverse quotes.
+	 Called by the repr() built-in function.
 
        */
 
@@ -271,20 +271,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
 	 string representation on success, NULL on failure.  This is
 	 the equivalent of the Python expression: str(o).)
 
-	 Called by the str() built-in function and by the print
-	 statement.
-
-       */
-
-     /* Implemented elsewhere:
-
-     PyObject *PyObject_Unicode(PyObject *o);
-
-	 Compute the unicode representation of object, o.  Returns the
-	 unicode representation on success, NULL on failure.  This is
-	 the equivalent of the Python expression: unistr(o).)
-
-	 Called by the unistr() built-in function.
+	 Called by the str() and print() built-in functions.
 
        */
 
@@ -423,25 +410,12 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
      PyAPI_FUNC(Py_ssize_t) PyObject_Length(PyObject *o);
 #define PyObject_Length PyObject_Size
 
-     PyAPI_FUNC(Py_ssize_t) _PyObject_LengthHint(PyObject *o);
+     PyAPI_FUNC(Py_ssize_t) _PyObject_LengthHint(PyObject *o, Py_ssize_t);
 
        /*
-         Return the size of object o.  If the object, o, provides
-	 both sequence and mapping protocols, the sequence size is
-	 returned. On error, -1 is returned.  If the object provides
-	 a __length_hint__() method, its value is returned.  This is an
-	 internal undocumented API provided for performance reasons;
-	 for compatibility, don't use it outside the core.  This is the
-	 equivalent to the Python expression: 
-		try:
-			return len(o)
-		except (AttributeError, TypeError):
-			exc_type, exc_value, exc_tb = sys.exc_info()
-			try:
-				return o.__length_hint__()
-			except:
-				pass
-			raise exc_type, exc_value, exc_tb
+         Guess the size of object o using len(o) or o.__length_hint__().
+         If neither of those return a non-negative value, then return the
+         default value.  This function never fails. All exceptions are cleared.
        */
 
      PyAPI_FUNC(PyObject *) PyObject_GetItem(PyObject *o, PyObject *key);
@@ -596,11 +570,11 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
 	   error (i.e. the object does not have a buffer interface or
 	   it is not working).
 
-	   If fortran is 'F', then if the object is multi-dimensional,
+	   If fort is 'F', then if the object is multi-dimensional,
 	   then the data will be copied into the array in
 	   Fortran-style (first dimension varies the fastest).  If
-	   fortran is 'C', then the data will be copied into the array
-	   in C-style (last dimension varies the fastest).  If fortran
+	   fort is 'C', then the data will be copied into the array
+	   in C-style (last dimension varies the fastest).  If fort
 	   is 'A', then it does not matter and the copy will be made
 	   in whatever way is more efficient.
 
@@ -611,7 +585,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
         /* Copy the data from the src buffer to the buffer of destination
          */
 
-     PyAPI_FUNC(int) PyBuffer_IsContiguous(Py_buffer *view, char fortran);
+     PyAPI_FUNC(int) PyBuffer_IsContiguous(Py_buffer *view, char fort);
 
 
      PyAPI_FUNC(void) PyBuffer_FillContiguousStrides(int ndims, 
@@ -621,7 +595,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
 	     					    char fort);
 
        	/*  Fill the strides array with byte-strides of a contiguous
-            (Fortran-style if fortran is 'F' or C-style otherwise)
+            (Fortran-style if fort is 'F' or C-style otherwise)
             array of the given shape with the given number of bytes
             per element.
         */
@@ -636,6 +610,13 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
            and -1 (with raising an error) on error.
          */
 
+
+     PyAPI_FUNC(PyObject *) PyObject_Format(PyObject* obj,
+					    PyObject *format_spec);
+       /*
+	 Takes an arbitrary object and returns the result of
+	 calling obj.__format__(format_spec).
+       */
 
 /* Iterators */
 
@@ -817,6 +798,19 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
        */
 
      PyAPI_FUNC(Py_ssize_t) PyNumber_AsSsize_t(PyObject *o, PyObject *exc);
+
+       /*
+         Returns the Integral instance converted to an int. The
+         instance is expected to be int or long or have an __int__
+         method. Steals integral's reference. error_format will be
+         used to create the TypeError if integral isn't actually an
+         Integral instance. error_format should be a format string
+         that can accept a char* naming integral's type.
+       */
+
+     PyAPI_FUNC(PyObject *) _PyNumber_ConvertIntegralToInt(
+             PyObject *integral,
+             const char* error_format);
 
        /*
         Returns the object converted to Py_ssize_t by going through
@@ -1096,7 +1090,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
        */
 
 #define PySequence_ITEM(o, i)\
-	( Py_Type(o)->tp_as_sequence->sq_item(o, i) )
+	( Py_TYPE(o)->tp_as_sequence->sq_item(o, i) )
        /* Assume tp_as_sequence and sq_item exist and that i does not
 	  need to be corrected for a negative index
        */     

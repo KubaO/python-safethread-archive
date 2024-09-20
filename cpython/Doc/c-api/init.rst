@@ -17,7 +17,7 @@ Initialization, Finalization, and Threads
       single: PyEval_AcquireLock()
       single: modules (in module sys)
       single: path (in module sys)
-      module: __builtin__
+      module: builtins
       module: __main__
       module: sys
       triple: module; search; path
@@ -29,7 +29,7 @@ Initialization, Finalization, and Threads
    exception of :cfunc:`Py_SetProgramName`, :cfunc:`PyEval_InitThreads`,
    :cfunc:`PyEval_ReleaseLock`, and :cfunc:`PyEval_AcquireLock`. This initializes
    the table of loaded modules (``sys.modules``), and creates the fundamental
-   modules :mod:`__builtin__`, :mod:`__main__` and :mod:`sys`.  It also initializes
+   modules :mod:`builtins`, :mod:`__main__` and :mod:`sys`.  It also initializes
    the module search path (``sys.path``). It does not set ``sys.argv``; use
    :cfunc:`PySys_SetArgv` for that.  This is a no-op when called for a second time
    (without calling :cfunc:`Py_Finalize` first).  There is no return value; it is a
@@ -83,7 +83,7 @@ Initialization, Finalization, and Threads
 .. cfunction:: PyThreadState* Py_NewInterpreter()
 
    .. index::
-      module: __builtin__
+      module: builtins
       module: __main__
       module: sys
       single: stdout (in module sys)
@@ -93,7 +93,7 @@ Initialization, Finalization, and Threads
    Create a new sub-interpreter.  This is an (almost) totally separate environment
    for the execution of Python code.  In particular, the new interpreter has
    separate, independent versions of all imported modules, including the
-   fundamental modules :mod:`__builtin__`, :mod:`__main__` and :mod:`sys`.  The
+   fundamental modules :mod:`builtins`, :mod:`__main__` and :mod:`sys`.  The
    table of loaded modules (``sys.modules``) and the module search path
    (``sys.path``) are also separate.  The new environment has no ``sys.argv``
    variable.  It has new standard I/O stream file objects ``sys.stdin``,
@@ -264,7 +264,7 @@ Initialization, Finalization, and Threads
    as the list ``sys.path``, which may be modified to change the future search path
    for loaded modules.
 
-   .. % XXX should give the exact rules
+   .. XXX should give the exact rules
 
 
 .. cfunction:: const char* Py_GetVersion()
@@ -357,10 +357,8 @@ Initialization, Finalization, and Threads
    to initialize ``sys.argv``, a fatal condition is signalled using
    :cfunc:`Py_FatalError`.
 
-   .. % XXX impl. doesn't seem consistent in allowing 0/NULL for the params;
-   .. % check w/ Guido.
-
-.. % XXX Other PySys thingies (doesn't really belong in this chapter)
+   .. XXX impl. doesn't seem consistent in allowing 0/NULL for the params;
+      check w/ Guido.
 
 
 .. _threads:
@@ -614,6 +612,14 @@ supports the creation of additional interpreters (using
    lock has been created, the current thread must not have acquired it, otherwise
    deadlock ensues.  (This function is available even when thread support is
    disabled at compile time.)
+
+
+.. cfunction:: void PyEval_ReInitThreads()
+
+   This function is called from :cfunc:`PyOS_AfterFork` to ensure that newly
+   created child processes don't hold locks referring to threads which
+   are not running in the child process.
+
 
 The following macros are normally used without a trailing semicolon; look for
 example usage in the Python source distribution.
@@ -876,6 +882,46 @@ in previous versions.
    :cfunc:`PyEval_SetProfile`, except the tracing function does receive line-number
    events.
 
+.. cfunction:: PyObject* PyEval_GetCallStats(PyObject *self)
+
+   Return a tuple of function call counts.  There are constants defined for the
+   positions within the tuple:
+   
+   +-------------------------------+-------+
+   | Name                          | Value |
+   +===============================+=======+
+   | :const:`PCALL_ALL`            | 0     |
+   +-------------------------------+-------+
+   | :const:`PCALL_FUNCTION`       | 1     |
+   +-------------------------------+-------+
+   | :const:`PCALL_FAST_FUNCTION`  | 2     |
+   +-------------------------------+-------+
+   | :const:`PCALL_FASTER_FUNCTION`| 3     |
+   +-------------------------------+-------+
+   | :const:`PCALL_METHOD`         | 4     |
+   +-------------------------------+-------+
+   | :const:`PCALL_BOUND_METHOD`   | 5     |
+   +-------------------------------+-------+
+   | :const:`PCALL_CFUNCTION`      | 6     |
+   +-------------------------------+-------+
+   | :const:`PCALL_TYPE`           | 7     |
+   +-------------------------------+-------+
+   | :const:`PCALL_GENERATOR`      | 8     |
+   +-------------------------------+-------+
+   | :const:`PCALL_OTHER`          | 9     |
+   +-------------------------------+-------+
+   | :const:`PCALL_POP`            | 10    |
+   +-------------------------------+-------+
+   
+   :const:`PCALL_FAST_FUNCTION` means no argument tuple needs to be created.
+   :const:`PCALL_FASTER_FUNCTION` means that the fast-path frame setup code is used.
+
+   If there is a method call where the call can be optimized by changing
+   the argument tuple and calling the function directly, it gets recorded
+   twice.
+
+   This function is only present if Python is compiled with :const:`CALL_PROFILE`
+   defined.
 
 .. _advanced-debugging:
 

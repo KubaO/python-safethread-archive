@@ -23,14 +23,13 @@ is read when the database is opened, and some updates rewrite the whole index)
 
 import io as _io
 import os as _os
-import __builtin__
-import UserDict
+import collections
 
 _BLOCKSIZE = 512
 
 error = IOError                         # For anydbm
 
-class _Database(UserDict.DictMixin):
+class _Database(collections.MutableMapping):
 
     # The on-disk directory and data files can remain in mutually
     # inconsistent states for an arbitrarily long time (see comments
@@ -163,7 +162,7 @@ class _Database(UserDict.DictMixin):
         if not isinstance(key, bytes):
             raise TypeError("keys must be bytes")
         key = key.decode("latin-1") # hashable bytes
-        if not isinstance(val, (str8, bytes)):
+        if not isinstance(val, (bytes, bytearray)):
             raise TypeError("values must be byte strings")
         if key not in self._index:
             self._addkey(key, self._addval(val))

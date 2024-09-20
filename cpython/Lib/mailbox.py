@@ -313,7 +313,10 @@ class Maildir(Mailbox):
         subpath = self._lookup(key)
         f = open(os.path.join(self._path, subpath), 'r')
         try:
-            msg = MaildirMessage(f)
+            if self._factory:
+                msg = self._factory(f)
+            else:
+                msg = MaildirMessage(f)
         finally:
             f.close()
         subdir, name = os.path.split(subpath)
@@ -333,7 +336,7 @@ class Maildir(Mailbox):
 
     def get_file(self, key):
         """Return a file-like representation or raise a KeyError."""
-        f = open(os.path.join(self._path, self._lookup(key)), 'rb')
+        f = open(os.path.join(self._path, self._lookup(key)), 'r')
         return _ProxyFile(f)
 
     def iterkeys(self):
@@ -936,7 +939,7 @@ class MH(Mailbox):
     def get_file(self, key):
         """Return a file-like representation or raise a KeyError."""
         try:
-            f = open(os.path.join(self._path, str(key)), 'rb')
+            f = open(os.path.join(self._path, str(key)), 'r')
         except IOError as e:
             if e.errno == errno.ENOENT:
                 raise KeyError('No message with key: %s' % key)
@@ -1762,11 +1765,11 @@ class _ProxyFile:
 
     def read(self, size=None):
         """Read bytes."""
-        return str(self._read(size, self._file.read))
+        return self._read(size, self._file.read)
 
     def readline(self, size=None):
         """Read a line."""
-        return str(self._read(size, self._file.readline))
+        return self._read(size, self._file.readline)
 
     def readlines(self, sizehint=None):
         """Read multiple lines."""

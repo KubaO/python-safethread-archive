@@ -3,7 +3,6 @@
 
 """Unit tests for abc.py."""
 
-import sys
 import unittest
 from test import test_support
 
@@ -56,10 +55,18 @@ class TestABC(unittest.TestCase):
             self.assertEqual(F.__abstractmethods__, {"bar"})
             self.assertRaises(TypeError, F)  # because bar is abstract now
 
+    def test_subclass_oldstyle_class(self):
+        class A:
+            __metaclass__ = abc.ABCMeta
+        class OldstyleClass:
+            pass
+        self.assertFalse(issubclass(OldstyleClass, A))
+        self.assertFalse(issubclass(A, OldstyleClass))
+
     def test_registration_basics(self):
         class A(metaclass=abc.ABCMeta):
             pass
-        class B:
+        class B(object):
             pass
         b = B()
         self.assertEqual(issubclass(B, A), False)
@@ -73,6 +80,16 @@ class TestABC(unittest.TestCase):
         self.assertEqual(issubclass(C, A), True)
         self.assertEqual(isinstance(c, A), True)
 
+    def test_isinstance_invalidation(self):
+        class A(metaclass=abc.ABCMeta):
+            pass
+        class B:
+            pass
+        b = B()
+        self.assertEqual(isinstance(b, A), False)
+        A.register(B)
+        self.assertEqual(isinstance(b, A), True)
+
     def test_registration_builtins(self):
         class A(metaclass=abc.ABCMeta):
             pass
@@ -81,9 +98,11 @@ class TestABC(unittest.TestCase):
         self.assertEqual(issubclass(int, A), True)
         class B(A):
             pass
-        B.register(basestring)
+        B.register(str)
+        class C(str): pass
         self.assertEqual(isinstance("", A), True)
         self.assertEqual(issubclass(str, A), True)
+        self.assertEqual(issubclass(C, A), True)
 
     def test_registration_edge_cases(self):
         class A(metaclass=abc.ABCMeta):
@@ -92,7 +111,7 @@ class TestABC(unittest.TestCase):
         class A1(A):
             pass
         self.assertRaises(RuntimeError, A1.register, A)  # cycles not allowed
-        class B:
+        class B(object):
             pass
         A1.register(B)  # ok
         A1.register(B)  # should pass silently
@@ -133,7 +152,7 @@ class TestABC(unittest.TestCase):
     def test_all_new_methods_are_called(self):
         class A(metaclass=abc.ABCMeta):
             pass
-        class B:
+        class B(object):
             counter = 0
             def __new__(cls):
                 B.counter += 1

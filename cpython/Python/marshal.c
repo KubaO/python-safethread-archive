@@ -36,8 +36,6 @@
 #define TYPE_BINARY_COMPLEX	'y'
 #define TYPE_LONG		'l'
 #define TYPE_STRING		's'
-#define TYPE_INTERNED		't'
-#define TYPE_STRINGREF		'R'
 #define TYPE_TUPLE		'('
 #define TYPE_LIST		'['
 #define TYPE_DICT		'{'
@@ -149,13 +147,13 @@ w_object(PyObject *v, WFILE *p)
 	else if (v == Py_True) {
 	        w_byte(TYPE_TRUE, p);
 	}
-	else if (PyLong_Check(v)) {
+	else if (PyLong_CheckExact(v)) {
 		long x = PyLong_AsLong(v);
 		if ((x == -1)  && PyErr_Occurred()) {
 			PyLongObject *ob = (PyLongObject *)v;
 			PyErr_Clear();
 			w_byte(TYPE_LONG, p);
-			n = Py_Size(ob);
+			n = Py_SIZE(ob);
 			w_long((long)n, p);
 			if (n < 0)
 				n = -n;
@@ -177,7 +175,7 @@ w_object(PyObject *v, WFILE *p)
 			}
 		}
 	}
-	else if (PyFloat_Check(v)) {
+	else if (PyFloat_CheckExact(v)) {
 		if (p->version > 1) {
 			unsigned char buf[8];
 			if (_PyFloat_Pack8(PyFloat_AsDouble(v), 
@@ -198,7 +196,7 @@ w_object(PyObject *v, WFILE *p)
 		}
 	}
 #ifndef WITHOUT_COMPLEX
-	else if (PyComplex_Check(v)) {
+	else if (PyComplex_CheckExact(v)) {
 		if (p->version > 1) {
 			unsigned char buf[8];
 			if (_PyFloat_Pack8(PyComplex_RealAsDouble(v),
@@ -230,32 +228,8 @@ w_object(PyObject *v, WFILE *p)
 		}
 	}
 #endif
-	else if (PyString_Check(v)) {
-		if (p->strings && PyString_CHECK_INTERNED(v)) {
-			PyObject *o = PyDict_GetItem(p->strings, v);
-			if (o) {
-				long w = PyInt_AsLong(o);
-				w_byte(TYPE_STRINGREF, p);
-				w_long(w, p);
-				goto exit;
-			}
-			else {
-				int ok;
-				o = PyInt_FromSsize_t(PyDict_Size(p->strings));
-				ok = o &&
-				     PyDict_SetItem(p->strings, v, o) >= 0;
-				Py_XDECREF(o);
-				if (!ok) {
-					p->depth--;
-					p->error = 1;
-					return;
-				}
-				w_byte(TYPE_INTERNED, p);
-			}
-		}
-		else {
-			w_byte(TYPE_STRING, p);
-		}
+	else if (PyString_CheckExact(v)) {
+		w_byte(TYPE_STRING, p);
 		n = PyString_GET_SIZE(v);
 		if (n > INT_MAX) {
 			/* huge strings are not supported */
@@ -266,7 +240,7 @@ w_object(PyObject *v, WFILE *p)
 		w_long((long)n, p);
 		w_string(PyString_AS_STRING(v), (int)n, p);
 	}
-	else if (PyUnicode_Check(v)) {
+	else if (PyUnicode_CheckExact(v)) {
 	        PyObject *utf8;
 		utf8 = PyUnicode_AsUTF8String(v);
 		if (utf8 == NULL) {
@@ -275,17 +249,17 @@ w_object(PyObject *v, WFILE *p)
 			return;
 		}
 		w_byte(TYPE_UNICODE, p);
-		n = PyBytes_GET_SIZE(utf8);
+		n = PyString_GET_SIZE(utf8);
 		if (n > INT_MAX) {
 			p->depth--;
 			p->error = 1;
 			return;
 		}
 		w_long((long)n, p);
-		w_string(PyBytes_AS_STRING(utf8), (int)n, p);
+		w_string(PyString_AS_STRING(utf8), (int)n, p);
 		Py_DECREF(utf8);
 	}
-	else if (PyTuple_Check(v)) {
+	else if (PyTuple_CheckExact(v)) {
 		w_byte(TYPE_TUPLE, p);
 		n = PyTuple_Size(v);
 		w_long((long)n, p);
@@ -293,7 +267,7 @@ w_object(PyObject *v, WFILE *p)
 			w_object(PyTuple_GET_ITEM(v, i), p);
 		}
 	}
-	else if (PyList_Check(v)) {
+	else if (PyList_CheckExact(v)) {
 		w_byte(TYPE_LIST, p);
 		n = PyList_GET_SIZE(v);
 		w_long((long)n, p);
@@ -301,7 +275,7 @@ w_object(PyObject *v, WFILE *p)
 			w_object(PyList_GET_ITEM(v, i), p);
 		}
 	}
-	else if (PyDict_Check(v)) {
+	else if (PyDict_CheckExact(v)) {
 		Py_ssize_t pos;
 		PyObject *key, *value;
 		w_byte(TYPE_DICT, p);
@@ -313,7 +287,7 @@ w_object(PyObject *v, WFILE *p)
 		}
 		w_object((PyObject *)NULL, p);
 	}
-	else if (PyAnySet_Check(v)) {
+	else if (PyAnySet_CheckExact(v)) {
 		PyObject *value, *it;
 
 		if (PyObject_TypeCheck(v, &PySet_Type))
@@ -389,7 +363,6 @@ w_object(PyObject *v, WFILE *p)
 		w_byte(TYPE_UNKNOWN, p);
 		p->error = 1;
 	}
-   exit:
 	p->depth--;
 }
 
@@ -487,7 +460,7 @@ r_long64(RFILE *p)
 	long hi4 = r_long(p);
 #if SIZEOF_LONG > 4
 	long x = (hi4 << 32) | (lo4 & 0xFFFFFFFFL);
-	return PyInt_FromLong(x);
+	return PyLong_FromLong(x);
 #else
 	unsigned char buf[8];
 	int one = 1;
@@ -509,7 +482,7 @@ r_object(RFILE *p)
 {
 	/* NULL is a valid return value, it does not necessarily means that
 	   an exception is set. */
-	PyObject *v, *v2, *v3;
+	PyObject *v, *v2;
 	long i, n;
 	int type = r_byte(p);
 	PyObject *retval;
@@ -560,7 +533,7 @@ r_object(RFILE *p)
 		break;
 
 	case TYPE_INT:
-		retval = PyInt_FromLong(r_long(p));
+		retval = PyLong_FromLong(r_long(p));
 		break;
 
 	case TYPE_INT64:
@@ -584,7 +557,7 @@ r_object(RFILE *p)
 				retval = NULL;
 				break;
 			}
-			Py_Size(ob) = n;
+			Py_SIZE(ob) = n;
 			for (i = 0; i < size; i++) {
 				int digit = r_short(p);
 				if (digit < 0) {
@@ -703,7 +676,6 @@ r_object(RFILE *p)
 		}
 #endif
 
-	case TYPE_INTERNED:
 	case TYPE_STRING:
 		n = r_long(p);
 		if (n < 0 || n > INT_MAX) {
@@ -723,25 +695,6 @@ r_object(RFILE *p)
 			retval = NULL;
 			break;
 		}
-		if (type == TYPE_INTERNED) {
-			PyString_InternInPlace(&v);
-			if (PyList_Append(p->strings, v) < 0) {
-				retval = NULL;
-				break;
-			}
-		}
-		retval = v;
-		break;
-
-	case TYPE_STRINGREF:
-		n = r_long(p);
-		if (n < 0 || n >= PyList_GET_SIZE(p->strings)) {
-			PyErr_SetString(PyExc_ValueError, "bad marshal data");
-			retval = NULL;
-			break;
-		}
-		v = PyList_GET_ITEM(p->strings, n);
-		Py_INCREF(v);
 		retval = v;
 		break;
 
@@ -859,7 +812,7 @@ r_object(RFILE *p)
 			retval = NULL;
 			break;
 		}
-		v = PyTuple_New((int)n);
+                v = (type == TYPE_SET) ? PySet_New(NULL) : PyFrozenSet_New(NULL);
 		if (v == NULL) {
 			retval = NULL;
 			break;
@@ -874,18 +827,15 @@ r_object(RFILE *p)
 				v = NULL;
 				break;
 			}
-			PyTuple_SET_ITEM(v, (int)i, v2);
+			if (PySet_Add(v, v2) == -1) {
+                                Py_DECREF(v);
+                                Py_DECREF(v2);
+                                v = NULL;
+                                break;
+                        }
+                        Py_DECREF(v2);
 		}
-		if (v == NULL) {
-			retval = NULL;
-			break;
-		}
-		if (type == TYPE_SET)
-			v3 = PySet_New(v);
-		else
-			v3 = PyFrozenSet_New(v);
-		Py_DECREF(v);
-		retval = v3;
+		retval = v;
 		break;
 
 	case TYPE_CODE:
@@ -1009,6 +959,7 @@ PyMarshal_ReadLongFromFile(FILE *fp)
 	RFILE rf;
 	rf.fp = fp;
 	rf.strings = NULL;
+	rf.ptr = rf.end = NULL;
 	return r_long(&rf);
 }
 
@@ -1082,6 +1033,7 @@ PyMarshal_ReadObjectFromFile(FILE *fp)
 	rf.fp = fp;
 	rf.strings = PyList_New(0);
 	rf.depth = 0;
+	rf.ptr = rf.end = NULL;
 	result = r_object(&rf);
 	Py_DECREF(rf.strings);
 	return result;

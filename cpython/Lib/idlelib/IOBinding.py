@@ -242,7 +242,7 @@ class IOBinding:
 
     eol = r"(\r\n)|\n|\r"  # \r\n (Windows), \n (UNIX), or \r (Mac)
     eol_re = re.compile(eol)
-    eol_convention = os.linesep # Default
+    eol_convention = os.linesep  # default
 
     def loadfile(self, filename):
         try:
@@ -389,9 +389,10 @@ class IOBinding:
 
     def writefile(self, filename):
         self.fixlastline()
-        chars = self.encode(self.text.get("1.0", "end-1c"))
+        text = self.text.get("1.0", "end-1c")
         if self.eol_convention != "\n":
-            chars = chars.replace("\n", self.eol_convention)
+            text = text.replace("\n", self.eol_convention)
+        chars = self.encode(text)
         try:
             f = open(filename, "wb")
             f.write(chars)
@@ -484,13 +485,23 @@ class IOBinding:
             self.text.insert("end-1c", "\n")
 
     def print_window(self, event):
+        m = tkMessageBox.Message(
+            title="Print",
+            message="Print to Default Printer",
+            icon=tkMessageBox.QUESTION,
+            type=tkMessageBox.OKCANCEL,
+            default=tkMessageBox.OK,
+            master=self.text)
+        reply = m.show()
+        if reply != tkMessageBox.OK:
+            self.text.focus_set()
+            return "break"
         tempfilename = None
         saved = self.get_saved()
         if saved:
             filename = self.filename
         # shell undo is reset after every prompt, looks saved, probably isn't
         if not saved or filename is None:
-            # XXX KBK 08Jun03 Wouldn't it be better to ask the user to save?
             (tfd, tempfilename) = tempfile.mkstemp(prefix='IDLE_tmp_')
             filename = tempfilename
             os.close(tfd)

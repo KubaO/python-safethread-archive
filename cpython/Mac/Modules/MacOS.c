@@ -195,7 +195,7 @@ rf_tell(rfobject *self, PyObject *args)
 		PyMac_Error(err);
 		return NULL;
 	}
-	return PyInt_FromLong(where);
+	return PyLong_FromLong(where);
 }
 
 static char rf_close__doc__[] = 
@@ -356,7 +356,7 @@ MacOS_GetErrorString(PyObject *self, PyObject *args)
 		PyObject *m, *rv;
 		errors_loaded = 1;
 		
-		m = PyImport_ImportModule("macresource");
+		m = PyImport_ImportModuleNoBlock("macresource");
 		if (!m) {
 			if (Py_VerboseFlag)
 				PyErr_Print();
@@ -609,7 +609,7 @@ initMacOS(void)
 	MacOS_Error = PyMac_GetOSErrException();
 	if (MacOS_Error == NULL || PyDict_SetItemString(d, "Error", MacOS_Error) != 0)
 		return;
-	Py_Type(&Rftype) = &PyType_Type;
+	Py_TYPE(&Rftype) = &PyType_Type;
 	Py_INCREF(&Rftype);
 	if (PyDict_SetItemString(d, "ResourceForkType", (PyObject *)&Rftype) != 0)
 		return;

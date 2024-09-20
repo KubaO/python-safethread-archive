@@ -7,7 +7,7 @@ but random access is not allowed."""
 
 import struct, sys, time
 import zlib
-import __builtin__
+import builtins
 
 __all__ = ["GzipFile","open"]
 
@@ -92,7 +92,7 @@ class GzipFile:
         if mode and 'b' not in mode:
             mode += 'b'
         if fileobj is None:
-            fileobj = self.myfileobj = __builtin__.open(filename, mode or 'rb')
+            fileobj = self.myfileobj = builtins.open(filename, mode or 'rb')
         if filename is None:
             if hasattr(fileobj, 'name'): filename = fileobj.name
             else: filename = ''
@@ -409,7 +409,7 @@ class GzipFile:
 
     def readline(self, size=-1):
         if size < 0:
-            size = sys.maxint
+            size = sys.maxsize
             readsize = self.min_readsize
         else:
             readsize = size
@@ -441,7 +441,7 @@ class GzipFile:
     def readlines(self, sizehint=0):
         # Negative numbers result in reading all the lines
         if sizehint <= 0:
-            sizehint = sys.maxint
+            sizehint = sys.maxsize
         L = []
         while sizehint > 0:
             line = self.readline()
@@ -487,13 +487,13 @@ def _test():
                     print("filename doesn't end in .gz:", repr(arg))
                     continue
                 f = open(arg, "rb")
-                g = __builtin__.open(arg[:-3], "wb")
+                g = builtins.open(arg[:-3], "wb")
         else:
             if arg == "-":
                 f = sys.stdin
                 g = GzipFile(filename="", mode="wb", fileobj=sys.stdout)
             else:
-                f = __builtin__.open(arg, "rb")
+                f = builtins.open(arg, "rb")
                 g = open(arg + ".gz", "wb")
         while True:
             chunk = f.read(1024)

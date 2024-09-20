@@ -237,7 +237,7 @@ tmtotuple(struct tm *p)
 	if (v == NULL)
 		return NULL;
 
-#define SET(i,val) PyStructSequence_SET_ITEM(v, i, PyInt_FromLong((long) val))
+#define SET(i,val) PyStructSequence_SET_ITEM(v, i, PyLong_FromLong((long) val))
 
 	SET(0, p->tm_year + 1900);
 	SET(1, p->tm_mon + 1);	   /* Want January == 1 */
@@ -332,7 +332,7 @@ time_gmtime(PyObject *self, PyObject *args)
 }
 
 PyDoc_STRVAR(gmtime_doc,
-"gmtime([seconds]) -> (tm_year, tm_mon, tm_day, tm_hour, tm_min,\n\
+"gmtime([seconds]) -> (tm_year, tm_mon, tm_mday, tm_hour, tm_min,\n\
                        tm_sec, tm_wday, tm_yday, tm_isdst)\n\
 \n\
 Convert seconds since the Epoch to a time tuple expressing UTC (a.k.a.\n\
@@ -348,7 +348,8 @@ time_localtime(PyObject *self, PyObject *args)
 }
 
 PyDoc_STRVAR(localtime_doc,
-"localtime([seconds]) -> (tm_year,tm_mon,tm_day,tm_hour,tm_min,tm_sec,tm_wday,tm_yday,tm_isdst)\n\
+"localtime([seconds]) -> (tm_year,tm_mon,tm_mday,tm_hour,tm_min,\n\
+			  tm_sec,tm_wday,tm_yday,tm_isdst)\n\
 \n\
 Convert seconds since the Epoch to a time tuple expressing local time.\n\
 When 'seconds' is not passed in, convert the current time instead.");
@@ -365,7 +366,7 @@ gettmarg(PyObject *args, struct tm *p)
 		t = args;
 		Py_INCREF(t);
 	}
-	else if (Py_Type(args) == &StructTimeType) {
+	else if (Py_TYPE(args) == &StructTimeType) {
 		t = structtime_totuple(args);
 	}
 	else {
@@ -392,8 +393,8 @@ gettmarg(PyObject *args, struct tm *p)
 	if (y < 1900) {
 		PyObject *accept = PyDict_GetItemString(moddict,
 							"accept2dyear");
-		if (accept == NULL || !PyInt_CheckExact(accept) ||
-		    PyInt_AsLong(accept) == 0) {
+		if (accept == NULL || !PyLong_CheckExact(accept) ||
+		    !PyObject_IsTrue(accept)) {
 			PyErr_SetString(PyExc_ValueError,
 					"year >= 1900 required");
 			return 0;
@@ -528,7 +529,8 @@ time_strftime(PyObject *self, PyObject *args)
 			   e.g. an empty format, or %Z when the timezone
 			   is unknown. */
 			PyObject *ret;
-			ret = PyUnicode_FromStringAndSize(outbuf, buflen);
+			ret = PyUnicode_Decode(outbuf, buflen,
+					       TZNAME_ENCODING, NULL);
 			PyMem_Free(outbuf);
 			return ret;
 		}
@@ -554,7 +556,7 @@ is not present, current time as returned by localtime() is used.");
 static PyObject *
 time_strptime(PyObject *self, PyObject *args)
 {
-    PyObject *strptime_module = PyImport_ImportModule("_strptime");
+    PyObject *strptime_module = PyImport_ImportModuleNoBlock("_strptime");
     PyObject *strptime_result;
 
     if (!strptime_module)
@@ -666,7 +668,7 @@ time_tzset(PyObject *self, PyObject *unused)
 {
 	PyObject* m;
 
-	m = PyImport_ImportModule("time");
+	m = PyImport_ImportModuleNoBlock("time");
 	if (m == NULL) {
 	    return NULL;
 	}
@@ -1035,5 +1037,3 @@ floatsleep(double secs)
 
 	return 0;
 }
-
-

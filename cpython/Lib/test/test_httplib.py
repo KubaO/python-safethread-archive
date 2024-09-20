@@ -1,6 +1,5 @@
 import httplib
 import io
-import sys
 import socket
 
 from unittest import TestCase
@@ -83,12 +82,24 @@ class BasicTest(TestCase):
         resp = httplib.HTTPResponse(sock)
         resp.begin()
         self.assertEqual(resp.read(), b"Text")
-        resp.close()
+        self.assertTrue(resp.isclosed())
 
         body = "HTTP/1.1 400.100 Not Ok\r\n\r\nText"
         sock = FakeSocket(body)
         resp = httplib.HTTPResponse(sock)
         self.assertRaises(httplib.BadStatusLine, resp.begin)
+
+    def test_partial_reads(self):
+        # if we have a lenght, the system knows when to close itself
+        # same behaviour than when we read the whole thing with read()
+        body = "HTTP/1.1 200 Ok\r\nContent-Length: 4\r\n\r\nText"
+        sock = FakeSocket(body)
+        resp = httplib.HTTPResponse(sock)
+        resp.begin()
+        self.assertEqual(resp.read(2), b'Te')
+        self.assertFalse(resp.isclosed())
+        self.assertEqual(resp.read(2), b'xt')
+        self.assertTrue(resp.isclosed())
 
     def test_host_port(self):
         # Check invalid host_port
@@ -135,7 +146,6 @@ class BasicTest(TestCase):
         resp.begin()
         if resp.read():
             self.fail("Did not expect response from HEAD request")
-        resp.close()
 
     def test_send_file(self):
         expected = (b'GET /foo HTTP/1.1\r\nHost: example.com\r\n'
@@ -146,7 +156,44 @@ class BasicTest(TestCase):
         sock = FakeSocket(body)
         conn.sock = sock
         conn.request('GET', '/foo', body)
-        self.assertTrue(sock.data.startswith(expected))
+        self.assertTrue(sock.data.startswith(expected), '%r != %r' %
+                (sock.data[:len(expected)], expected))
+
+    def test_chunked(self):
+        chunked_start = (
+            'HTTP/1.1 200 OK\r\n'
+            'Transfer-Encoding: chunked\r\n\r\n'
+            'a\r\n'
+            'hello worl\r\n'
+            '1\r\n'
+            'd\r\n'
+        )
+        sock = FakeSocket(chunked_start + '0\r\n')
+        resp = httplib.HTTPResponse(sock, method="GET")
+        resp.begin()
+        self.assertEquals(resp.read(), b'hello world')
+        resp.close()
+
+        for x in ('', 'foo\r\n'):
+            sock = FakeSocket(chunked_start + x)
+            resp = httplib.HTTPResponse(sock, method="GET")
+            resp.begin()
+            try:
+                resp.read()
+            except httplib.IncompleteRead as i:
+                self.assertEquals(i.partial, b'hello world')
+            else:
+                self.fail('IncompleteRead expected')
+            finally:
+                resp.close()
+
+    def test_negative_content_length(self):
+        sock = FakeSocket('HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\nHello\r\n')
+        resp = httplib.HTTPResponse(sock, method="GET")
+        resp.begin()
+        self.assertEquals(resp.read(), b'Hello\r\n')
+        resp.close()
+
 
 class OfflineTest(TestCase):
     def test_responses(self):

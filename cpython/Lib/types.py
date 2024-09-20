@@ -1,6 +1,5 @@
-"""Define names for all type symbols known in the standard interpreter.
-
-Types that are part of optional modules (e.g. array) are not listed.
+"""
+Define names for built-in types that aren't directly accessible as a builtin.
 """
 import sys
 
@@ -8,23 +7,6 @@ import sys
 # and changing number of builtin types implement *some* flavor of
 # iterator.  Don't check the type!  Use hasattr to check for both
 # "__iter__" and "__next__" attributes instead.
-
-NoneType = type(None)
-TypeType = type
-ObjectType = object
-
-IntType = int
-LongType = int
-FloatType = float
-BooleanType = bool
-try:
-    ComplexType = complex
-except NameError:
-    pass
-
-TupleType = tuple
-ListType = list
-DictType = DictionaryType = dict
 
 def _f(): pass
 FunctionType = type(_f)
@@ -37,8 +19,6 @@ GeneratorType = type(_g())
 
 class _C:
     def _m(self): pass
-ClassType = type
-UnboundMethodType = type(_C._m)         # Same as MethodType
 MethodType = type(_C()._m)
 
 BuiltinFunctionType = type(len)
@@ -53,12 +33,6 @@ except TypeError:
     TracebackType = type(tb)
     FrameType = type(tb.tb_frame)
     tb = None; del tb
-
-SliceType = slice
-EllipsisType = type(Ellipsis)
-
-DictProxyType = type(TypeType.__dict__)
-NotImplementedType = type(NotImplemented)
 
 # Extension types defined in a C helper module.  XXX There may be no
 # equivalent in implementations other than CPython, so it seems better to

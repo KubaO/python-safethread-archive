@@ -4,12 +4,6 @@
 * This module is automatically imported during initialization. *
 ****************************************************************
 
-In earlier versions of Python (up to 1.5a3), scripts or modules that
-needed to use site-specific modules would place ``import site''
-somewhere near the top of their code.  Because of the automatic
-import, this is no longer necessary (but code that does it still
-works).
-
 This will append site-specific paths to the module search path.  On
 Unix (including Mac OSX), it starts with sys.prefix and
 sys.exec_prefix (if different) and appends
@@ -60,7 +54,7 @@ ImportError exception, it is silently ignored.
 
 import sys
 import os
-import __builtin__
+import builtins
 
 
 def makepath(*paths):
@@ -102,6 +96,8 @@ def addbuilddir():
     (especially for Guido :-)"""
     from distutils.util import get_platform
     s = "build/lib.%s-%.3s" % (get_platform(), sys.version)
+    if hasattr(sys, 'gettotalrefcount'):
+        s += '-pydebug'
     s = os.path.join(os.path.dirname(sys.path[-1]), s)
     sys.path.append(s)
 
@@ -247,12 +243,17 @@ def setquit():
             # Shells like IDLE catch the SystemExit, but listen when their
             # stdin wrapper is closed.
             try:
-                sys.stdin.close()
+                fd = -1
+                if hasattr(sys.stdin, "fileno"):
+                    fd = sys.stdin.fileno()
+                if fd != 0:
+                    # Don't close stdin if it wraps fd 0
+                    sys.stdin.close()
             except:
                 pass
             raise SystemExit(code)
-    __builtin__.quit = Quitter('quit')
-    __builtin__.exit = Quitter('exit')
+    builtins.quit = Quitter('quit')
+    builtins.exit = Quitter('exit')
 
 
 class _Printer(object):
@@ -310,27 +311,25 @@ class _Printer(object):
                 lineno += self.MAXLINES
                 key = None
                 while key is None:
-                    sys.stdout.write(prompt)
-                    sys.stdout.flush()
-                    key = sys.stdin.readline()
+                    key = input(prompt)
                     if key not in ('', 'q'):
                         key = None
                 if key == 'q':
                     break
 
 def setcopyright():
-    """Set 'copyright' and 'credits' in __builtin__"""
-    __builtin__.copyright = _Printer("copyright", sys.copyright)
+    """Set 'copyright' and 'credits' in builtins"""
+    builtins.copyright = _Printer("copyright", sys.copyright)
     if sys.platform[:4] == 'java':
-        __builtin__.credits = _Printer(
+        builtins.credits = _Printer(
             "credits",
             "Jython is maintained by the Jython developers (www.jython.org).")
     else:
-        __builtin__.credits = _Printer("credits", """\
+        builtins.credits = _Printer("credits", """\
     Thanks to CWI, CNRI, BeOpen.com, Zope Corporation and a cast of thousands
     for supporting Python development.  See www.python.org for more information.""")
     here = os.path.dirname(os.__file__)
-    __builtin__.license = _Printer(
+    builtins.license = _Printer(
         "license", "See http://www.python.org/%.3s/license.html" % sys.version,
         ["LICENSE.txt", "LICENSE"],
         [os.path.join(here, os.pardir), here, os.curdir])
@@ -350,7 +349,7 @@ class _Helper(object):
         return pydoc.help(*args, **kwds)
 
 def sethelper():
-    __builtin__.help = _Helper()
+    builtins.help = _Helper()
 
 def aliasmbcs():
     """On Windows, some default encodings are not provided by Python,
@@ -402,23 +401,6 @@ def execsitecustomize():
             (err.__class__.__name__, err))
 
 
-def installnewio():
-    """Install new I/O library as default."""
-    import io
-    # Hack to avoid a nasty recursion issue when Python is invoked
-    # in verbose mode: pre-import the Latin-1 and UTF-8 codecs
-    from encodings import latin_1, utf_8
-    # Trick so that open won't become a bound method when stored
-    # as a class variable (as dumbdbm does)
-    class open:
-        def __new__(cls, *args, **kwds):
-            return io.open(*args, **kwds)
-    __builtin__.open = open
-    sys.__stdin__ = sys.stdin = io.open(0, "r", newline='\n')
-    sys.__stdout__ = sys.stdout = io.open(1, "w", newline='\n')
-    sys.__stderr__ = sys.stderr = io.open(2, "w", newline='\n')
-
-
 def main():
     abs__file__()
     paths_in_sys = removeduppaths()
@@ -433,7 +415,6 @@ def main():
     sethelper()
     aliasmbcs()
     setencoding()
-    installnewio()
     execsitecustomize()
     # Remove sys.setdefaultencoding() so that users cannot change the
     # encoding after initialization.  The test for presence is needed when

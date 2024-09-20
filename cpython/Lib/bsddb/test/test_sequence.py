@@ -3,7 +3,6 @@ import os
 import shutil
 import sys
 import tempfile
-import glob
 
 try:
     # For Pythons w/distutils pybsddb
@@ -17,11 +16,14 @@ from bsddb.test.test_all import verbose
 class DBSequenceTest(unittest.TestCase):
     def setUp(self):
         self.int_32_max = 0x100000000
-        self.homeDir = tempfile.mkdtemp()
-        old_tempfile_tempdir = tempfile.tempdir
+        self.homeDir = os.path.join(tempfile.gettempdir(), 'db_home%d'%os.getpid())
+        try:
+            os.mkdir(self.homeDir)
+        except os.error:
+            pass
         tempfile.tempdir = self.homeDir
         self.filename = os.path.split(tempfile.mktemp())[1]
-        tempfile.tempdir = old_tempfile_tempdir
+        tempfile.tempdir = None
 
         self.dbenv = db.DBEnv()
         self.dbenv.open(self.homeDir, db.DB_CREATE | db.DB_INIT_MPOOL, 0o666)
@@ -39,7 +41,8 @@ class DBSequenceTest(unittest.TestCase):
             self.dbenv.close()
             del self.dbenv
 
-        shutil.rmtree(self.homeDir)
+        from test import test_support
+        test_support.rmtree(self.homeDir)
 
     def test_get(self):
         self.seq = db.DBSequence(self.d, flags=0)

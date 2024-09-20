@@ -16,7 +16,37 @@ __all__ = ["Hashable", "Iterable", "Iterator",
            "Mapping", "MutableMapping",
            "MappingView", "KeysView", "ItemsView", "ValuesView",
            "Sequence", "MutableSequence",
+           "ByteString",
+           "bytearray_iterator", "bytes_iterator", "dict_itemiterator",
+           "dict_items", "dict_keyiterator", "dict_keys", "dict_proxy",
+           "dict_valueiterator", "dict_values", "list_iterator",
+           "list_reverseiterator", "range_iterator", "set_iterator",
+           "str_iterator", "tuple_iterator", "zip_iterator",
            ]
+
+
+### collection related types which are not exposed through builtin ###
+## iterators ##
+bytes_iterator = type(iter(b''))
+bytearray_iterator = type(iter(bytearray()))
+#callable_iterator = ???
+dict_keyiterator = type(iter({}.keys()))
+dict_valueiterator = type(iter({}.values()))
+dict_itemiterator = type(iter({}.items()))
+list_iterator = type(iter([]))
+list_reverseiterator = type(iter(reversed([])))
+range_iterator = type(iter(range(0)))
+set_iterator = type(iter(set()))
+str_iterator = type(iter(""))
+tuple_iterator = type(iter(()))
+zip_iterator = type(iter(zip()))
+## views ##
+dict_keys = type({}.keys())
+dict_values = type({}.values())
+dict_items = type({}.items())
+## misc ##
+dict_proxy = type(type.__dict__)
+
 
 ### ONE-TRICK PONIES ###
 
@@ -51,10 +81,8 @@ class Iterable(metaclass=ABCMeta):
                 return True
         return NotImplemented
 
-Iterable.register(bytes)
 
-
-class Iterator(metaclass=ABCMeta):
+class Iterator(Iterable):
 
     @abstractmethod
     def __next__(self):
@@ -70,6 +98,19 @@ class Iterator(metaclass=ABCMeta):
                 return True
         return NotImplemented
 
+Iterator.register(bytes_iterator)
+Iterator.register(bytearray_iterator)
+#Iterator.register(callable_iterator)
+Iterator.register(dict_keyiterator)
+Iterator.register(dict_valueiterator)
+Iterator.register(dict_itemiterator)
+Iterator.register(list_iterator)
+Iterator.register(list_reverseiterator)
+Iterator.register(range_iterator)
+Iterator.register(set_iterator)
+Iterator.register(str_iterator)
+Iterator.register(tuple_iterator)
+Iterator.register(zip_iterator)
 
 class Sized(metaclass=ABCMeta):
 
@@ -116,7 +157,7 @@ class Callable(metaclass=ABCMeta):
 ### SETS ###
 
 
-class Set(metaclass=ABCMeta):
+class Set(Sized, Iterable, Container):
 
     """A set is a finite, iterable container.
 
@@ -127,19 +168,6 @@ class Set(metaclass=ABCMeta):
     semantics are fixed), all you have to do is redefine __le__ and
     then the other operations will automatically follow suit.
     """
-
-    @abstractmethod
-    def __contains__(self, value):
-        return False
-
-    @abstractmethod
-    def __iter__(self):
-        while False:
-            yield None
-
-    @abstractmethod
-    def __len__(self):
-        return 0
 
     def __le__(self, other):
         if not isinstance(other, Set):
@@ -156,19 +184,43 @@ class Set(metaclass=ABCMeta):
             return NotImplemented
         return len(self) < len(other) and self.__le__(other)
 
+    def __gt__(self, other):
+        if not isinstance(other, Set):
+            return NotImplemented
+        return other < self
+
+    def __ge__(self, other):
+        if not isinstance(other, Set):
+            return NotImplemented
+        return other <= self
+
     def __eq__(self, other):
         if not isinstance(other, Set):
             return NotImplemented
         return len(self) == len(other) and self.__le__(other)
 
+    def __ne__(self, other):
+        return not (self == other)
+
     @classmethod
     def _from_iterable(cls, it):
-        return frozenset(it)
+        '''Construct an instance of the class from any iterable input.
+
+        Must override this method if the class constructor signature
+        does not accept an iterable for an input.
+        '''
+        return cls(it)
 
     def __and__(self, other):
         if not isinstance(other, Iterable):
             return NotImplemented
         return self._from_iterable(value for value in other if value in self)
+
+    def isdisjoint(self, other):
+        for value in other:
+            if value in self:
+                return False
+        return True
 
     def __or__(self, other):
         if not isinstance(other, Iterable):
@@ -205,7 +257,7 @@ class Set(metaclass=ABCMeta):
         freedom for __eq__ or __hash__.  We match the algorithm used
         by the built-in frozenset type.
         """
-        MAX = sys.maxint
+        MAX = sys.maxsize
         MASK = 2 * MAX + 1
         n = len(self)
         h = 1927868237 * (n + 1)
@@ -237,6 +289,12 @@ class MutableSet(Set):
         """Return True if it was deleted, False if not there."""
         raise NotImplementedError
 
+    def remove(self, value):
+        """Remove an element. If not a member, raise a KeyError."""
+        if value not in self:
+            raise KeyError(value)
+        self.discard(value)
+
     def pop(self):
         """Return the popped value.  Raise KeyError if empty."""
         it = iter(self)
@@ -246,16 +304,6 @@ class MutableSet(Set):
             raise KeyError
         self.discard(value)
         return value
-
-    def toggle(self, value):
-        """Return True if it was added, False if deleted."""
-        # XXX This implementation is not thread-safe
-        if value in self:
-            self.discard(value)
-            return False
-        else:
-            self.add(value)
-            return True
 
     def clear(self):
         """This is slow (creates N new iterators!) but effective."""
@@ -277,9 +325,13 @@ class MutableSet(Set):
         return self
 
     def __ixor__(self, it: Iterable):
-        # This calls toggle(), so if that is overridded, we call the override
+        if not isinstance(it, Set):
+            it = self._from_iterable(it)
         for value in it:
-            self.toggle(it)
+            if value in self:
+                self.discard(value)
+            else:
+                self.add(value)
         return self
 
     def __isub__(self, it: Iterable):
@@ -293,7 +345,7 @@ MutableSet.register(set)
 ### MAPPINGS ###
 
 
-class Mapping(metaclass=ABCMeta):
+class Mapping(Sized, Iterable, Container):
 
     @abstractmethod
     def __getitem__(self, key):
@@ -313,15 +365,6 @@ class Mapping(metaclass=ABCMeta):
         else:
             return True
 
-    @abstractmethod
-    def __len__(self):
-        return 0
-
-    @abstractmethod
-    def __iter__(self):
-        while False:
-            yield None
-
     def keys(self):
         return KeysView(self)
 
@@ -331,8 +374,15 @@ class Mapping(metaclass=ABCMeta):
     def values(self):
         return ValuesView(self)
 
+    def __eq__(self, other):
+        return isinstance(other, Mapping) and \
+               dict(self.items()) == dict(other.items())
 
-class MappingView(metaclass=ABCMeta):
+    def __ne__(self, other):
+        return not (self == other)
+
+
+class MappingView(Sized):
 
     def __init__(self, mapping):
         self._mapping = mapping
@@ -350,7 +400,7 @@ class KeysView(MappingView, Set):
         for key in self._mapping:
             yield key
 
-KeysView.register(type({}.keys()))
+KeysView.register(dict_keys)
 
 
 class ItemsView(MappingView, Set):
@@ -368,7 +418,7 @@ class ItemsView(MappingView, Set):
         for key in self._mapping:
             yield (key, self._mapping[key])
 
-ItemsView.register(type({}.items()))
+ItemsView.register(dict_items)
 
 
 class ValuesView(MappingView):
@@ -383,7 +433,7 @@ class ValuesView(MappingView):
         for key in self._mapping:
             yield self._mapping[key]
 
-ValuesView.register(type({}.values()))
+ValuesView.register(dict_values)
 
 
 class MutableMapping(Mapping):
@@ -438,13 +488,20 @@ class MutableMapping(Mapping):
         for key, value in kwds.items():
             self[key] = value
 
+    def setdefault(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            self[key] = default
+        return default
+
 MutableMapping.register(dict)
 
 
 ### SEQUENCES ###
 
 
-class Sequence(metaclass=ABCMeta):
+class Sequence(Sized, Iterable, Container):
 
     """All the operations on a read-only sequence.
 
@@ -456,19 +513,15 @@ class Sequence(metaclass=ABCMeta):
     def __getitem__(self, index):
         raise IndexError
 
-    @abstractmethod
-    def __len__(self):
-        return 0
-
     def __iter__(self):
         i = 0
-        while True:
-            try:
+        try:
+            while True:
                 v = self[i]
-            except IndexError:
-                break
-            yield v
-            i += 1
+                yield v
+                i += 1
+        except IndexError:
+            return
 
     def __contains__(self, value):
         for v in self:
@@ -490,8 +543,18 @@ class Sequence(metaclass=ABCMeta):
         return sum(1 for v in self if v == value)
 
 Sequence.register(tuple)
-Sequence.register(basestring)
-Sequence.register(memoryview)
+Sequence.register(str)
+
+
+class ByteString(Sequence):
+
+    """This unifies bytes and bytearray.
+
+    XXX Should add all their methods.
+    """
+
+ByteString.register(bytes)
+ByteString.register(bytearray)
 
 
 class MutableSequence(Sequence):
@@ -532,4 +595,4 @@ class MutableSequence(Sequence):
         self.extend(values)
 
 MutableSequence.register(list)
-MutableSequence.register(bytes)
+MutableSequence.register(bytearray)  # Multiply inheriting, see ByteString

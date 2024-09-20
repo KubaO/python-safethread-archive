@@ -20,7 +20,6 @@ import Carbon.File
 import io
 import aetypes
 from aetypes import mkenum, ObjectSpecifier
-import os
 
 # These ones seem to be missing from AppleEvents
 # (they're in AERegistry.h)
@@ -98,7 +97,7 @@ def pack(x, forcetype = None):
         return AE.AECreateDesc(b'long', struct.pack('l', x))
     if isinstance(x, float):
         return AE.AECreateDesc(b'doub', struct.pack('d', x))
-    if isinstance(x, (bytes, str8)):
+    if isinstance(x, (bytes, bytearray)):
         return AE.AECreateDesc(b'TEXT', x)
     if isinstance(x, str):
         # See http://developer.apple.com/documentation/Carbon/Reference/Apple_Event_Manager/Reference/reference.html#//apple_ref/doc/constant_group/typeUnicodeText

@@ -25,7 +25,7 @@ typedef struct {
 
 static PyTypeObject Xxo_Type;
 
-#define XxoObject_Check(v)	(Py_Type(v) == &Xxo_Type)
+#define XxoObject_Check(v)	(Py_TYPE(v) == &Xxo_Type)
 
 static XxoObject *
 newXxoObject(PyObject *arg)
@@ -156,7 +156,7 @@ xx_foo(PyObject *self, PyObject *args)
 	if (!PyArg_ParseTuple(args, "ll:foo", &i, &j))
 		return NULL;
 	res = i+j; /* XXX Do something here */
-	return PyInt_FromLong(res);
+	return PyLong_FromLong(res);
 }
 
 
@@ -187,7 +187,7 @@ xx_bug(PyObject *self, PyObject *args)
 
 	item = PyList_GetItem(list, 0);
 	/* Py_INCREF(item); */
-	PyList_SetItem(list, 1, PyInt_FromLong(0L));
+	PyList_SetItem(list, 1, PyLong_FromLong(0L));
 	PyObject_Print(item, stdout, 0);
 	printf("\n");
 	/* Py_DECREF(item); */
@@ -246,7 +246,7 @@ static PyTypeObject Str_Type = {
 	0,			/*tp_methods*/
 	0,			/*tp_members*/
 	0,			/*tp_getset*/
-	&PyUnicode_Type,	/*tp_base*/
+	0, /* see initxx */	/*tp_base*/
 	0,			/*tp_dict*/
 	0,			/*tp_descr_get*/
 	0,			/*tp_descr_set*/
@@ -301,14 +301,14 @@ static PyTypeObject Null_Type = {
 	0,			/*tp_methods*/
 	0,			/*tp_members*/
 	0,			/*tp_getset*/
-	&PyBaseObject_Type,	/*tp_base*/
+	0, /* see initxx */	/*tp_base*/
 	0,			/*tp_dict*/
 	0,			/*tp_descr_get*/
 	0,			/*tp_descr_set*/
 	0,			/*tp_dictoffset*/
 	0,			/*tp_init*/
 	0,			/*tp_alloc*/
-	PyType_GenericNew,	/*tp_new*/
+	0, /* see initxx */	/*tp_new*/
 	0,			/*tp_free*/
 	0,			/*tp_is_gc*/
 };
@@ -341,9 +341,15 @@ initxx(void)
 {
 	PyObject *m;
 
+	/* Due to cross platform compiler issues the slots must be filled
+	 * here. It's required for portability to Windows without requiring
+	 * C++. */
+	Null_Type.tp_base = &PyBaseObject_Type;
+	Null_Type.tp_new = PyType_GenericNew;
+	Str_Type.tp_base = &PyUnicode_Type;
+
 	/* Finalize the type object including setting type of the new type
-	 * object; doing it here is required for portability to Windows 
-	 * without requiring C++. */
+	 * object; doing it here is required for portability, too. */
 	if (PyType_Ready(&Xxo_Type) < 0)
 		return;
 

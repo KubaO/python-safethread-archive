@@ -1,7 +1,7 @@
 import unittest
 from test import test_support
 
-import sys, UserDict
+import sys, collections, random, string
 
 
 class DictTest(unittest.TestCase):
@@ -10,6 +10,15 @@ class DictTest(unittest.TestCase):
         # calling built-in types without argument must return empty
         self.assertEqual(dict(), {})
         self.assert_(dict() is not {})
+
+    def test_literal_constructor(self):
+        # check literal constructor for different sized dicts (to exercise the BUILD_MAP oparg
+        items = []
+        for n in range(400):
+            dictliteral = '{' + ', '.join('%r: %d' % item for item in items) + '}'
+            self.assertEqual(eval(dictliteral), dict(items))
+            items.append((''.join([random.choice(string.ascii_letters) for j in range(8)]), n))
+            random.shuffle(items)
 
     def test_bool(self):
         self.assert_(not {})
@@ -182,14 +191,6 @@ class DictTest(unittest.TestCase):
 
         self.assertRaises(ValueError, {}.update, [(1, 2, 3)])
 
-        # SF #1615701:  make d.update(m) honor __getitem__() and keys() in dict subclasses
-        class KeyUpperDict(dict):
-            def __getitem__(self, key):
-                return key.upper()
-        d.clear()
-        d.update(KeyUpperDict.fromkeys('abc'))
-        self.assertEqual(d, {'a':'A', 'b':'B', 'c':'C'})
-
     def test_fromkeys(self):
         self.assertEqual(dict.fromkeys('abc'), {'a':None, 'b':None, 'c':None})
         d = {}
@@ -208,10 +209,10 @@ class DictTest(unittest.TestCase):
         self.assert_(type(dictlike().fromkeys('a')) is dictlike)
         class mydict(dict):
             def __new__(cls):
-                return UserDict.UserDict()
+                return collections.UserDict()
         ud = mydict.fromkeys('ab')
         self.assertEqual(ud, {'a':None, 'b':None})
-        self.assert_(isinstance(ud, UserDict.UserDict))
+        self.assert_(isinstance(ud, collections.UserDict))
         self.assertRaises(TypeError, dict.fromkeys)
 
         class Exc(Exception): pass
@@ -235,6 +236,10 @@ class DictTest(unittest.TestCase):
                 raise Exc()
 
         self.assertRaises(Exc, baddict2.fromkeys, [1])
+
+        # test fast path for dictionary inputs
+        d = dict(zip(range(6), range(6)))
+        self.assertEqual(dict.fromkeys(d, 0), dict(zip(range(6), [0]*6)))
 
     def test_copy(self):
         d = {1:1, 2:2, 3:3}

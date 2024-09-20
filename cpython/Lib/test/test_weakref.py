@@ -1,7 +1,7 @@
 import gc
 import sys
 import unittest
-import UserList
+import collections
 import weakref
 
 from test import test_support
@@ -28,9 +28,6 @@ def create_function():
 def create_bound_method():
     return C().method
 
-def create_unbound_method():
-    return C.method
-
 
 class TestBase(unittest.TestCase):
 
@@ -47,7 +44,6 @@ class ReferencesTestCase(TestBase):
         self.check_basic_ref(C)
         self.check_basic_ref(create_function)
         self.check_basic_ref(create_bound_method)
-        self.check_basic_ref(create_unbound_method)
 
         # Just make sure the tp_repr handler doesn't raise an exception.
         # Live reference:
@@ -62,7 +58,6 @@ class ReferencesTestCase(TestBase):
         self.check_basic_callback(C)
         self.check_basic_callback(create_function)
         self.check_basic_callback(create_bound_method)
-        self.check_basic_callback(create_unbound_method)
 
     def test_multiple_callbacks(self):
         o = C()
@@ -162,7 +157,7 @@ class ReferencesTestCase(TestBase):
         o = C()
         self.check_proxy(o, weakref.proxy(o))
 
-        L = UserList.UserList()
+        L = collections.UserList()
         p = weakref.proxy(L)
         self.failIf(p, "proxy for empty UserList should be false")
         p.append(12)
@@ -176,11 +171,11 @@ class ReferencesTestCase(TestBase):
         p[1] = 5
         self.assertEqual(L[1], 5)
         self.assertEqual(p[1], 5)
-        L2 = UserList.UserList(L)
+        L2 = collections.UserList(L)
         p2 = weakref.proxy(L2)
         self.assertEqual(p, p2)
         ## self.assertEqual(repr(L2), repr(p2))
-        L3 = UserList.UserList(range(10))
+        L3 = collections.UserList(range(10))
         p3 = weakref.proxy(L3)
         self.assertEqual(L3[:], p3[:])
         self.assertEqual(L3[5:], p3[5:])

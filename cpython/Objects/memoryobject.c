@@ -8,6 +8,8 @@ memory_getbuf(PyMemoryViewObject *self, Py_buffer *view, int flags)
 {
         if (view != NULL)
 		*view = self->view;
+	if (self->base == NULL)
+		return 0;
         return self->base->ob_type->tp_as_buffer->bf_getbuffer(self->base, NULL,
                                                                PyBUF_FULL);
 }
@@ -15,7 +17,8 @@ memory_getbuf(PyMemoryViewObject *self, Py_buffer *view, int flags)
 static void
 memory_releasebuf(PyMemoryViewObject *self, Py_buffer *view)
 {
-        PyObject_ReleaseBuffer(self->base, NULL);
+	if (self->base != NULL)
+		PyObject_ReleaseBuffer(self->base, NULL);
 }
 
 PyDoc_STRVAR(memory_doc,
@@ -66,16 +69,21 @@ PyMemoryView_FromObject(PyObject *base)
 static PyObject *
 memory_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
 {
-        PyObject *obj;
-        if (!PyArg_UnpackTuple(args, "memoryview", 1, 1, &obj)) return NULL;
+	PyObject *obj;
+	static char *kwlist[] = {"object", 0};
 
-        return PyMemoryView_FromObject(obj);
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O:memoryview", kwlist,
+					 &obj)) {
+		return NULL;
+	}
+
+	return PyMemoryView_FromObject(obj);
 }
 
 
 static void
 _strided_copy_nd(char *dest, char *src, int nd, Py_ssize_t *shape,
-                 Py_ssize_t *strides, int itemsize, char fort)
+                 Py_ssize_t *strides, Py_ssize_t itemsize, char fort)
 {
         int k;
         Py_ssize_t outstride;
@@ -193,7 +201,9 @@ _indirect_copy_nd(char *dest, Py_buffer *view, char fort)
                 a contiguous buffer if it is not. The view will point to
                 the shadow buffer which can be written to and then
                 will be copied back into the other buffer when the memory
-                view is de-allocated.
+                view is de-allocated.  While the shadow buffer is 
+		being used, it will have an exclusive write lock on 
+		the original buffer. 
  */
 
 PyObject *
@@ -221,7 +231,7 @@ PyMemoryView_GetContiguous(PyObject *obj, int buffertype, char fort)
                 flags = PyBUF_FULL;
                 break;
         case PyBUF_SHADOW:
-                flags = PyBUF_FULL_LCK;
+                flags = PyBUF_FULL_XLCK;
                 break;
         }
 
@@ -293,7 +303,7 @@ memory_format_get(PyMemoryViewObject *self)
 static PyObject *
 memory_itemsize_get(PyMemoryViewObject *self)
 {
-        return PyInt_FromLong(self->view.itemsize);
+        return PyLong_FromSsize_t(self->view.itemsize);
 }
 
 static PyObject *
@@ -310,7 +320,7 @@ _IntTupleFromSsizet(int len, Py_ssize_t *vals)
         intTuple = PyTuple_New(len);
         if (!intTuple) return NULL;
         for(i=0; i<len; i++) {
-                o = PyInt_FromSsize_t(vals[i]);
+                o = PyLong_FromSsize_t(vals[i]);
                 if (!o) {
                         Py_DECREF(intTuple);
                         return NULL;
@@ -341,7 +351,7 @@ memory_suboffsets_get(PyMemoryViewObject *self)
 static PyObject *
 memory_size_get(PyMemoryViewObject *self)
 {
-        return PyInt_FromSsize_t(self->view.len);
+        return PyLong_FromSsize_t(self->view.len);
 }
 
 static PyObject *
@@ -353,7 +363,7 @@ memory_readonly_get(PyMemoryViewObject *self)
 static PyObject *
 memory_ndim_get(PyMemoryViewObject *self)
 {
-        return PyInt_FromLong(self->view.ndim);
+        return PyLong_FromLong(self->view.ndim);
 }
 
 static PyGetSetDef memory_getsetlist[] ={
@@ -428,11 +438,7 @@ memory_dealloc(PyMemoryViewObject *self)
 static PyObject *
 memory_repr(PyMemoryViewObject *self)
 {
-	/* XXX(nnorwitz): the code should be different or remove condition. */
-	if (self->base == NULL)
-		return PyUnicode_FromFormat("<memory at %p>", self);
-	else
-		return PyUnicode_FromFormat("<memory at %p>", self);
+	return PyUnicode_FromFormat("<memory at %p>", self);
 }
 
 
@@ -499,6 +505,14 @@ memory_subscript(PyMemoryViewObject *self, PyObject *key)
 			/* Return a bytes object */
 			char *ptr;
 			ptr = (char *)view->buf;
+			if (result < 0) {
+				result += view->shape[0];
+			}
+			if ((result < 0) || (result > view->shape[0])) {
+				PyErr_SetString(PyExc_IndexError,
+						"index out of bounds");
+				return NULL;
+			}
 			if (view->strides == NULL)
 				ptr += view->itemsize * result;
 			else
@@ -514,14 +528,20 @@ memory_subscript(PyMemoryViewObject *self, PyObject *key)
 			/* Return a new memory-view object */
 			Py_buffer newview;
 			memset(&newview, 0, sizeof(newview));
+			/* XXX:  This needs to be fixed so it 
+			         actually returns a sub-view
+			*/
 			return PyMemoryView_FromMemory(&newview);
 		}
 	}
 
+	/* Need to support getting a sliced view */
         Py_INCREF(Py_NotImplemented);
         return Py_NotImplemented;
 }
 
+
+/* Need to support assigning memory if we can */
 static int
 memory_ass_sub(PyMemoryViewObject *self, PyObject *key, PyObject *value)
 {

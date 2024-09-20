@@ -191,8 +191,8 @@ Some tips for experts:
 * When the Python interpreter is invoked with the :option:`-O` flag, optimized
   code is generated and stored in :file:`.pyo` files.  The optimizer currently
   doesn't help much; it only removes :keyword:`assert` statements.  When
-  :option:`-O` is used, *all* bytecode is optimized; ``.pyc`` files are ignored
-  and ``.py`` files are compiled to optimized bytecode.
+  :option:`-O` is used, *all* :term:`bytecode` is optimized; ``.pyc`` files are
+  ignored and ``.py`` files are compiled to optimized bytecode.
 
 * Passing two :option:`-O` flags to the Python interpreter (:option:`-OO`) will
   cause the bytecode compiler to perform optimizations that could in some rare
@@ -223,11 +223,6 @@ Some tips for experts:
 * The module :mod:`compileall` can create :file:`.pyc` files (or :file:`.pyo`
   files when :option:`-O` is used) for all modules in a directory.
 
-* If using Python in a parallel processing system with a shared file system,
-  you need to patch Python to disable the creation of the compiled files 
-  because otherwise the multiple Python interpreters will encounter race 
-  conditions in creating them.
-
 
 .. _tut-standardmodules:
 
@@ -246,11 +241,7 @@ depends on the underlying platform For example, the :mod:`winreg` module is only
 provided on Windows systems. One particular module deserves some attention:
 :mod:`sys`, which is built into every Python interpreter.  The variables
 ``sys.ps1`` and ``sys.ps2`` define the strings used as primary and secondary
-prompts:
-
-.. % 
-
-::
+prompts::
 
    >>> import sys
    >>> sys.ps1
@@ -308,14 +299,14 @@ Without arguments, :func:`dir` lists the names you have defined currently::
 
 Note that it lists all types of names: variables, modules, functions, etc.
 
-.. index:: module: __builtin__
+.. index:: module: builtins
 
 :func:`dir` does not list the names of built-in functions and variables.  If you
 want a list of those, they are defined in the standard module
-:mod:`__builtin__`::
+:mod:`builtins`::
 
-   >>> import __builtin__
-   >>> dir(__builtin__)
+   >>> import builtins
+   >>> dir(builtins)
 
    ['ArithmeticError', 'AssertionError', 'AttributeError', 'BaseException', 'Buffer
    Error', 'DeprecationWarning', 'EOFError', 'Ellipsis', 'EnvironmentError', 'Excep   
@@ -454,8 +445,6 @@ filename!  On these platforms, there is no guaranteed way to know whether a file
 :mod:`ECHO`.  (For example, Windows 95 has the annoying practice of showing all
 file names with a capitalized first letter.)  The DOS 8+3 filename restriction
 adds another interesting problem for long module names.
-
-.. % The \code{__all__} Attribute
 
 The only solution is for the package author to provide an explicit index of the
 package.  The import statement uses the following convention: if a package's

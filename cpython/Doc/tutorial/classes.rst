@@ -98,7 +98,7 @@ until the interpreter quits.  The statements executed by the top-level
 invocation of the interpreter, either read from a script file or interactively,
 are considered part of a module called :mod:`__main__`, so they have their own
 global namespace.  (The built-in names actually also live in a module; this is
-called :mod:`__builtin__`.)
+called :mod:`builtins`.)
 
 The local namespace for a function is created when the function is called, and
 deleted when the function returns or raises an exception that is not handled
@@ -137,14 +137,62 @@ language definition is evolving towards static name resolution, at "compile"
 time, so don't rely on dynamic name resolution!  (In fact, local variables are
 already determined statically.)
 
-A special quirk of Python is that assignments always go into the innermost
+A special quirk of Python is that assignments normally go into the innermost
 scope.  Assignments do not copy data --- they just bind names to objects.  The
 same is true for deletions: the statement ``del x`` removes the binding of ``x``
 from the namespace referenced by the local scope.  In fact, all operations that
 introduce new names use the local scope: in particular, import statements and
-function definitions bind the module or function name in the local scope.  (The
-:keyword:`global` statement can be used to indicate that particular variables
-live in the global scope.)
+function definitions bind the module or function name in the local scope.
+
+The :keyword:`global` statement can be used to indicate that particular
+variables live in the global scope and should be rebound there; the
+:keyword:`nonlocal` statement indicates that particular variables live in
+an enclosing scope and should be rebound there.
+
+.. _tut-scopeexample:
+
+Scopes and Namespaces Example
+-----------------------------
+
+This is an example demonstrating how to reference the different scopes and
+namespaces, and how :keyword:`global` and :keyword:`nonlocal` affect variable
+binding::
+
+   def scope_test():
+       def do_local():
+           spam = "local spam"
+       def do_nonlocal():
+           nonlocal spam
+           spam = "nonlocal spam"
+       def do_global():
+           global spam
+           spam = "global spam"
+   
+       spam = "test spam"
+       do_local()
+       print("After local assignment:", spam)
+       do_nonlocal()
+       print("After nonlocal assignment:", spam)
+       do_global()
+       print("After global assignment:", spam)
+
+   scope_test()
+   print("In global scope:", spam)
+
+The output of the example code is::
+
+   After local assignment: test spam
+   After nonlocal assignment: nonlocal spam
+   After global assignment: nonlocal spam
+   In global scope: global spam
+
+Note how the *local* assignment (which is default) didn't change *scope_test*\'s
+binding of *spam*.  The :keyword:`nonlocal` assignment changed *scope_test*\'s
+binding of *spam*, and the :keyword:`global` assignment changed the module-level
+binding.
+
+You can also see that there was no previous binding for *spam* before the
+:keyword:`global` assignment.
 
 
 .. _tut-firstclasses:
@@ -342,7 +390,7 @@ is called with this new argument list.
 Random Remarks
 ==============
 
-.. % [These should perhaps be placed more carefully...]
+.. These should perhaps be placed more carefully...
 
 Data attributes override method attributes with the same name; to avoid
 accidental name conflicts, which may cause hard-to-find bugs in large programs,
@@ -458,7 +506,7 @@ Derived classes may override methods of their base classes.  Because methods
 have no special privileges when calling other methods of the same object, a
 method of a base class that calls another method defined in the same base class
 may end up calling a method of a derived class that overrides it.  (For C++
-programmers: all methods in Python are effectively :keyword:`virtual`.)
+programmers: all methods in Python are effectively ``virtual``.)
 
 An overriding method in a derived class may in fact want to extend rather than
 simply replace the base class method of the same name. There is a simple way to
@@ -497,7 +545,7 @@ call-next-method and is more powerful than the super call found in
 single-inheritance languages.
 
 Dynamic ordering is necessary because all cases of multiple inheritance exhibit
-one or more diamond relationships (where one at least one of the parent classes
+one or more diamond relationships (where at least one of the parent classes
 can be accessed through multiple paths from the bottommost class).  For example,
 all classes inherit from :class:`object`, so any case of multiple inheritance
 provides more than one path to reach :class:`object`.  To keep the base classes
@@ -569,15 +617,13 @@ instance, if you have a function that formats some data from a file object, you
 can define a class with methods :meth:`read` and :meth:`readline` that get the
 data from a string buffer instead, and pass it as an argument.
 
-.. % (Unfortunately, this
-.. % technique has its limitations: a class can't define operations that
-.. % are accessed by special syntax such as sequence subscripting or
-.. % arithmetic operators, and assigning such a ``pseudo-file'' to
-.. % \code{sys.stdin} will not cause the interpreter to read further input
-.. % from it.)
+.. (Unfortunately, this technique has its limitations: a class can't define
+   operations that are accessed by special syntax such as sequence subscripting
+   or arithmetic operators, and assigning such a "pseudo-file" to sys.stdin will
+   not cause the interpreter to read further input from it.)
 
-Instance method objects have attributes, too: ``m.im_self`` is the instance
-object with the method :meth:`m`, and ``m.im_func`` is the function object
+Instance method objects have attributes, too: ``m.__self__`` is the instance
+object with the method :meth:`m`, and ``m.__func__`` is the function object
 corresponding to the method.
 
 
@@ -707,12 +753,12 @@ returns an object with a :meth:`__next__` method.  If the class defines
 Generators
 ==========
 
-Generators are a simple and powerful tool for creating iterators.  They are
-written like regular functions but use the :keyword:`yield` statement whenever
-they want to return data.  Each time :func:`next` is called on it, the generator
-resumes where it left-off (it remembers all the data values and which statement
-was last executed).  An example shows that generators can be trivially easy to
-create::
+:term:`Generator`\s are a simple and powerful tool for creating iterators.  They
+are written like regular functions but use the :keyword:`yield` statement
+whenever they want to return data.  Each time :func:`next` is called on it, the
+generator resumes where it left-off (it remembers all the data values and which
+statement was last executed).  An example shows that generators can be trivially
+easy to create::
 
    def reverse(data):
        for index in range(len(data)-1, -1, -1):
@@ -765,7 +811,7 @@ Examples::
    260
 
    >>> from math import pi, sin
-   >>> sine_table = dict((x, sin(x*pi/180)) for x in range(0, 91))
+   >>> sine_table = {x: sin(x*pi/180) for x in range(0, 91)}
 
    >>> unique_words = set(word  for line in page  for word in line.split())
 

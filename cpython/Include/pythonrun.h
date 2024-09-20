@@ -125,7 +125,6 @@ PyAPI_FUNC(void) _PyImport_Init(void);
 PyAPI_FUNC(void) _PyExc_Init(void);
 PyAPI_FUNC(void) _PyImportHooks_Init(void);
 PyAPI_FUNC(int) _PyFrame_Init(void);
-PyAPI_FUNC(int) _PyInt_Init(void);
 PyAPI_FUNC(void) _PyFloat_Init(void);
 PyAPI_FUNC(int) PyBytes_Init(void);
 
@@ -135,12 +134,12 @@ PyAPI_FUNC(void) _PyImport_Fini(void);
 PyAPI_FUNC(void) PyMethod_Fini(void);
 PyAPI_FUNC(void) PyFrame_Fini(void);
 PyAPI_FUNC(void) PyCFunction_Fini(void);
+PyAPI_FUNC(void) PyDict_Fini(void);
 PyAPI_FUNC(void) PyTuple_Fini(void);
 PyAPI_FUNC(void) PyList_Fini(void);
 PyAPI_FUNC(void) PySet_Fini(void);
 PyAPI_FUNC(void) PyString_Fini(void);
 PyAPI_FUNC(void) PyBytes_Fini(void);
-PyAPI_FUNC(void) PyInt_Fini(void);
 PyAPI_FUNC(void) PyFloat_Fini(void);
 PyAPI_FUNC(void) PyOS_FiniInterrupts(void);
 

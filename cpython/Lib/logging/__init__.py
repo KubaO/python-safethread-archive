@@ -1,4 +1,4 @@
-# Copyright 2001-2007 by Vinay Sajip. All Rights Reserved.
+# Copyright 2001-2008 by Vinay Sajip. All Rights Reserved.
 #
 # Permission to use, copy, modify, and distribute this software and its
 # documentation for any purpose and without fee is hereby granted,
@@ -18,15 +18,16 @@
 Logging package for Python. Based on PEP 282 and comments thereto in
 comp.lang.python, and influenced by Apache's log4j system.
 
-Should work under Python versions >= 1.5.2, except that source line
-information is not available unless 'sys._getframe()' is.
-
-Copyright (C) 2001-2007 Vinay Sajip. All Rights Reserved.
+Copyright (C) 2001-2008 Vinay Sajip. All Rights Reserved.
 
 To use, simply 'import logging' and log away!
 """
 
 import sys, os, time, io, traceback
+__all__ = ['BASIC_FORMAT', 'BufferingFormatter', 'CRITICAL', 'DEBUG', 'ERROR',
+           'FATAL', 'FileHandler', 'Filter', 'Filterer', 'Formatter', 'Handler',
+           'INFO', 'LogRecord', 'Logger', 'Manager', 'NOTSET', 'PlaceHolder',
+           'RootLogger', 'StreamHandler', 'WARN', 'WARNING']
 
 try:
     import codecs
@@ -41,8 +42,8 @@ except ImportError:
 
 __author__  = "Vinay Sajip <vinay_sajip@red-dove.com>"
 __status__  = "production"
-__version__ = "0.5.0.2"
-__date__    = "16 February 2007"
+__version__ = "0.5.0.5"
+__date__    = "24 January 2008"
 
 #---------------------------------------------------------------------------
 #   Miscellaneous module data
@@ -236,7 +237,7 @@ class LogRecord:
         # 'Value is %d' instead of 'Value is 0'.
         # For the use case of passing a dictionary, this should not be a
         # problem.
-        if args and (len(args) == 1) and args[0] and isinstance(args[0], dict):
+        if args and len(args) == 1 and isinstance(args[0], dict) and args[0]:
             args = args[0]
         self.args = args
         self.levelname = getLevelName(level)
@@ -281,7 +282,7 @@ class LogRecord:
             msg = str(self.msg)
         else:
             msg = self.msg
-            if not isinstance(msg, basestring):
+            if not isinstance(msg, str):
                 try:
                     msg = str(self.msg)
                 except UnicodeError:
@@ -730,7 +731,8 @@ class StreamHandler(Handler):
         """
         Flushes the stream.
         """
-        self.stream.flush()
+        if self.stream:
+            self.stream.flush()
 
     def emit(self, record):
         """
@@ -762,7 +764,7 @@ class FileHandler(StreamHandler):
     """
     A handler class which writes formatted logging records to disk files.
     """
-    def __init__(self, filename, mode='a', encoding=None):
+    def __init__(self, filename, mode='a', encoding=None, delay=0):
         """
         Open the specified file and use it as the stream for logging.
         """
@@ -773,16 +775,21 @@ class FileHandler(StreamHandler):
         self.baseFilename = os.path.abspath(filename)
         self.mode = mode
         self.encoding = encoding
-        stream = self._open()
-        StreamHandler.__init__(self, stream)
+        if delay:
+            self.stream = None
+        else:
+            stream = self._open()
+            StreamHandler.__init__(self, stream)
 
     def close(self):
         """
         Closes the stream.
         """
-        self.flush()
-        self.stream.close()
-        StreamHandler.close(self)
+        if self.stream:
+            self.flush()
+            self.stream.close()
+            StreamHandler.close(self)
+            self.stream = None
 
     def _open(self):
         """
@@ -794,6 +801,18 @@ class FileHandler(StreamHandler):
         else:
             stream = codecs.open(self.baseFilename, self.mode, self.encoding)
         return stream
+
+    def emit(self, record):
+        """
+        Emit a record.
+
+        If the stream was not opened because 'delay' was specified in the
+        constructor, open it before calling the superclass's emit.
+        """
+        if self.stream is None:
+            stream = self._open()
+            StreamHandler.__init__(self, stream)
+        StreamHandler.emit(self, record)
 
 #---------------------------------------------------------------------------
 #   Manager classes and functions
@@ -1076,7 +1095,7 @@ class Logger(Filterer):
         specialized LogRecords.
         """
         rv = LogRecord(name, level, fn, lno, msg, args, exc_info, func)
-        if extra:
+        if extra is not None:
             for key in extra:
                 if (key in ["message", "asctime"]) or (key in rv.__dict__):
                     raise KeyError("Attempt to overwrite %r in LogRecord" % key)
@@ -1189,6 +1208,96 @@ class RootLogger(Logger):
 
 _loggerClass = Logger
 
+class LoggerAdapter:
+    """
+    An adapter for loggers which makes it easier to specify contextual
+    information in logging output.
+    """
+
+    def __init__(self, logger, extra):
+        """
+        Initialize the adapter with a logger and a dict-like object which
+        provides contextual information. This constructor signature allows
+        easy stacking of LoggerAdapters, if so desired.
+
+        You can effectively pass keyword arguments as shown in the
+        following example:
+
+        adapter = LoggerAdapter(someLogger, dict(p1=v1, p2="v2"))
+        """
+        self.logger = logger
+        self.extra = extra
+
+    def process(self, msg, kwargs):
+        """
+        Process the logging message and keyword arguments passed in to
+        a logging call to insert contextual information. You can either
+        manipulate the message itself, the keyword args or both. Return
+        the message and kwargs modified (or not) to suit your needs.
+
+        Normally, you'll only need to override this one method in a
+        LoggerAdapter subclass for your specific needs.
+        """
+        kwargs["extra"] = self.extra
+        return msg, kwargs
+
+    def debug(self, msg, *args, **kwargs):
+        """
+        Delegate a debug call to the underlying logger, after adding
+        contextual information from this adapter instance.
+        """
+        msg, kwargs = self.process(msg, kwargs)
+        self.logger.debug(msg, *args, **kwargs)
+
+    def info(self, msg, *args, **kwargs):
+        """
+        Delegate an info call to the underlying logger, after adding
+        contextual information from this adapter instance.
+        """
+        msg, kwargs = self.process(msg, kwargs)
+        self.logger.info(msg, *args, **kwargs)
+
+    def warning(self, msg, *args, **kwargs):
+        """
+        Delegate a warning call to the underlying logger, after adding
+        contextual information from this adapter instance.
+        """
+        msg, kwargs = self.process(msg, kwargs)
+        self.logger.warning(msg, *args, **kwargs)
+
+    def error(self, msg, *args, **kwargs):
+        """
+        Delegate an error call to the underlying logger, after adding
+        contextual information from this adapter instance.
+        """
+        msg, kwargs = self.process(msg, kwargs)
+        self.logger.error(msg, *args, **kwargs)
+
+    def exception(self, msg, *args, **kwargs):
+        """
+        Delegate an exception call to the underlying logger, after adding
+        contextual information from this adapter instance.
+        """
+        msg, kwargs = self.process(msg, kwargs)
+        kwargs["exc_info"] = 1
+        self.logger.error(msg, *args, **kwargs)
+
+    def critical(self, msg, *args, **kwargs):
+        """
+        Delegate a critical call to the underlying logger, after adding
+        contextual information from this adapter instance.
+        """
+        msg, kwargs = self.process(msg, kwargs)
+        self.logger.critical(msg, *args, **kwargs)
+
+    def log(self, level, msg, *args, **kwargs):
+        """
+        Delegate a log call to the underlying logger, after adding
+        contextual information from this adapter instance.
+        """
+        msg, kwargs = self.process(msg, kwargs)
+        self.logger.log(level, msg, *args, **kwargs)
+
 root = RootLogger(WARNING)
 Logger.root = root
 Logger.manager = Manager(Logger.root)
@@ -1245,7 +1354,7 @@ def basicConfig(**kwargs):
         hdlr.setFormatter(fmt)
         root.addHandler(hdlr)
         level = kwargs.get("level")
-        if level:
+        if level is not None:
             root.setLevel(level)
 
 #---------------------------------------------------------------------------

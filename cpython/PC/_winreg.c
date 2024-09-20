@@ -46,6 +46,7 @@ PyDoc_STRVAR(module_doc,
 "DeleteValue() - Removes a named value from the specified registry key.\n"
 "EnumKey() - Enumerates subkeys of the specified open registry key.\n"
 "EnumValue() - Enumerates values of the specified open registry key.\n"
+"ExpandEnvironmentStrings() - Expand the env strings in a REG_EXPAND_SZ string.\n"
 "FlushKey() - Writes all the attributes of the specified key to the registry.\n"
 "LoadKey() - Creates a subkey under HKEY_USER or HKEY_LOCAL_MACHINE and stores\n"
 "            registration information from a specified file into that subkey.\n"
@@ -144,6 +145,9 @@ PyDoc_STRVAR(EnumValue_doc,
 "value_data is an object that holds the value data, and whose type depends\n"
 " on the underlying registry type.\n"
 "data_type is an integer that identifies the type of the value data.");
+
+PyDoc_STRVAR(ExpandEnvironmentStrings_doc,
+"string = ExpandEnvironmentStrings(string) - Expand environment vars.\n");
 
 PyDoc_STRVAR(FlushKey_doc,
 "FlushKey(key) - Writes all the attributes of a key to the registry.\n"
@@ -503,9 +507,27 @@ PyHKEY_DetachMethod(PyObject *self, PyObject *args)
 	return PyLong_FromVoidPtr(ret);
 }
 
+static PyObject *
+PyHKEY_Enter(PyObject *self)
+{
+	Py_XINCREF(self);
+	return self;
+}
+
+static PyObject *
+PyHKEY_Exit(PyObject *self, PyObject *args)
+{
+	if (!PyHKEY_Close(self))
+		return NULL;
+	Py_RETURN_NONE;
+}
+
+
 static struct PyMethodDef PyHKEY_methods[] = {
 	{"Close",  PyHKEY_CloseMethod, METH_VARARGS, PyHKEY_Close_doc},
 	{"Detach", PyHKEY_DetachMethod, METH_VARARGS, PyHKEY_Detach_doc},
+	{"__enter__", (PyCFunction)PyHKEY_Enter, METH_NOARGS, NULL},
+	{"__exit__", PyHKEY_Exit, METH_VARARGS, NULL},
 	{NULL}
 };
 
@@ -522,7 +544,7 @@ PyHKEY_getattr(PyObject *self, const char *name)
 		return PyLong_FromVoidPtr(((PyHKEYObject *)self)->hkey);
 	PyErr_Format(PyExc_AttributeError,
                      "'%.50s' object has no attribute '%.400s'",
-                     Py_Type(self)->tp_name, name);
+                     Py_TYPE(self)->tp_name, name);
 	return NULL;
 }
 
@@ -614,8 +636,8 @@ PyWinObject_CloseHKEY(PyObject *obHandle)
 		ok = PyHKEY_Close(obHandle);
 	}
 #if SIZEOF_LONG >= SIZEOF_HKEY
-	else if (PyInt_Check(obHandle)) {
-		long rc = RegCloseKey((HKEY)PyInt_AsLong(obHandle));
+	else if (PyLong_Check(obHandle)) {
+		long rc = RegCloseKey((HKEY)PyLong_AsLong(obHandle));
 		ok = (rc == ERROR_SUCCESS);
 		if (!ok)
 			PyErr_SetFromWindowsErrWithFunction(rc, "RegCloseKey");
@@ -810,9 +832,9 @@ Reg2Py(BYTE *retDataBuf, DWORD retDataSize, DWORD typ)
 	switch (typ) {
 		case REG_DWORD:
 			if (retDataSize == 0)
-				obData = PyInt_FromLong(0);
+				obData = PyLong_FromLong(0);
 			else
-				obData = PyInt_FromLong(*(int *)retDataBuf);
+				obData = PyLong_FromLong(*(int *)retDataBuf);
 			break;
 		case REG_SZ:
 		case REG_EXPAND_SZ:
@@ -1059,6 +1081,39 @@ PyEnumValue(PyObject *self, PyObject *args)
 	PyMem_Free(retValueBuf);
 	PyMem_Free(retDataBuf);
 	return retVal;
+}
+
+static PyObject *
+PyExpandEnvironmentStrings(PyObject *self, PyObject *args)
+{
+	Py_UNICODE *retValue = NULL;
+	Py_UNICODE *src;
+	DWORD retValueSize;
+	DWORD rc;
+	PyObject *o;
+
+	if (!PyArg_ParseTuple(args, "u:ExpandEnvironmentStrings", &src))
+		return NULL;
+
+	retValueSize = ExpandEnvironmentStringsW(src, retValue, 0);
+	if (retValueSize == 0) {
+		return PyErr_SetFromWindowsErrWithFunction(retValueSize,
+						"ExpandEnvironmentStrings");
+	}
+	retValue = (Py_UNICODE *)PyMem_Malloc(retValueSize * sizeof(Py_UNICODE));
+	if (retValue == NULL) {
+		return PyErr_NoMemory();
+	}
+
+	rc = ExpandEnvironmentStringsW(src, retValue, retValueSize);
+	if (rc == 0) {
+		PyMem_Free(retValue);
+		return PyErr_SetFromWindowsErrWithFunction(retValueSize,
+						"ExpandEnvironmentStrings");
+	}
+	o = PyUnicode_FromUnicode(retValue, wcslen(retValue));
+	PyMem_Free(retValue);
+	return o;
 }
 
 static PyObject *
@@ -1346,6 +1401,8 @@ static struct PyMethodDef winreg_methods[] = {
 	{"DeleteValue",      PyDeleteValue,     METH_VARARGS, DeleteValue_doc},
 	{"EnumKey",          PyEnumKey,         METH_VARARGS, EnumKey_doc},
 	{"EnumValue",        PyEnumValue,       METH_VARARGS, EnumValue_doc},
+	{"ExpandEnvironmentStrings", PyExpandEnvironmentStrings, METH_VARARGS,
+		ExpandEnvironmentStrings_doc },
 	{"FlushKey",         PyFlushKey,        METH_VARARGS, FlushKey_doc},
 	{"LoadKey",          PyLoadKey,         METH_VARARGS, LoadKey_doc},
 	{"OpenKey",          PyOpenKey,         METH_VARARGS, OpenKey_doc},
@@ -1362,7 +1419,7 @@ static struct PyMethodDef winreg_methods[] = {
 static void
 insint(PyObject * d, char * name, long value)
 {
-	PyObject *v = PyInt_FromLong(value);
+	PyObject *v = PyLong_FromLong(value);
 	if (!v || PyDict_SetItemString(d, name, v))
 		PyErr_Clear();
 	Py_XDECREF(v);
@@ -1388,7 +1445,7 @@ PyMODINIT_FUNC init_winreg(void)
 	if (m == NULL)
 		return;
 	d = PyModule_GetDict(m);
-	Py_Type(&PyHKEY_Type) = &PyType_Type;
+	Py_TYPE(&PyHKEY_Type) = &PyType_Type;
 	PyHKEY_Type.tp_doc = PyHKEY_doc;
 	Py_INCREF(&PyHKEY_Type);
 	if (PyDict_SetItemString(d, "HKEYType",

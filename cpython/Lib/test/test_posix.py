@@ -9,7 +9,6 @@ except ImportError:
 
 import time
 import os
-import sys
 import unittest
 import warnings
 warnings.filterwarnings('ignore', '.* potential security risk .*',
@@ -29,7 +28,7 @@ class PosixTester(unittest.TestCase):
         # test posix functions which take no arguments and have
         # no side-effects which we need to cleanup (e.g., fork, wait, abort)
         NO_ARG_FUNCTIONS = [ "ctermid", "getcwd", "getcwdu", "uname",
-                             "times", "getloadavg", "tmpnam",
+                             "times", "getloadavg",
                              "getegid", "geteuid", "getgid", "getgroups",
                              "getpid", "getpgrp", "getppid", "getuid",
                            ]
@@ -171,17 +170,6 @@ class PosixTester(unittest.TestCase):
             os.close(reader)
             os.close(writer)
 
-    def test_tempnam(self):
-        if hasattr(posix, 'tempnam'):
-            self.assert_(posix.tempnam())
-            self.assert_(posix.tempnam(os.curdir))
-            self.assert_(posix.tempnam(os.curdir, 'blah'))
-
-    def test_tmpfile(self):
-        if hasattr(posix, 'tmpfile'):
-            fp = posix.tmpfile()
-            fp.close()
-
     def test_utime(self):
         if hasattr(posix, 'utime'):
             now = time.time()
@@ -203,6 +191,11 @@ class PosixTester(unittest.TestCase):
             st = os.stat(test_support.TESTFN)
             if hasattr(st, 'st_flags'):
                 posix.lchflags(test_support.TESTFN, st.st_flags)
+
+    def test_environ(self):
+        for k, v in posix.environ.items():
+            self.assertEqual(type(k), str)
+            self.assertEqual(type(v), str)
 
 def test_main():
     test_support.run_unittest(PosixTester)

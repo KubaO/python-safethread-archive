@@ -280,8 +280,7 @@ Common commands: (see '--help-commands' for more)
         from pprint import pformat
 
         if commands is None:             # dump all command option dicts
-            commands = self.command_options.keys()
-            commands.sort()
+            commands = sorted(self.command_options.keys())
 
         if header is not None:
             print(indent + header)
@@ -581,13 +580,13 @@ Common commands: (see '--help-commands' for more)
 
         keywords = self.metadata.keywords
         if keywords is not None:
-            if isinstance(keywords, basestring):
+            if isinstance(keywords, str):
                 keywordlist = keywords.split(',')
                 self.metadata.keywords = [x.strip() for x in keywordlist]
 
         platforms = self.metadata.platforms
         if platforms is not None:
-            if isinstance(platforms, basestring):
+            if isinstance(platforms, str):
                 platformlist = platforms.split(',')
                 self.metadata.platforms = [x.strip() for x in platformlist]
 
@@ -875,7 +874,7 @@ Common commands: (see '--help-commands' for more)
                 neg_opt = {}
 
             try:
-                is_string = isinstance(value, basestring)
+                is_string = isinstance(value, str)
                 if option in neg_opt and is_string:
                     setattr(command_obj, neg_opt[option], not strtobool(value))
                 elif option in bool_opts and is_string:

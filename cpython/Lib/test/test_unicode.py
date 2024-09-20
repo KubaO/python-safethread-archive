@@ -6,7 +6,11 @@ Written by Marc-Andre Lemburg (mal@lemburg.com).
 (c) Copyright CNRI, All Rights Reserved. NO WARRANTY.
 
 """#"
-import unittest, sys, struct, codecs, new
+import codecs
+import struct
+import sys
+import unittest
+import warnings
 from test import test_support, string_tests
 
 # Error handling (bad decoder return)
@@ -33,6 +37,12 @@ class UnicodeTest(
     string_tests.MixinStrUnicodeTest,
     ):
     type2test = str
+
+    def setUp(self):
+        self.warning_filters = warnings.filters[:]
+
+    def tearDown(self):
+        warnings.filters = self.warning_filters
 
     def checkequalnofix(self, result, object, methodname, *args):
         method = getattr(object, methodname)
@@ -156,13 +166,34 @@ class UnicodeTest(
         self.assertRaises(ValueError, 'abcdefghi'.rindex,  'ghi', 0, 8)
         self.assertRaises(ValueError, 'abcdefghi'.rindex,  'ghi', 0, -1)
 
-    def test_translate(self):
-        self.checkequalnofix('bbbc', 'abababc', 'translate', {ord('a'):None})
-        self.checkequalnofix('iiic', 'abababc', 'translate', {ord('a'):None, ord('b'):ord('i')})
-        self.checkequalnofix('iiix', 'abababc', 'translate', {ord('a'):None, ord('b'):ord('i'), ord('c'):'x'})
-        self.checkequalnofix('<i><i><i>c', 'abababc', 'translate', {ord('a'):None, ord('b'):'<i>'})
-        self.checkequalnofix('c', 'abababc', 'translate', {ord('a'):None, ord('b'):''})
-        self.checkequalnofix('xyyx', 'xzx', 'translate', {ord('z'):'yy'})
+    def test_maketrans_translate(self):
+        # these work with plain translate()
+        self.checkequalnofix('bbbc', 'abababc', 'translate',
+                             {ord('a'): None})
+        self.checkequalnofix('iiic', 'abababc', 'translate',
+                             {ord('a'): None, ord('b'): ord('i')})
+        self.checkequalnofix('iiix', 'abababc', 'translate',
+                             {ord('a'): None, ord('b'): ord('i'), ord('c'): 'x'})
+        self.checkequalnofix('c', 'abababc', 'translate',
+                             {ord('a'): None, ord('b'): ''})
+        self.checkequalnofix('xyyx', 'xzx', 'translate',
+                             {ord('z'): 'yy'})
+        # this needs maketrans()
+        self.checkequalnofix('abababc', 'abababc', 'translate',
+                             {'b': '<i>'})
+        tbl = self.type2test.maketrans({'a': None, 'b': '<i>'})
+        self.checkequalnofix('<i><i><i>c', 'abababc', 'translate', tbl)
+        # test alternative way of calling maketrans()
+        tbl = self.type2test.maketrans('abc', 'xyz', 'd')
+        self.checkequalnofix('xyzzy', 'abdcdcbdddd', 'translate', tbl)
+
+        self.assertRaises(TypeError, self.type2test.maketrans)
+        self.assertRaises(ValueError, self.type2test.maketrans, 'abc', 'defg')
+        self.assertRaises(TypeError, self.type2test.maketrans, 2, 'def')
+        self.assertRaises(TypeError, self.type2test.maketrans, 'abc', 2)
+        self.assertRaises(TypeError, self.type2test.maketrans, 'abc', 'def', 2)
+        self.assertRaises(ValueError, self.type2test.maketrans, {'xy': 2})
+        self.assertRaises(TypeError, self.type2test.maketrans, {(1,): 2})
 
         self.assertRaises(TypeError, 'hello'.translate)
         self.assertRaises(TypeError, 'abababc'.translate, 'abc', 'xyz')
@@ -190,8 +221,10 @@ class UnicodeTest(
         self.checkequalnofix('a b c d', ' ', 'join', ['a', 'b', 'c', 'd'])
         self.checkequalnofix('abcd', '', 'join', ('a', 'b', 'c', 'd'))
         self.checkequalnofix('w x y z', ' ', 'join', string_tests.Sequence('wxyz'))
-        self.checkequalnofix('1 2 foo', ' ', 'join', [1, 2, MyWrapper('foo')])
-        self.checkraises(TypeError, ' ', 'join', [1, 2, 3, bytes()])
+        self.checkraises(TypeError, ' ', 'join', ['1', '2', MyWrapper('foo')])
+        self.checkraises(TypeError, ' ', 'join', ['1', '2', '3', bytes()])
+        self.checkraises(TypeError, ' ', 'join', [1, 2, 3])
+        self.checkraises(TypeError, ' ', 'join', ['1', '2', 3])
 
     def test_replace(self):
         string_tests.CommonTest.test_replace(self)
@@ -199,6 +232,13 @@ class UnicodeTest(
         # method call forwarded from str implementation because of unicode argument
         self.checkequalnofix('one@two!three!', 'one!two!three!', 'replace', '!', '@', 1)
         self.assertRaises(TypeError, 'replace'.replace, "r", 42)
+
+    def test_bytes_comparison(self):
+        warnings.simplefilter('ignore', BytesWarning)
+        self.assertEqual('abc' == b'abc', False)
+        self.assertEqual('abc' != b'abc', True)
+        self.assertEqual('abc' == bytearray(b'abc'), False)
+        self.assertEqual('abc' != bytearray(b'abc'), True)
 
     def test_comparison(self):
         # Comparisons:
@@ -655,16 +695,6 @@ class UnicodeTest(
             'strings are converted to unicode'
         )
 
-        class UnicodeCompat:
-            def __init__(self, x):
-                self.x = x
-            def __unicode__(self):
-                return self.x
-
-        self.assertEqual(
-            str(UnicodeCompat('__unicode__ compatible objects are recognized')),
-            '__unicode__ compatible objects are recognized')
-
         class StringCompat:
             def __init__(self, x):
                 self.x = x
@@ -681,14 +711,6 @@ class UnicodeTest(
         o = StringCompat('unicode(obj) is compatible to str()')
         self.assertEqual(str(o), 'unicode(obj) is compatible to str()')
         self.assertEqual(str(o), 'unicode(obj) is compatible to str()')
-
-        # %-formatting and .__unicode__()
-        self.assertEqual('%s' %
-                         UnicodeCompat("u'%s' % obj uses obj.__unicode__()"),
-                         "u'%s' % obj uses obj.__unicode__()")
-        self.assertEqual('%s' %
-                         UnicodeCompat("u'%s' % obj falls back to obj.__str__()"),
-                         "u'%s' % obj falls back to obj.__str__()")
 
         for obj in (123, 123.45, 123):
             self.assertEqual(str(obj), str(str(obj)))
@@ -964,48 +986,46 @@ class UnicodeTest(
                 return "foo"
 
         class Foo1:
-            def __unicode__(self):
+            def __str__(self):
                 return "foo"
 
         class Foo2(object):
-            def __unicode__(self):
+            def __str__(self):
                 return "foo"
 
         class Foo3(object):
-            def __unicode__(self):
+            def __str__(self):
                 return "foo"
 
         class Foo4(str):
-            def __unicode__(self):
+            def __str__(self):
                 return "foo"
 
         class Foo5(str):
-            def __unicode__(self):
+            def __str__(self):
                 return "foo"
 
         class Foo6(str):
             def __str__(self):
                 return "foos"
 
-            def __unicode__(self):
+            def __str__(self):
                 return "foou"
 
         class Foo7(str):
             def __str__(self):
                 return "foos"
-            def __unicode__(self):
+            def __str__(self):
                 return "foou"
 
         class Foo8(str):
             def __new__(cls, content=""):
                 return str.__new__(cls, 2*content)
-            def __unicode__(self):
+            def __str__(self):
                 return self
 
         class Foo9(str):
             def __str__(self):
-                return "string"
-            def __unicode__(self):
                 return "not unicode"
 
         self.assertEqual(str(Foo0()), "foo")
@@ -1035,9 +1055,9 @@ class UnicodeTest(
         # This test only affects 32-bit platforms because expandtabs can only take
         # an int as the max value, not a 64-bit C long.  If expandtabs is changed
         # to take a 64-bit long, this test should apply to all platforms.
-        if sys.maxint > (1 << 32) or struct.calcsize('P') != 4:
+        if sys.maxsize > (1 << 32) or struct.calcsize('P') != 4:
             return
-        self.assertRaises(OverflowError, 't\tt\t'.expandtabs, sys.maxint)
+        self.assertRaises(OverflowError, 't\tt\t'.expandtabs, sys.maxsize)
 
 
 def test_main():

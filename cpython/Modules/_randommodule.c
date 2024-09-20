@@ -84,7 +84,7 @@ typedef struct {
 
 static PyTypeObject Random_Type;
 
-#define RandomObject_Check(v)	   (Py_Type(v) == &Random_Type)
+#define RandomObject_Check(v)	   (Py_TYPE(v) == &Random_Type)
 
 
 /* Random methods */
@@ -259,7 +259,7 @@ random_seed(RandomObject *self, PyObject *args)
 	masklower = PyLong_FromUnsignedLong(0xffffffffU);
 	if (masklower == NULL)
 		goto Done;
-	thirtytwo = PyInt_FromLong(32L);
+	thirtytwo = PyLong_FromLong(32L);
 	if (thirtytwo == NULL)
 		goto Done;
 	while ((err=PyObject_IsTrue(n))) {
@@ -319,12 +319,12 @@ random_getstate(RandomObject *self)
 	if (state == NULL)
 		return NULL;
 	for (i=0; i<N ; i++) {
-		element = PyInt_FromLong((long)(self->state[i]));
+		element = PyLong_FromUnsignedLong(self->state[i]);
 		if (element == NULL)
 			goto Fail;
 		PyTuple_SET_ITEM(state, i, element);
 	}
-	element = PyInt_FromLong((long)(self->index));
+	element = PyLong_FromLong((long)(self->index));
 	if (element == NULL)
 		goto Fail;
 	PyTuple_SET_ITEM(state, i, element);
@@ -339,7 +339,8 @@ static PyObject *
 random_setstate(RandomObject *self, PyObject *state)
 {
 	int i;
-	long element;
+	unsigned long element;
+	long index;
 
 	if (!PyTuple_Check(state)) {
 		PyErr_SetString(PyExc_TypeError,
@@ -353,83 +354,17 @@ random_setstate(RandomObject *self, PyObject *state)
 	}
 
 	for (i=0; i<N ; i++) {
-		element = PyInt_AsLong(PyTuple_GET_ITEM(state, i));
+		element = PyLong_AsUnsignedLong(PyTuple_GET_ITEM(state, i));
 		if (element == -1 && PyErr_Occurred())
 			return NULL;
-		self->state[i] = (unsigned long)element;
+		self->state[i] = element & 0xffffffffUL; /* Make sure we get sane state */
 	}
 
-	element = PyInt_AsLong(PyTuple_GET_ITEM(state, i));
-	if (element == -1 && PyErr_Occurred())
+	index = PyLong_AsLong(PyTuple_GET_ITEM(state, i));
+	if (index == -1 && PyErr_Occurred())
 		return NULL;
-	self->index = (int)element;
+	self->index = (int)index;
 
-	Py_INCREF(Py_None);
-	return Py_None;
-}
-
-/*
-Jumpahead should be a fast way advance the generator n-steps ahead, but
-lacking a formula for that, the next best is to use n and the existing
-state to create a new state far away from the original.
-
-The generator uses constant spaced additive feedback, so shuffling the
-state elements ought to produce a state which would not be encountered
-(in the near term) by calls to random().  Shuffling is normally
-implemented by swapping the ith element with another element ranging
-from 0 to i inclusive.  That allows the element to have the possibility
-of not being moved.  Since the goal is to produce a new, different
-state, the swap element is ranged from 0 to i-1 inclusive.  This assures
-that each element gets moved at least once.
-
-To make sure that consecutive calls to jumpahead(n) produce different
-states (even in the rare case of involutory shuffles), i+1 is added to
-each element at position i.  Successive calls are then guaranteed to
-have changing (growing) values as well as shuffled positions.
-
-Finally, the self->index value is set to N so that the generator itself
-kicks in on the next call to random().	This assures that all results
-have been through the generator and do not just reflect alterations to
-the underlying state.
-*/
-
-static PyObject *
-random_jumpahead(RandomObject *self, PyObject *n)
-{
-	long i, j;
-	PyObject *iobj;
-	PyObject *remobj;
-	unsigned long *mt, tmp;
-
-	if (!PyLong_Check(n)) {
-		PyErr_Format(PyExc_TypeError, "jumpahead requires an "
-			     "integer, not '%s'",
-			     Py_Type(n)->tp_name);
-		return NULL;
-	}
-
-	mt = self->state;
-	for (i = N-1; i > 1; i--) {
-		iobj = PyInt_FromLong(i);
-		if (iobj == NULL)
-			return NULL;
-		remobj = PyNumber_Remainder(n, iobj);
-		Py_DECREF(iobj);
-		if (remobj == NULL)
-			return NULL;
-		j = PyInt_AsLong(remobj);
-		Py_DECREF(remobj);
-		if (j == -1L && PyErr_Occurred())
-			return NULL;
-		tmp = mt[i];
-		mt[i] = mt[j];
-		mt[j] = tmp;
-	}
-
-	for (i = 0; i < N; i++)
-		mt[i] += i+1;
-
-	self->index = N;
 	Py_INCREF(Py_None);
 	return Py_None;
 }
@@ -505,9 +440,6 @@ static PyMethodDef random_methods[] = {
 		PyDoc_STR("getstate() -> tuple containing the current state.")},
 	{"setstate",	  (PyCFunction)random_setstate,  METH_O,
 		PyDoc_STR("setstate(state) -> None.  Restores generator state.")},
-	{"jumpahead",	(PyCFunction)random_jumpahead,	METH_O,
-		PyDoc_STR("jumpahead(int) -> None.  Create new state from "
-			  "existing state and integer.")},
 	{"getrandbits",	(PyCFunction)random_getrandbits,  METH_VARARGS,
 		PyDoc_STR("getrandbits(k) -> x.  Generates a long int with "
 			  "k random bits.")},

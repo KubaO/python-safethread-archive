@@ -30,6 +30,8 @@ PyModule_New(const char *name)
 		goto fail;
 	if (PyDict_SetItemString(m->md_dict, "__doc__", Py_None) != 0)
 		goto fail;
+	if (PyDict_SetItemString(m->md_dict, "__package__", Py_None) != 0)
+		goto fail;
 	Py_DECREF(nameobj);
 	PyObject_GC_Track(m);
 	return (PyObject *)m;
@@ -86,12 +88,12 @@ PyModule_GetFilename(PyObject *m)
 	d = ((PyModuleObject *)m)->md_dict;
 	if (d == NULL ||
 	    (fileobj = PyDict_GetItemString(d, "__file__")) == NULL ||
-	    !PyString_Check(fileobj))
+	    !PyUnicode_Check(fileobj))
 	{
 		PyErr_SetString(PyExc_SystemError, "module filename missing");
 		return NULL;
 	}
-	return PyString_AsString(fileobj);
+	return PyUnicode_AsString(fileobj);
 }
 
 void
@@ -151,7 +153,7 @@ module_init(PyModuleObject *m, PyObject *args, PyObject *kwds)
 {
 	static char *kwlist[] = {"name", "doc", NULL};
 	PyObject *dict, *name = Py_None, *doc = Py_None;
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "S|O:module.__init__",
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "U|O:module.__init__",
                                          kwlist, &name, &doc))
 		return -1;
 	dict = m->md_dict;
@@ -176,7 +178,7 @@ module_dealloc(PyModuleObject *m)
 		_PyModule_Clear((PyObject *)m);
 		Py_DECREF(m->md_dict);
 	}
-	Py_Type(m)->tp_free((PyObject *)m);
+	Py_TYPE(m)->tp_free((PyObject *)m);
 }
 
 static PyObject *

@@ -7,6 +7,7 @@ typedef struct {
 	long      en_index;        /* current index of enumeration */
 	PyObject* en_sit;          /* secondary iterator of enumeration */
 	PyObject* en_result;	   /* result tuple  */
+	PyObject* en_longindex;	   /* index for sequences >= LONG_MAX */
 } enumobject;
 
 static PyObject *
@@ -25,6 +26,7 @@ enum_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 	en->en_index = 0;
 	en->en_sit = PyObject_GetIter(seq);
+	en->en_longindex = NULL;
 	if (en->en_sit == NULL) {
 		Py_DECREF(en);
 		return NULL;
@@ -43,7 +45,8 @@ enum_dealloc(enumobject *en)
 	PyObject_GC_UnTrack(en);
 	Py_XDECREF(en->en_sit);
 	Py_XDECREF(en->en_result);
-	Py_Type(en)->tp_free(en);
+	Py_XDECREF(en->en_longindex);
+	Py_TYPE(en)->tp_free(en);
 }
 
 static int
@@ -51,7 +54,50 @@ enum_traverse(enumobject *en, visitproc visit, void *arg)
 {
 	Py_VISIT(en->en_sit);
 	Py_VISIT(en->en_result);
+	Py_VISIT(en->en_longindex);
 	return 0;
+}
+
+static PyObject *
+enum_next_long(enumobject *en, PyObject* next_item)
+{
+	static PyObject *one = NULL;
+	PyObject *result = en->en_result;
+	PyObject *next_index;
+	PyObject *stepped_up;
+
+	if (en->en_longindex == NULL) {
+		en->en_longindex = PyLong_FromLong(LONG_MAX);
+		if (en->en_longindex == NULL)
+			return NULL;
+	}
+	if (one == NULL) {
+		one = PyLong_FromLong(1);
+		if (one == NULL)
+			return NULL;
+	}
+	next_index = en->en_longindex;
+	assert(next_index != NULL);
+	stepped_up = PyNumber_Add(next_index, one);
+	if (stepped_up == NULL)
+		return NULL;
+	en->en_longindex = stepped_up;
+
+	if (result->ob_refcnt == 1) {
+		Py_INCREF(result);
+		Py_DECREF(PyTuple_GET_ITEM(result, 0));
+		Py_DECREF(PyTuple_GET_ITEM(result, 1));
+	} else {
+		result = PyTuple_New(2);
+		if (result == NULL) {
+			Py_DECREF(next_index);
+			Py_DECREF(next_item);
+			return NULL;
+		}
+	}
+	PyTuple_SET_ITEM(result, 0, next_index);
+	PyTuple_SET_ITEM(result, 1, next_item);
+	return result;
 }
 
 static PyObject *
@@ -62,17 +108,14 @@ enum_next(enumobject *en)
 	PyObject *result = en->en_result;
 	PyObject *it = en->en_sit;
 
-	if (en->en_index == LONG_MAX) {
-		PyErr_SetString(PyExc_OverflowError,
-			"enumerate() is limited to LONG_MAX items");                
-		return NULL;         
-	}
-
-	next_item = (*Py_Type(it)->tp_iternext)(it);
+	next_item = (*Py_TYPE(it)->tp_iternext)(it);
 	if (next_item == NULL)
 		return NULL;
 
-	next_index = PyInt_FromLong(en->en_index);
+	if (en->en_index == LONG_MAX)
+		return enum_next_long(en, next_item);
+
+	next_index = PyLong_FromLong(en->en_index);
 	if (next_index == NULL) {
 		Py_DECREF(next_item);
 		return NULL;
@@ -194,7 +237,7 @@ reversed_dealloc(reversedobject *ro)
 {
 	PyObject_GC_UnTrack(ro);
 	Py_XDECREF(ro->seq);
-	Py_Type(ro)->tp_free(ro);
+	Py_TYPE(ro)->tp_free(ro);
 }
 
 static int
@@ -236,12 +279,12 @@ reversed_len(reversedobject *ro)
 	Py_ssize_t position, seqsize;
 
 	if (ro->seq == NULL)
-		return PyInt_FromLong(0);
+		return PyLong_FromLong(0);
 	seqsize = PySequence_Size(ro->seq);
 	if (seqsize == -1)
 		return NULL;
 	position = ro->index + 1;
-	return PyInt_FromSsize_t((seqsize < position)  ?  0  :  position);
+	return PyLong_FromSsize_t((seqsize < position)  ?  0  :  position);
 }
 
 PyDoc_STRVAR(length_hint_doc, "Private method returning an estimate of len(list(it)).");

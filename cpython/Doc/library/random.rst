@@ -28,25 +28,14 @@ for cryptographic purposes.
 
 The functions supplied by this module are actually bound methods of a hidden
 instance of the :class:`random.Random` class.  You can instantiate your own
-instances of :class:`Random` to get generators that don't share state.  This is
-especially useful for multi-threaded programs, creating a different instance of
-:class:`Random` for each thread, and using the :meth:`jumpahead` method to make
-it likely that the generated sequences seen by each thread don't overlap.
+instances of :class:`Random` to get generators that don't share state.
 
 Class :class:`Random` can also be subclassed if you want to use a different
 basic generator of your own devising: in that case, override the :meth:`random`,
-:meth:`seed`, :meth:`getstate`, :meth:`setstate` and :meth:`jumpahead` methods.
+:meth:`seed`, :meth:`getstate`, and :meth:`setstate`.
 Optionally, a new generator can supply a :meth:`getrandombits` method --- this
 allows :meth:`randrange` to produce selections over an arbitrarily large range.
 
-As an example of subclassing, the :mod:`random` module provides the
-:class:`WichmannHill` class that implements an alternative generator in pure
-Python.  The class provides a backward compatible way to reproduce results from
-earlier versions of Python, which used the Wichmann-Hill algorithm as the core
-generator.  Note that this Wichmann-Hill generator can no longer be recommended:
-its period is too short by contemporary standards, and the sequence generated is
-known to fail some stringent randomness tests.  See the references below for a
-recent variant that repairs these flaws.
 
 Bookkeeping functions:
 
@@ -54,20 +43,22 @@ Bookkeeping functions:
 .. function:: seed([x])
 
    Initialize the basic random number generator. Optional argument *x* can be any
-   hashable object. If *x* is omitted or ``None``, current system time is used;
+   :term:`hashable` object. If *x* is omitted or ``None``, current system time is used;
    current system time is also used to initialize the generator when the module is
    first imported.  If randomness sources are provided by the operating system,
    they are used instead of the system time (see the :func:`os.urandom` function
    for details on availability).
 
-   If *x* is not ``None`` or an int or long, ``hash(x)`` is used instead. If *x* is
-   an int or long, *x* is used directly.
+   If *x* is not ``None`` or an int, ``hash(x)`` is used instead. If *x* is an
+   int, *x* is used directly.
 
 
 .. function:: getstate()
 
    Return an object capturing the current internal state of the generator.  This
    object can be passed to :func:`setstate` to restore the state.
+
+   State values produced in Python 2.6 cannot be loaded into earlier versions.
 
 
 .. function:: setstate(state)
@@ -82,7 +73,7 @@ Bookkeeping functions:
    Change the internal state to one different from and likely far away from the
    current state.  *n* is a non-negative integer which is used to scramble the
    current state vector.  This is most useful in multi-threaded programs, in
-   conjuction with multiple instances of the :class:`Random` class:
+   conjunction with multiple instances of the :class:`Random` class:
    :meth:`setstate` or :meth:`seed` can be used to force all instances into the
    same internal state, and then :meth:`jumpahead` can be used to force the
    instances' states far apart.
@@ -90,8 +81,8 @@ Bookkeeping functions:
 
 .. function:: getrandbits(k)
 
-   Returns a python :class:`long` int with *k* random bits. This method is supplied
-   with the MersenneTwister generator and some other generators may also provide it
+   Returns a python integer with *k* random bits. This method is supplied with
+   the MersenneTwister generator and some other generators may also provide it
    as an optional part of the API. When available, :meth:`getrandbits` enables
    :meth:`randrange` to handle arbitrarily large ranges.
 
@@ -131,8 +122,8 @@ Functions for sequences:
 
 .. function:: sample(population, k)
 
-   Return a *k* length list of unique elements chosen from the population sequence.
-   Used for random sampling without replacement.
+   Return a *k* length list of unique elements chosen from the population sequence
+   or set. Used for random sampling without replacement.
 
    Returns a new list containing elements from the population while leaving the
    original population unchanged.  The resulting list is in selection order so that
@@ -140,7 +131,7 @@ Functions for sequences:
    (the sample) to be partitioned into grand prize and second place winners (the
    subslices).
 
-   Members of the population need not be hashable or unique.  If the population
+   Members of the population need not be :term:`hashable` or unique.  If the population
    contains repeats, then each occurrence is a possible selection in the sample.
 
    To choose a sample from a range of integers, use an :func:`range` object as an
@@ -222,24 +213,6 @@ be found in any statistics text.
 
 Alternative Generators:
 
-.. class:: WichmannHill([seed])
-
-   Class that implements the Wichmann-Hill algorithm as the core generator. Has all
-   of the same methods as :class:`Random` plus the :meth:`whseed` method described
-   below.  Because this class is implemented in pure Python, it is not threadsafe
-   and may require locks between calls.  The period of the generator is
-   6,953,607,871,644 which is small enough to require care that two independent
-   random sequences do not overlap.
-
-
-.. function:: whseed([x])
-
-   This is obsolete, supplied for bit-level compatibility with versions of Python
-   prior to 2.1. See :func:`seed` for details.  :func:`whseed` does not guarantee
-   that distinct integer arguments yield distinct internal states, and can yield no
-   more than about 2\*\*24 distinct internal states in all.
-
-
 .. class:: SystemRandom([seed])
 
    Class that uses the :func:`os.urandom` function for generating random numbers
@@ -279,11 +252,4 @@ Examples of basic usage::
    equidistributed uniform pseudorandom number generator", ACM Transactions on
    Modeling and Computer Simulation Vol. 8, No. 1, January pp.3-30 1998.
 
-   Wichmann, B. A. & Hill, I. D., "Algorithm AS 183: An efficient and portable
-   pseudo-random number generator", Applied Statistics 31 (1982) 188-190.
-
-   http://www.npl.co.uk/ssfm/download/abstracts.html#196
-      A modern variation of the Wichmann-Hill generator that greatly increases the
-      period, and passes now-standard statistical tests that the original generator
-      failed.
 

@@ -139,7 +139,12 @@ class IdleUserConfParser(IdleConfParser):
 
         """
         if not self.IsEmpty():
-            cfgFile=open(self.file,'w')
+            fname = self.file
+            try:
+                cfgFile = open(fname, 'w')
+            except IOError:
+                os.unlink(fname)
+                cfgFile = open(fname, 'w')
             self.write(cfgFile)
         else:
             self.RemoveFile()
@@ -637,16 +642,8 @@ class IdleConf:
                 helpPath=value[1].strip()
             if menuItem and helpPath: #neither are empty strings
                 helpSources.append( (menuItem,helpPath,option) )
-        helpSources.sort(self.__helpsort)
+        helpSources.sort(key=lambda x: x[2])
         return helpSources
-
-    def __helpsort(self, h1, h2):
-        if int(h1[2]) < int(h2[2]):
-            return -1
-        elif int(h1[2]) > int(h2[2]):
-            return 1
-        else:
-            return 0
 
     def GetAllExtraHelpSourcesList(self):
         """

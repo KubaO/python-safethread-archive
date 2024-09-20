@@ -9,7 +9,7 @@ http://python.sourceforge.net/peps/pep-0205.html
 # they are called this instead of "ref" to avoid name collisions with
 # the module-global ref() function imported from _weakref.
 
-import UserDict
+import collections
 
 from _weakref import (
      getweakrefcount,
@@ -20,15 +20,17 @@ from _weakref import (
      ProxyType,
      ReferenceType)
 
+from _weakrefset import WeakSet
 
 ProxyTypes = (ProxyType, CallableProxyType)
 
 __all__ = ["ref", "proxy", "getweakrefcount", "getweakrefs",
            "WeakKeyDictionary", "ReferenceType", "ProxyType",
-           "CallableProxyType", "ProxyTypes", "WeakValueDictionary"]
+           "CallableProxyType", "ProxyTypes", "WeakValueDictionary",
+           "WeakSet"]
 
 
-class WeakValueDictionary(UserDict.UserDict):
+class WeakValueDictionary(collections.MutableMapping):
     """Mapping class that references values weakly.
 
     Entries in the dictionary will be discarded when no strong
@@ -46,7 +48,8 @@ class WeakValueDictionary(UserDict.UserDict):
             if self is not None:
                 del self.data[wr.key]
         self._remove = remove
-        UserDict.UserDict.__init__(self, *args, **kw)
+        self.data = d = {}
+        d.update(*args, **kw)
 
     def __getitem__(self, key):
         o = self.data[key]()
@@ -54,6 +57,12 @@ class WeakValueDictionary(UserDict.UserDict):
             raise KeyError(key)
         else:
             return o
+
+    def __delitem__(self, key):
+        del self.data[key]
+
+    def __len__(self):
+        return sum(wr() is not None for wr in self.data.values())
 
     def __contains__(self, key):
         try:
@@ -207,7 +216,7 @@ class KeyedRef(ref):
         super().__init__(ob, callback)
 
 
-class WeakKeyDictionary(UserDict.UserDict):
+class WeakKeyDictionary(collections.MutableMapping):
     """ Mapping class that references keys weakly.
 
     Entries in the dictionary will be discarded when there is no
@@ -232,6 +241,9 @@ class WeakKeyDictionary(UserDict.UserDict):
 
     def __getitem__(self, key):
         return self.data[ref(key)]
+
+    def __len__(self):
+        return len(self.data)
 
     def __repr__(self):
         return "<WeakKeyDictionary at %s>" % id(self)

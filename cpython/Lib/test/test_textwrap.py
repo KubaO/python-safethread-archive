@@ -23,7 +23,7 @@ class BaseTestCase(unittest.TestCase):
             for i in range(len(textin)):
                 result.append("  %d: %r" % (i, textin[i]))
             result = '\n'.join(result)
-        elif isinstance(textin, basestring):
+        elif isinstance(textin, str):
             result = "  %s\n" % repr(textin)
         return result
 
@@ -384,6 +384,19 @@ How *do* you spell that odd word, anyways?
                          '               l',
                          '               o'],
                         subsequent_indent = ' '*15)
+
+        # bug 1146.  Prevent a long word to be wrongly wrapped when the
+        # preceding word is exactly one character shorter than the width
+        self.check_wrap(self.text, 12,
+                        ['Did you say ',
+                         '"supercalifr',
+                         'agilisticexp',
+                         'ialidocious?',
+                         '" How *do*',
+                         'you spell',
+                         'that odd',
+                         'word,',
+                         'anyways?'])
 
     def test_nobreak_long(self):
         # Test with break_long_words disabled

@@ -295,12 +295,14 @@ class SMTP:
         if self.debuglevel > 0: print("connect:", msg, file=stderr)
         return (code, msg)
 
-    def send(self, str):
-        """Send `str' to the server."""
-        if self.debuglevel > 0: print('send:', repr(str), file=stderr)
-        if self.sock:
+    def send(self, s):
+        """Send `s' to the server."""
+        if self.debuglevel > 0: print('send:', repr(s), file=stderr)
+        if hasattr(self, 'sock') and self.sock:
+            if isinstance(s, str):
+                s = s.encode("ascii")
             try:
-                self.sock.sendall(str)
+                self.sock.sendall(s)
             except socket.error:
                 self.close()
                 raise SMTPServerDisconnected('Server not connected')
@@ -487,11 +489,28 @@ class SMTP:
     vrfy=verify
 
     def expn(self, address):
-        """SMTP 'verify' command -- checks for address validity."""
+        """SMTP 'expn' command -- expands a mailing list."""
         self.putcmd("expn", quoteaddr(address))
         return self.getreply()
 
     # some useful methods
+
+    def ehlo_or_helo_if_needed(self):
+        """Call self.ehlo() and/or self.helo() if needed.
+
+        If there has been no previous EHLO or HELO command this session, this
+        method tries ESMTP EHLO first.
+
+        This method may raise the following exceptions:
+
+         SMTPHeloError            The server didn't reply properly to
+                                  the helo greeting.
+        """
+        if self.helo_resp is None and self.ehlo_resp is None:
+            if not (200 <= self.ehlo()[0] <= 299):
+                (code, resp) = self.helo()
+                if not (200 <= code <= 299):
+                    raise SMTPHeloError(code, resp)
 
     def login(self, user, password):
         """Log in on an SMTP server that requires authentication.
@@ -528,11 +547,7 @@ class SMTP:
         AUTH_CRAM_MD5 = "CRAM-MD5"
         AUTH_LOGIN = "LOGIN"
 
-        if self.helo_resp is None and self.ehlo_resp is None:
-            if not (200 <= self.ehlo()[0] <= 299):
-                (code, resp) = self.helo()
-                if not (200 <= code <= 299):
-                    raise SMTPHeloError(code, resp)
+        self.ehlo_or_helo_if_needed()
 
         if not self.has_extn("auth"):
             raise SMTPException("SMTP AUTH extension not supported by server.")
@@ -578,18 +593,37 @@ class SMTP:
     def starttls(self, keyfile = None, certfile = None):
         """Puts the connection to the SMTP server into TLS mode.
 
+        If there has been no previous EHLO or HELO command this session, this
+        method tries ESMTP EHLO first.
+
         If the server supports TLS, this will encrypt the rest of the SMTP
         session. If you provide the keyfile and certfile parameters,
         the identity of the SMTP server and client can be checked. This,
         however, depends on whether the socket module really checks the
         certificates.
+
+        This method may raise the following exceptions:
+
+         SMTPHeloError            The server didn't reply properly to
+                                  the helo greeting.
         """
+        self.ehlo_or_helo_if_needed()
+        if not self.has_extn("starttls"):
+            raise SMTPException("STARTTLS extension not supported by server.")
         (resp, reply) = self.docmd("STARTTLS")
         if resp == 220:
             if not _have_ssl:
                 raise RuntimeError("No SSL support included in this Python")
             self.sock = ssl.wrap_socket(self.sock, keyfile, certfile)
             self.file = SSLFakeFile(self.sock)
+            # RFC 3207:
+            # The client MUST discard any knowledge obtained from
+            # the server, such as the list of SMTP service extensions,
+            # which was not obtained from the TLS negotiation itself.
+            self.helo_resp = None
+            self.ehlo_resp = None
+            self.esmtp_features = {}
+            self.does_esmtp = 0
         return (resp, reply)
 
     def sendmail(self, from_addr, to_addrs, msg, mail_options=[],
@@ -649,11 +683,7 @@ class SMTP:
         empty dictionary.
 
         """
-        if self.helo_resp is None and self.ehlo_resp is None:
-            if not (200 <= self.ehlo()[0] <= 299):
-                (code,resp) = self.helo()
-                if not (200 <= code <= 299):
-                    raise SMTPHeloError(code, resp)
+        self.ehlo_or_helo_if_needed()
         esmtp_opts = []
         if self.does_esmtp:
             # Hmmm? what's this? -ddm
@@ -668,7 +698,7 @@ class SMTP:
             self.rset()
             raise SMTPSenderRefused(code, resp, from_addr)
         senderrs={}
-        if isinstance(to_addrs, basestring):
+        if isinstance(to_addrs, str):
             to_addrs = [to_addrs]
         for each in to_addrs:
             (code,resp)=self.rcpt(each, rcpt_options)

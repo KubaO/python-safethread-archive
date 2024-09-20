@@ -36,7 +36,7 @@ typedef struct {
 
 static PyTypeObject Dbmtype;
 
-#define is_dbmobject(v) (Py_Type(v) == &Dbmtype)
+#define is_dbmobject(v) (Py_TYPE(v) == &Dbmtype)
 #define check_dbmobject_open(v) if ((v)->di_dbm == NULL) \
                { PyErr_SetString(DbmError, "DBM object has already been closed"); \
                  return NULL; }
@@ -219,14 +219,14 @@ dbm_contains(PyObject *self, PyObject *arg)
 		if (arg == NULL)
 			return -1;
 	}
-	if (!PyBytes_Check(arg)) {
+	if (!PyString_Check(arg)) {
 		PyErr_Format(PyExc_TypeError,
 			     "dbm key must be string, not %.100s",
 			     arg->ob_type->tp_name);
 		return -1;
 	}
-	key.dptr = PyBytes_AS_STRING(arg);
-	key.dsize = PyBytes_GET_SIZE(arg);
+	key.dptr = PyString_AS_STRING(arg);
+	key.dsize = PyString_GET_SIZE(arg);
 	val = dbm_fetch(dp->di_dbm, key);
 	return val.dptr != NULL;
 }
@@ -344,6 +344,13 @@ static PyTypeObject Dbmtype = {
 	0,			  /*tp_as_number*/
 	&dbm_as_sequence,	  /*tp_as_sequence*/
 	&dbm_as_mapping,	  /*tp_as_mapping*/
+	0,                    /*tp_hash*/
+	0,                    /*tp_call*/
+	0,                    /*tp_str*/
+	0,                    /*tp_getattro*/
+	0,                    /*tp_setattro*/
+	0,                    /*tp_as_buffer*/
+	Py_TPFLAGS_DEFAULT,   /*tp_xxx4*/
 };
 
 /* ----------------------------------------------------------------- */

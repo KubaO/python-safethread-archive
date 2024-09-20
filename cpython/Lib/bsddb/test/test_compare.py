@@ -6,6 +6,7 @@ import shutil
 import sys, os, re
 from io import StringIO
 import tempfile
+from . import test_all
 
 import unittest
 try:
@@ -31,10 +32,20 @@ _expected_lexical_test_data = [s.encode('ascii') for s in
 _expected_lowercase_test_data = [s.encode('ascii') for s in
         ('', 'a', 'aaa', 'b', 'c', 'CC', 'cccce', 'ccccf', 'CCCP')]
 
+
+def CmpToKey(mycmp):
+    'Convert a cmp= function into a key= function'
+    class K(object):
+        def __init__(self, obj, *args):
+            self.obj = obj
+        def __lt__(self, other):
+            return mycmp(self.obj, other.obj) == -1
+    return K
+
 class ComparatorTests (unittest.TestCase):
     def comparator_test_helper (self, comparator, expected_data):
         data = expected_data[:]
-        data.sort (comparator)
+        data.sort (key=CmpToKey(comparator))
         self.failUnless (data == expected_data,
                          "comparator `%s' is not right: %s vs. %s"
                          % (comparator, expected_data, data))
@@ -55,7 +66,12 @@ class AbstractBtreeKeyCompareTestCase (unittest.TestCase):
 
     def setUp (self):
         self.filename = self.__class__.__name__ + '.db'
-        self.homeDir = tempfile.mkdtemp()
+        homeDir = os.path.join (tempfile.gettempdir(), 'db_home%d'%os.getpid())
+        self.homeDir = homeDir
+        try:
+            os.mkdir (homeDir)
+        except os.error:
+            pass
 
         env = db.DBEnv ()
         env.open (self.homeDir,
@@ -68,7 +84,8 @@ class AbstractBtreeKeyCompareTestCase (unittest.TestCase):
         if self.env is not None:
             self.env.close ()
             self.env = None
-        shutil.rmtree(self.homeDir)
+        from test import test_support
+        test_support.rmtree(self.homeDir)
 
     def addDataToDB (self, data):
         i = 0

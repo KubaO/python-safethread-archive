@@ -87,7 +87,7 @@ write-back, as will be the keys within each section.
    well. New applications should prefer this version if they don't need to be
    compatible with older versions of Python.
 
-   .. % XXX Need to explain what's safer/more predictable about it.
+   .. XXX Need to explain what's safer/more predictable about it.
 
 
 .. exception:: NoSectionError
@@ -176,8 +176,9 @@ RawConfigParser Objects
 .. method:: RawConfigParser.add_section(section)
 
    Add a section named *section* to the instance.  If a section by the given name
-   already exists, :exc:`DuplicateSectionError` is raised.
-
+   already exists, :exc:`DuplicateSectionError` is raised. If the name
+   ``DEFAULT`` (or any of it's case-insensitive variants) is passed,
+   :exc:`ValueError` is raised.
 
 .. method:: RawConfigParser.has_section(section)
 
@@ -199,7 +200,7 @@ RawConfigParser Objects
 .. method:: RawConfigParser.read(filenames)
 
    Attempt to read and parse a list of filenames, returning a list of filenames
-   which were successfully parsed.  If *filenames* is a string or Unicode string,
+   which were successfully parsed.  If *filenames* is a string,
    it is treated as a single filename. If a file named in *filenames* cannot be
    opened, that file will be ignored.  This is designed so that you can specify a
    list of potential configuration file locations (for example, the current
@@ -330,6 +331,95 @@ The :class:`SafeConfigParser` class implements the same extended interface as
 .. method:: SafeConfigParser.set(section, option, value)
 
    If the given section exists, set the given option to the specified value;
-   otherwise raise :exc:`NoSectionError`.  *value* must be a string (:class:`str`
-   or :class:`unicode`); if not, :exc:`TypeError` is raised.
+   otherwise raise :exc:`NoSectionError`.  *value* must be a string; if it is
+   not, :exc:`TypeError` is raised.
 
+
+Examples
+--------
+
+An example of writing to a configuration file::
+
+   import ConfigParser
+
+   config = ConfigParser.RawConfigParser()
+   
+   # When adding sections or items, add them in the reverse order of
+   # how you want them to be displayed in the actual file.
+   # In addition, please note that using RawConfigParser's and the raw
+   # mode of ConfigParser's respective set functions, you can assign
+   # non-string values to keys internally, but will receive an error
+   # when attempting to write to a file or when you get it in non-raw
+   # mode. SafeConfigParser does not allow such assignments to take place.
+   config.add_section('Section1')
+   config.set('Section1', 'int', '15')
+   config.set('Section1', 'bool', 'true')
+   config.set('Section1', 'float', '3.1415')
+   config.set('Section1', 'baz', 'fun')
+   config.set('Section1', 'bar', 'Python')
+   config.set('Section1', 'foo', '%(bar)s is %(baz)s!')
+   
+   # Writing our configuration file to 'example.cfg'
+   with open('example.cfg', 'wb') as configfile:
+       config.write(configfile)
+
+An example of reading the configuration file again::
+
+   import ConfigParser
+
+   config = ConfigParser.RawConfigParser()
+   config.read('example.cfg')
+
+   # getfloat() raises an exception if the value is not a float
+   # getint() and getboolean() also do this for their respective types
+   float = config.getfloat('Section1', 'float')
+   int = config.getint('Section1', 'int')
+   print(float + int)
+
+   # Notice that the next output does not interpolate '%(bar)s' or '%(baz)s'.
+   # This is because we are using a RawConfigParser().
+   if config.getboolean('Section1', 'bool'):
+       print(config.get('Section1', 'foo'))
+
+To get interpolation, you will need to use a :class:`ConfigParser` or
+:class:`SafeConfigParser`::
+
+   import ConfigParser
+
+   config = ConfigParser.ConfigParser()
+   config.read('example.cfg')
+
+   # Set the third, optional argument of get to 1 if you wish to use raw mode.
+   print(config.get('Section1', 'foo', 0)) # -> "Python is fun!"
+   print(config.get('Section1', 'foo', 1)) # -> "%(bar)s is %(baz)s!"
+
+   # The optional fourth argument is a dict with members that will take
+   # precedence in interpolation.
+   print(config.get('Section1', 'foo', 0, {'bar': 'Documentation',
+                                           'baz': 'evil'}))
+
+Defaults are available in all three types of ConfigParsers. They are used in 
+interpolation if an option used is not defined elsewhere. ::
+
+   import ConfigParser
+
+   # New instance with 'bar' and 'baz' defaulting to 'Life' and 'hard' each
+   config = ConfigParser.SafeConfigParser({'bar': 'Life', 'baz': 'hard'})
+   config.read('example.cfg')
+   
+   print(config.get('Section1', 'foo')) # -> "Python is fun!"
+   config.remove_option('Section1', 'bar')
+   config.remove_option('Section1', 'baz')
+   print(config.get('Section1', 'foo')) # -> "Life is hard!"
+
+The function ``opt_move`` below can be used to move options between sections::
+
+   def opt_move(config, section1, section2, option):
+       try:
+           config.set(section2, option, config.get(section1, option, 1))
+       except ConfigParser.NoSectionError:
+           # Create non-existent section
+           config.add_section(section2)
+           opt_move(config, section1, section2, option)
+       else:
+           config.remove_option(section1, option)

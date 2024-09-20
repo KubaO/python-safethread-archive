@@ -12,8 +12,6 @@
 #    If you find problems, please submit bug reports/patches via the
 #    Python SourceForge Project Page and assign them to "lemburg".
 #
-#    Note: Please keep this module compatible to Python 1.5.2.
-#
 #    Still needed:
 #    * more support for WinCE
 #    * support for MS-DOS (PythonDX ?)
@@ -857,28 +855,12 @@ def _node(default=''):
         # Still not working...
         return default
 
-# os.path.abspath is new in Python 1.5.2:
-if not hasattr(os.path,'abspath'):
-
-    def _abspath(path,
-
-                 isabs=os.path.isabs,join=os.path.join,getcwd=os.getcwd,
-                 normpath=os.path.normpath):
-
-        if not isabs(path):
-            path = join(getcwd(), path)
-        return normpath(path)
-
-else:
-
-    _abspath = os.path.abspath
-
 def _follow_symlinks(filepath):
 
     """ In case filepath is a symlink, follow it until a
         real file is reached.
     """
-    filepath = _abspath(filepath)
+    filepath = os.path.abspath(filepath)
     while os.path.islink(filepath):
         filepath = os.path.normpath(
             os.path.join(filepath,os.readlink(filepath)))

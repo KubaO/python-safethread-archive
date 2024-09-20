@@ -50,7 +50,13 @@ variable is defined in a block, its scope includes that block.  If the
 definition occurs in a function block, the scope extends to any blocks contained
 within the defining one, unless a contained block introduces a different binding
 for the name.  The scope of names defined in a class block is limited to the
-class block; it does not extend to the code blocks of methods.
+class block; it does not extend to the code blocks of methods -- this includes
+generator expressions since they are implemented using a function scope.  This
+means that the following will fail::
+
+   class A:
+       a = 42
+       b = list(a + i for i in range(10))
 
 .. index:: single: environment
 
@@ -105,7 +111,7 @@ If the :keyword:`global` statement occurs within a block, all uses of the name
 specified in the statement refer to the binding of that name in the top-level
 namespace.  Names are resolved in the top-level namespace by searching the
 global namespace, i.e. the namespace of the module containing the code block,
-and the builtin namespace, the namespace of the module :mod:`__builtin__`.  The
+and the builtin namespace, the namespace of the module :mod:`builtins`.  The
 global namespace is searched first.  If the name is not found there, the builtin
 namespace is searched.  The global statement must precede all uses of the name.
 
@@ -117,8 +123,8 @@ The built-in namespace associated with the execution of a code block is actually
 found by looking up the name ``__builtins__`` in its global namespace; this
 should be a dictionary or a module (in the latter case the module's dictionary
 is used).  By default, when in the :mod:`__main__` module, ``__builtins__`` is
-the built-in module :mod:`__builtin__` (note: no 's'); when in any other module,
-``__builtins__`` is an alias for the dictionary of the :mod:`__builtin__` module
+the built-in module :mod:`builtins`; when in any other module,
+``__builtins__`` is an alias for the dictionary of the :mod:`builtins` module
 itself.  ``__builtins__`` can be set to a user-created dictionary to create a
 weak form of restricted execution.
 
@@ -126,7 +132,7 @@ weak form of restricted execution.
 
    Users should not touch ``__builtins__``; it is strictly an implementation
    detail.  Users wanting to override values in the built-in namespace should
-   :keyword:`import` the :mod:`__builtin__` (no 's') module and modify its
+   :keyword:`import` the :mod:`builtins` module and modify its
    attributes appropriately.
 
 .. index:: module: __main__

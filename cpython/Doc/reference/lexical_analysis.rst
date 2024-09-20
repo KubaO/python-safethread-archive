@@ -100,8 +100,7 @@ If an encoding is declared, the encoding name must be recognized by Python. The
 encoding is used for all lexical analysis, including string literals, comments
 and identifiers. The encoding declaration must appear on a line of its own.
 
-A list of standard encodings can be found in the section
-:ref:`standard-encodings`.
+.. XXX there should be a list of supported encodings.
 
 
 .. _explicit-joining:
@@ -286,10 +285,8 @@ Identifiers are unlimited in length.  Case is significant.
 
 .. productionlist::
    identifier: `id_start` `id_continue`*
-   id_start: <all characters in general categories Lu, Ll, Lt, Lm, Lo, Nl,
-              the underscore, and characters with the Other_ID_Start property>
-   id_continue: <all characters in `id_start`, plus characters in the categories
-                 Mn, Mc, Nd, Pc and others with the Other_ID_Continue property>
+   id_start: <all characters in general categories Lu, Ll, Lt, Lm, Lo, Nl, the underscore, and characters with the Other_ID_Start property>
+   id_continue: <all characters in `id_start`, plus characters in the categories Mn, Mc, Nd, Pc and others with the Other_ID_Continue property>
 
 The Unicode category codes mentioned above stand for:
 
@@ -310,6 +307,8 @@ of identifiers is based on NFC.
 A non-normative HTML file listing all valid identifier characters for Unicode
 4.1 can be found at
 http://www.dcl.hpi.uni-potsdam.de/home/loewis/table-3131.html.
+
+See :pep:`3131` for further details.
 
 .. _keywords:
 
@@ -344,7 +343,7 @@ characters:
 ``_*``
    Not imported by ``from module import *``.  The special identifier ``_`` is used
    in the interactive interpreter to store the result of the last evaluation; it is
-   stored in the :mod:`__builtin__` module.  When not in interactive mode, ``_``
+   stored in the :mod:`builtins` module.  When not in interactive mode, ``_``
    has no special meaning and is not defined. See section :ref:`import`.
 
    .. note::
@@ -503,7 +502,7 @@ Notes:
 
 (4)
    Individual code units which form parts of a surrogate pair can be encoded using
-   this escape sequence.
+   this escape sequence. Unlike in Standard C, exactly two hex digits are required.
 
 (5)
    Any Unicode character can be encoded this way, but characters outside the Basic
@@ -567,12 +566,12 @@ styles for each component (even mixing raw strings and triple quoted strings).
 Numeric literals
 ----------------
 
-.. index:: number, numeric literal, integer literal, plain integer literal
-   long integer literal, floating point literal, hexadecimal literal
+.. index:: number, numeric literal, integer literal
+   floating point literal, hexadecimal literal
    octal literal, binary literal, decimal literal, imaginary literal, complex literal
 
-There are four types of numeric literals: plain integers, long integers,
-floating point numbers, and imaginary numbers.  There are no complex literals
+There are three types of numeric literals: plain integers, floating point
+numbers, and imaginary numbers.  There are no complex literals
 (complex numbers can be formed by adding a real number and an imaginary number).
 
 Note that numeric literals do not include a sign; a phrase like ``-1`` is

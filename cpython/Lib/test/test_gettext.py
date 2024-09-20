@@ -146,13 +146,13 @@ trggrkg zrffntr pngnybt yvoenel.''')
         t.install(str=True)
         eq(_('mullusk'), 'bacon')
         # Test installation of other methods
-        import __builtin__
+        import builtins
         t.install(str=True, names=["gettext", "lgettext"])
         eq(_, t.ugettext)
-        eq(__builtin__.gettext, t.ugettext)
+        eq(builtins.gettext, t.ugettext)
         eq(lgettext, t.lgettext)
-        del __builtin__.gettext
-        del __builtin__.lgettext
+        del builtins.gettext
+        del builtins.lgettext
 
 
 class GettextTestCase2(GettextBaseTest):
@@ -332,6 +332,7 @@ class WeirdMetadataTest(GettextBaseTest):
 
     def test_weird_metadata(self):
         info = self.t.info()
+        self.assertEqual(len(info), 9)
         self.assertEqual(info['last-translator'],
            'John Doe <jdoe@example.com>\nJane Foobar <jfoobar@example.com>')
 

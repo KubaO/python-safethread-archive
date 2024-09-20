@@ -11,10 +11,12 @@ dis(pickle, out=None, memo=None, indentlevel=4)
 '''
 
 import codecs
+import pickle
+import re
 
-__all__ = ['dis',
-           'genops',
-          ]
+__all__ = ['dis', 'genops', 'optimize']
+
+bytes_types = pickle.bytes_types
 
 # Other ideas:
 #
@@ -307,7 +309,7 @@ def read_stringnl(f, decode=True, stripquotes=True):
             raise ValueError("no string quotes around %r" % data)
 
     if decode:
-        data = str(codecs.escape_decode(data)[0])
+        data = codecs.escape_decode(data)[0].decode("ascii")
     return data
 
 stringnl = ArgumentDescriptor(
@@ -321,7 +323,7 @@ stringnl = ArgumentDescriptor(
                    """)
 
 def read_stringnl_noescape(f):
-    return read_stringnl(f, decode=False, stripquotes=False)
+    return read_stringnl(f, stripquotes=False)
 
 stringnl_noescape = ArgumentDescriptor(
                         name='stringnl_noescape',
@@ -701,7 +703,7 @@ class StackObject(object):
     )
 
     def __init__(self, name, obtype, doc):
-        assert isinstance(name, basestring)
+        assert isinstance(name, str)
         self.name = name
 
         assert isinstance(obtype, type) or isinstance(obtype, tuple)
@@ -710,7 +712,7 @@ class StackObject(object):
                 assert isinstance(contained, type)
         self.obtype = obtype
 
-        assert isinstance(doc, basestring)
+        assert isinstance(doc, str)
         self.doc = doc
 
     def __repr__(self):
@@ -744,14 +746,14 @@ pyfloat = StackObject(
               doc="A Python float object.")
 
 pystring = StackObject(
-               name='str',
-               obtype=str,
-               doc="A Python string object.")
+               name='bytes',
+               obtype=bytes,
+               doc="A Python bytes object.")
 
 pyunicode = StackObject(
-                name='unicode',
+                name='str',
                 obtype=str,
-                doc="A Python Unicode string object.")
+                doc="A Python string object.")
 
 pynone = StackObject(
              name="None",
@@ -846,10 +848,10 @@ class OpcodeInfo(object):
 
     def __init__(self, name, code, arg,
                  stack_before, stack_after, proto, doc):
-        assert isinstance(name, basestring)
+        assert isinstance(name, str)
         self.name = name
 
-        assert isinstance(code, basestring)
+        assert isinstance(code, str)
         assert len(code) == 1
         self.code = code
 
@@ -869,7 +871,7 @@ class OpcodeInfo(object):
         assert isinstance(proto, int) and 0 <= proto <= 2
         self.proto = proto
 
-        assert isinstance(doc, basestring)
+        assert isinstance(doc, str)
         self.doc = doc
 
 I = OpcodeInfo
@@ -1735,7 +1737,6 @@ for d in opcodes:
 del d
 
 def assure_pickle_consistency(verbose=False):
-    import pickle, re
 
     copy = code2op.copy()
     for name in pickle.__all__:
@@ -1803,7 +1804,7 @@ def genops(pickle):
     to query its current position) pos is None.
     """
 
-    if isinstance(pickle, bytes):
+    if isinstance(pickle, bytes_types):
         import io
         pickle = io.BytesIO(pickle)
 
@@ -1831,6 +1832,33 @@ def genops(pickle):
         if code == b'.':
             assert opcode.name == 'STOP'
             break
+
+##############################################################################
+# A pickle optimizer.
+
+def optimize(p):
+    'Optimize a pickle string by removing unused PUT opcodes'
+    gets = set()            # set of args used by a GET opcode
+    puts = []               # (arg, startpos, stoppos) for the PUT opcodes
+    prevpos = None          # set to pos if previous opcode was a PUT
+    for opcode, arg, pos in genops(p):
+        if prevpos is not None:
+            puts.append((prevarg, prevpos, pos))
+            prevpos = None
+        if 'PUT' in opcode.name:
+            prevarg, prevpos = arg, pos
+        elif 'GET' in opcode.name:
+            gets.add(arg)
+
+    # Copy the pickle string except for PUTS without a corresponding GET
+    s = []
+    i = 0
+    for arg, start, stop in puts:
+        j = stop if (arg in gets) else start
+        s.append(p[i:j])
+        i = stop
+    s.append(p[i:])
+    return b''.join(s)
 
 ##############################################################################
 # A symbolic pickle disassembler.
@@ -1978,7 +2006,7 @@ class _Example:
 
 _dis_test = r"""
 >>> import pickle
->>> x = [1, 2, (3, 4), {str8('abc'): "def"}]
+>>> x = [1, 2, (3, 4), {bytes(b'abc'): "def"}]
 >>> pkl = pickle.dumps(x, 0)
 >>> dis(pkl)
     0: (    MARK
@@ -2051,25 +2079,25 @@ highest protocol among opcodes = 0
    33: (    MARK
    34: c        GLOBAL     'pickletools _Example'
    56: p        PUT        2
-   59: c        GLOBAL     '__builtin__ object'
-   79: p        PUT        3
-   82: N        NONE
-   83: t        TUPLE      (MARK at 33)
-   84: p    PUT        4
-   87: R    REDUCE
-   88: p    PUT        5
-   91: (    MARK
-   92: d        DICT       (MARK at 91)
-   93: p    PUT        6
-   96: V    UNICODE    'value'
-  103: p    PUT        7
-  106: L    LONG       42
-  110: s    SETITEM
-  111: b    BUILD
-  112: a    APPEND
-  113: g    GET        5
-  116: a    APPEND
-  117: .    STOP
+   59: c        GLOBAL     'builtins object'
+   76: p        PUT        3
+   79: N        NONE
+   80: t        TUPLE      (MARK at 33)
+   81: p    PUT        4
+   84: R    REDUCE
+   85: p    PUT        5
+   88: (    MARK
+   89: d        DICT       (MARK at 88)
+   90: p    PUT        6
+   93: V    UNICODE    'value'
+  100: p    PUT        7
+  103: L    LONG       42
+  107: s    SETITEM
+  108: b    BUILD
+  109: a    APPEND
+  110: g    GET        5
+  113: a    APPEND
+  114: .    STOP
 highest protocol among opcodes = 0
 
 >>> dis(pickle.dumps(x, 1))
@@ -2081,23 +2109,23 @@ highest protocol among opcodes = 0
    31: (        MARK
    32: c            GLOBAL     'pickletools _Example'
    54: q            BINPUT     2
-   56: c            GLOBAL     '__builtin__ object'
-   76: q            BINPUT     3
-   78: N            NONE
-   79: t            TUPLE      (MARK at 31)
-   80: q        BINPUT     4
-   82: R        REDUCE
-   83: q        BINPUT     5
-   85: }        EMPTY_DICT
-   86: q        BINPUT     6
-   88: X        BINUNICODE 'value'
-   98: q        BINPUT     7
-  100: K        BININT1    42
-  102: s        SETITEM
-  103: b        BUILD
-  104: h        BINGET     5
-  106: e        APPENDS    (MARK at 3)
-  107: .    STOP
+   56: c            GLOBAL     'builtins object'
+   73: q            BINPUT     3
+   75: N            NONE
+   76: t            TUPLE      (MARK at 31)
+   77: q        BINPUT     4
+   79: R        REDUCE
+   80: q        BINPUT     5
+   82: }        EMPTY_DICT
+   83: q        BINPUT     6
+   85: X        BINUNICODE 'value'
+   95: q        BINPUT     7
+   97: K        BININT1    42
+   99: s        SETITEM
+  100: b        BUILD
+  101: h        BINGET     5
+  103: e        APPENDS    (MARK at 3)
+  104: .    STOP
 highest protocol among opcodes = 1
 
 Try "the canonical" recursive-object test.

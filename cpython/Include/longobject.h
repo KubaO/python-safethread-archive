@@ -12,8 +12,8 @@ typedef struct _longobject PyLongObject; /* Revealed in longintrepr.h */
 PyAPI_DATA(PyTypeObject) PyLong_Type;
 
 #define PyLong_Check(op) \
-		PyType_FastSubclass(Py_Type(op), Py_TPFLAGS_LONG_SUBCLASS)
-#define PyLong_CheckExact(op) (Py_Type(op) == &PyLong_Type)
+		PyType_FastSubclass(Py_TYPE(op), Py_TPFLAGS_LONG_SUBCLASS)
+#define PyLong_CheckExact(op) (Py_TYPE(op) == &PyLong_Type)
 
 PyAPI_FUNC(PyObject *) PyLong_FromLong(long);
 PyAPI_FUNC(PyObject *) PyLong_FromUnsignedLong(unsigned long);
@@ -21,10 +21,24 @@ PyAPI_FUNC(PyObject *) PyLong_FromSize_t(size_t);
 PyAPI_FUNC(PyObject *) PyLong_FromSsize_t(Py_ssize_t);
 PyAPI_FUNC(PyObject *) PyLong_FromDouble(double);
 PyAPI_FUNC(long) PyLong_AsLong(PyObject *);
+PyAPI_FUNC(long) PyLong_AsLongAndOverflow(PyObject *, int *);
 PyAPI_FUNC(Py_ssize_t) PyLong_AsSsize_t(PyObject *);
 PyAPI_FUNC(size_t) PyLong_AsSize_t(PyObject *);
 PyAPI_FUNC(unsigned long) PyLong_AsUnsignedLong(PyObject *);
 PyAPI_FUNC(unsigned long) PyLong_AsUnsignedLongMask(PyObject *);
+
+/* It may be useful in the future. I've added it in the PyInt -> PyLong
+   cleanup to keep the extra information. [CH] */
+#define PyLong_AS_LONG(op) PyLong_AsLong(op)
+
+/* Used by socketmodule.c */
+#if SIZEOF_SOCKET_T <= SIZEOF_LONG
+#define PyLong_FromSocket_t(fd) PyLong_FromLong((SOCKET_T)(fd))
+#define PyLong_AsSocket_t(fd) (SOCKET_T)PyLong_AsLong(fd)
+#else
+#define PyLong_FromSocket_t(fd) PyLong_FromLongLong(((SOCKET_T)(fd));
+#define PyLong_AsSocket_t(fd) (SOCKET_T)PyLong_AsLongLong(fd)
+#endif
 
 /* For use by intobject.c only */
 PyAPI_DATA(int) _PyLong_DigitValue[256];
@@ -36,7 +50,6 @@ PyAPI_DATA(int) _PyLong_DigitValue[256];
    be multiplied by SHIFT!  There may not be enough room in an int to store
    e*SHIFT directly. */
 PyAPI_FUNC(double) _PyLong_AsScaledDouble(PyObject *vv, int *e);
-  PyAPI_FUNC(int) _PyLong_FitsInLong(PyObject* vv);
 
 PyAPI_FUNC(double) PyLong_AsDouble(PyObject *);
 PyAPI_FUNC(PyObject *) PyLong_FromVoidPtr(void *);
@@ -113,6 +126,12 @@ PyAPI_FUNC(int) _PyLong_AsByteArray(PyLongObject* v,
 /* _PyLong_Format: Convert the long to a string object with given base,
    appending a base prefix of 0[box] if base is 2, 8 or 16. */
 PyAPI_FUNC(PyObject *) _PyLong_Format(PyObject *aa, int base);
+
+/* These aren't really part of the long object, but they're handy. The
+   functions are in Python/mystrtoul.c.
+ */
+PyAPI_FUNC(unsigned long) PyOS_strtoul(char *, char **, int);
+PyAPI_FUNC(long) PyOS_strtol(char *, char **, int);
 
 #ifdef __cplusplus
 }

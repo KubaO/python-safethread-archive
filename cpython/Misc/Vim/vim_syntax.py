@@ -4,10 +4,11 @@ from __future__ import with_statement
 
 import keyword
 import exceptions
-import __builtin__
+import builtins
 from string import Template
+from sys import subversion
 
-comment_header = '''" Auto-generated Vim syntax file for Python.
+comment_header = '''" Auto-generated Vim syntax file for Python (%s: r%s).
 "
 " To use: copy or symlink to ~/.vim/syntax/python.vim'''
 
@@ -39,7 +40,7 @@ exception_names = sorted(exc for exc in dir(exceptions)
 # nothing that comes with modules (e.g., __name__), so just exclude anything in
 # the 'exceptions' module since we want to ignore exceptions *and* what any
 # module would have
-builtin_names = sorted(builtin for builtin in dir(__builtin__)
+builtin_names = sorted(builtin for builtin in dir(builtins)
                             if builtin not in dir(exceptions))
 
 escapes = (r'+\\[abfnrtv\'"\\]+', r'"\\\o\{1,3}"', r'"\\x\x\{2}"',
@@ -162,7 +163,7 @@ FILL = 80
 def main(file_path):
     with open(file_path, 'w') as FILE:
         # Comment for file
-        print>>FILE, comment_header
+        print>>FILE, comment_header % subversion[1:]
         print>>FILE, ''
         # Statements at start of file
         print>>FILE, statement_header

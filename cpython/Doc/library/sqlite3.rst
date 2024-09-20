@@ -1,4 +1,3 @@
-
 :mod:`sqlite3` --- DB-API 2.0 interface for SQLite databases
 ============================================================
 
@@ -69,10 +68,10 @@ may use a different placeholder, such as ``%s`` or ``:1``.) For example::
             ):
        c.execute('insert into stocks values (?,?,?,?,?)', t)
 
-To retrieve data after executing a SELECT statement, you can either  treat the
-cursor as an iterator, call the cursor's :meth:`fetchone` method to retrieve a
-single matching row,  or call :meth:`fetchall` to get a list of the matching
-rows.
+To retrieve data after executing a SELECT statement, you can either treat the
+cursor as an :term:`iterator`, call the cursor's :meth:`fetchone` method to
+retrieve a single matching row, or call :meth:`fetchall` to get a list of the
+matching rows.
 
 This example uses the iterator form::
 
@@ -184,8 +183,8 @@ Module functions and constants
 
    Registers a callable to convert the custom Python type *type* into one of
    SQLite's supported types. The callable *callable* accepts as single parameter
-   the Python value, and must return a value of the following types: int, long,
-   float, str (UTF-8 encoded), unicode or buffer.
+   the Python value, and must return a value of the following types: int,
+   float, str, bytes (UTF-8 encoded) or buffer.
 
 
 .. function:: complete_statement(sql)
@@ -259,8 +258,8 @@ A :class:`Connection` instance has the following attributes and methods:
    parameters the function accepts, and *func* is a Python callable that is called
    as the SQL function.
 
-   The function can return any of the types supported by SQLite: unicode, str, int,
-   long, float, buffer and None.
+   The function can return any of the types supported by SQLite: bytes, str, int,
+   float, buffer and None.
 
    Example:
 
@@ -276,7 +275,7 @@ A :class:`Connection` instance has the following attributes and methods:
    final result of the aggregate.
 
    The ``finalize`` method can return any of the types supported by SQLite:
-   unicode, str, int, long, float, buffer and None.
+   bytes, str, int, float, buffer and None.
 
    Example:
 
@@ -349,19 +348,19 @@ A :class:`Connection` instance has the following attributes and methods:
    memory overhead. It will probably be better than your own custom
    dictionary-based approach or even a db_row based solution.
 
-   .. % XXX what's a db_row-based solution?
+   .. XXX what's a db_row-based solution?
 
 
 .. attribute:: Connection.text_factory
 
    Using this attribute you can control what objects are returned for the TEXT data
-   type. By default, this attribute is set to :class:`unicode` and the
-   :mod:`sqlite3` module will return Unicode objects for TEXT. If you want to
-   return bytestrings instead, you can set it to :class:`str`.
+   type. By default, this attribute is set to :class:`str` and the
+   :mod:`sqlite3` module will return strings for TEXT. If you want to
+   return bytestrings instead, you can set it to :class:`bytes`.
 
-   For efficiency reasons, there's also a way to return Unicode objects only for
-   non-ASCII data, and bytestrings otherwise. To activate it, set this attribute to
-   :const:`sqlite3.OptimizedUnicode`.
+   For efficiency reasons, there's also a way to return :class:`str` objects
+   only for non-ASCII data, and :class:`bytes` otherwise. To activate it, set
+   this attribute to :const:`sqlite3.OptimizedUnicode`.
 
    You can also set it to any other callable that accepts a single bytestring
    parameter and returns the resulting object.
@@ -387,7 +386,7 @@ A :class:`Cursor` instance has the following attributes and methods:
 
 .. method:: Cursor.execute(sql, [parameters])
 
-   Executes a SQL statement. The SQL statement may be parametrized (i. e.
+   Executes an SQL statement. The SQL statement may be parametrized (i. e.
    placeholders instead of SQL literals). The :mod:`sqlite3` module supports two
    kinds of placeholders: question marks (qmark style) and named placeholders
    (named style).
@@ -408,13 +407,13 @@ A :class:`Cursor` instance has the following attributes and methods:
 
 .. method:: Cursor.executemany(sql, seq_of_parameters)
 
-   Executes a SQL command against all parameter sequences or mappings found in the
-   sequence *sql*. The :mod:`sqlite3` module also allows using an iterator yielding
-   parameters instead of a sequence.
+   Executes an SQL command against all parameter sequences or mappings found in
+   the sequence *sql*.  The :mod:`sqlite3` module also allows using an
+   :term:`iterator` yielding parameters instead of a sequence.
 
    .. literalinclude:: ../includes/sqlite3/executemany_1.py
 
-   Here's a shorter example using a generator:
+   Here's a shorter example using a :term:`generator`:
 
    .. literalinclude:: ../includes/sqlite3/executemany_2.py
 
@@ -425,11 +424,40 @@ A :class:`Cursor` instance has the following attributes and methods:
    at once. It issues a COMMIT statement first, then executes the SQL script it
    gets as a parameter.
 
-   *sql_script* can be a bytestring or a Unicode string.
+   *sql_script* can be an instance of :class:`str` or :class:`bytes`.
 
    Example:
 
    .. literalinclude:: ../includes/sqlite3/executescript.py
+
+
+.. method:: Cursor.fetchone() 
+          
+   Fetches the next row of a query result set, returning a single sequence,
+   or ``None`` when no more data is available.
+
+
+.. method:: Cursor.fetchmany([size=cursor.arraysize])
+          
+   Fetches the next set of rows of a query result, returning a list.  An empty
+   list is returned when no more rows are available.
+   
+   The number of rows to fetch per call is specified by the *size* parameter.
+   If it is not given, the cursor's arraysize determines the number of rows
+   to be fetched. The method should try to fetch as many rows as indicated by
+   the size parameter. If this is not possible due to the specified number of
+   rows not being available, fewer rows may be returned.
+   
+   Note there are performance considerations involved with the *size* parameter.
+   For optimal performance, it is usually best to use the arraysize attribute.
+   If the *size* parameter is used, then it is best for it to retain the same
+   value from one :meth:`fetchmany` call to the next.
+            
+.. method:: Cursor.fetchall() 
+
+   Fetches all (remaining) rows of a query result, returning a list.  Note that
+   the cursor's arraysize attribute can affect the performance of this operation.
+   An empty list is returned when no rows are available.
 
 
 .. attribute:: Cursor.rowcount
@@ -465,23 +493,21 @@ SQLite natively supports the following types: NULL, INTEGER, REAL, TEXT, BLOB.
 
 The following Python types can thus be sent to SQLite without any problem:
 
-+------------------------+-------------+
-| Python type            | SQLite type |
-+========================+=============+
-| ``None``               | NULL        |
-+------------------------+-------------+
-| ``int``                | INTEGER     |
-+------------------------+-------------+
-| ``long``               | INTEGER     |
-+------------------------+-------------+
-| ``float``              | REAL        |
-+------------------------+-------------+
-| ``str (UTF8-encoded)`` | TEXT        |
-+------------------------+-------------+
-| ``unicode``            | TEXT        |
-+------------------------+-------------+
-| ``buffer``             | BLOB        |
-+------------------------+-------------+
++-------------------------------+-------------+
+| Python type                   | SQLite type |
++===============================+=============+
+| ``None``                      | NULL        |
++-------------------------------+-------------+
+| :class:`int`                  | INTEGER     |
++-------------------------------+-------------+
+| :class:`float`                | REAL        |
++-------------------------------+-------------+
+| :class:`bytes` (UTF8-encoded) | TEXT        |
++-------------------------------+-------------+
+| :class:`str`                  | TEXT        |
++-------------------------------+-------------+
+| :class:`buffer`               | BLOB        |
++-------------------------------+-------------+
 
 This is how SQLite types are converted to Python types by default:
 
@@ -490,11 +516,11 @@ This is how SQLite types are converted to Python types by default:
 +=============+=============================================+
 | ``NULL``    | None                                        |
 +-------------+---------------------------------------------+
-| ``INTEGER`` | int or long, depending on size              |
+| ``INTEGER`` | int                                         |
 +-------------+---------------------------------------------+
 | ``REAL``    | float                                       |
 +-------------+---------------------------------------------+
-| ``TEXT``    | depends on text_factory, unicode by default |
+| ``TEXT``    | depends on text_factory, str by default     |
 +-------------+---------------------------------------------+
 | ``BLOB``    | buffer                                      |
 +-------------+---------------------------------------------+
@@ -510,8 +536,8 @@ Using adapters to store additional Python types in SQLite databases
 
 As described before, SQLite supports only a limited set of types natively. To
 use other Python types with SQLite, you must **adapt** them to one of the
-sqlite3 module's supported types for SQLite: one of NoneType, int, long, float,
-str, unicode, buffer.
+sqlite3 module's supported types for SQLite: one of NoneType, int, float,
+str, bytes, buffer.
 
 The :mod:`sqlite3` module uses Python object adaptation, as described in
 :pep:`246` for this.  The protocol to use is :class:`PrepareProtocol`.

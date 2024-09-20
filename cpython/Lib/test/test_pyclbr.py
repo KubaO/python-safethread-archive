@@ -3,7 +3,7 @@
    Nick Mathewson
 '''
 from test.test_support import run_unittest
-import unittest, sys
+import sys
 from types import FunctionType, MethodType, BuiltinFunctionType
 import pyclbr
 from unittest import TestCase
@@ -40,7 +40,7 @@ class PyclbrTest(TestCase):
         if key in ignore: return
         if key not in obj:
             print("***",key, file=sys.stderr)
-        self.failUnless(key in obj)
+        self.failUnless(key in obj, "%r in %r" % (key, obj))
 
     def assertEqualsOrIgnored(self, a, b, ignore):
         ''' succeed iff a == b or a in ignore or b in ignore '''
@@ -64,23 +64,17 @@ class PyclbrTest(TestCase):
 
         def ismethod(oclass, obj, name):
             classdict = oclass.__dict__
-            if isinstance(obj, FunctionType):
-                if not isinstance(classdict[name], StaticMethodType):
+            if isinstance(obj, MethodType):
+                # could be a classmethod
+                if (not isinstance(classdict[name], ClassMethodType) or
+                    obj.__self__ is not oclass):
                     return False
-            else:
-                if not  isinstance(obj, MethodType):
-                    return False
-                if obj.im_self is not None:
-                    if (not isinstance(classdict[name], ClassMethodType) or
-                        obj.im_self is not oclass):
-                        return False
-                else:
-                    if not isinstance(classdict[name], FunctionType):
-                        return False
+            elif not isinstance(obj, FunctionType):
+                return False
 
             objname = obj.__name__
             if objname.startswith("__") and not objname.endswith("__"):
-                objname = "_%s%s" % (obj.im_class.__name__, objname)
+                objname = "_%s%s" % (oclass.__name__, objname)
             return objname == name
 
         # Make sure the toplevel functions and classes are the same.
@@ -146,15 +140,15 @@ class PyclbrTest(TestCase):
 
     def test_easy(self):
         self.checkModule('pyclbr')
-        self.checkModule('doctest')
+        self.checkModule('doctest', ignore=("TestResults",))
         self.checkModule('rfc822')
-        self.checkModule('difflib')
+        self.checkModule('difflib', ignore=("Match",))
 
     def test_decorators(self):
         # XXX: See comment in pyclbr_input.py for a test that would fail
         #      if it were not commented out.
         #
-        self.checkModule('test.pyclbr_input')
+        self.checkModule('test.pyclbr_input', ignore=['om'])
 
     def test_others(self):
         cm = self.checkModule
@@ -164,6 +158,7 @@ class PyclbrTest(TestCase):
         cm('cgi', ignore=('log',))      # set with = in module
         cm('mhlib')
         cm('urllib', ignore=('getproxies_registry',
+                             'proxy_bypass_registry',
                              'open_https',
                              '_https_connection',
                              'getproxies_internetconfig',)) # not on all platforms

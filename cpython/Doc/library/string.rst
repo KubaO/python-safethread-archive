@@ -230,8 +230,8 @@ as a string, overriding its own definition of formatting.  By converting the
 value to a string before calling :meth:`__format__`, the normal formatting logic
 is bypassed.
 
-Two conversion flags are currently supported: ``'!s'`` which calls :func:`str()`
-on the value, and ``'!r'`` which calls :func:`repr()`.
+Two conversion flags are currently supported: ``'!s'`` which calls :func:`str`
+on the value, and ``'!r'`` which calls :func:`repr`.
 
 Some examples::
 
@@ -289,7 +289,7 @@ Most built-in types implement the following options for format specifications,
 although some of the formatting options are only supported by the numeric types.
 
 A general convention is that an empty format string (``""``) produces the same
-result as if you had called :func:`str()` on the value.
+result as if you had called :func:`str` on the value.
 
 The general form of a *standard format specifier* is:
 
@@ -538,7 +538,7 @@ rule:
 String functions
 ----------------
 
-The following functions are available to operate on string and Unicode objects.
+The following functions are available to operate on string objects.
 They are not available as string methods.
 
 

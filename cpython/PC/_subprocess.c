@@ -79,7 +79,7 @@ sp_handle_detach(sp_handle_object* self, PyObject* args)
 	self->handle = NULL;
 
 	/* note: return the current handle, as an integer */
-	return PyInt_FromLong((long) handle);
+	return PyLong_FromLong((long) handle);
 }
 
 static PyObject*
@@ -119,7 +119,7 @@ sp_handle_getattr(sp_handle_object* self, char* name)
 static PyObject*
 sp_handle_as_int(sp_handle_object* self)
 {
-	return PyInt_FromLong((long) self->handle);
+	return PyLong_FromLong((long) self->handle);
 }
 
 static PyNumberMethods sp_handle_as_number;
@@ -164,7 +164,7 @@ sp_GetStdHandle(PyObject* self, PyObject* args)
 	}
 
 	/* note: returns integer, not handle object */
-	return PyInt_FromLong((long) handle);
+	return PyLong_FromLong((long) handle);
 }
 
 static PyObject *
@@ -253,7 +253,7 @@ getint(PyObject* obj, char* name)
 		PyErr_Clear(); /* FIXME: propagate error? */
 		return 0;
 	}
-	ret = (int) PyInt_AsLong(value);
+	ret = (int) PyLong_AsLong(value);
 	Py_DECREF(value);
 	return ret;
 }
@@ -269,7 +269,7 @@ gethandle(PyObject* obj, char* name)
 		PyErr_Clear(); /* FIXME: propagate error? */
 		return NULL;
 	}
-	if (Py_Type(value) != &sp_handle_type)
+	if (Py_TYPE(value) != &sp_handle_type)
 		ret = NULL;
 	else
 		ret = value->handle;
@@ -462,7 +462,7 @@ sp_GetExitCodeProcess(PyObject* self, PyObject* args)
 	if (! result)
 		return PyErr_SetFromWindowsErr(GetLastError());
 
-	return PyInt_FromLong(exit_code);
+	return PyLong_FromLong(exit_code);
 }
 
 static PyObject *
@@ -484,7 +484,7 @@ sp_WaitForSingleObject(PyObject* self, PyObject* args)
 	if (result == WAIT_FAILED)
 		return PyErr_SetFromWindowsErr(GetLastError());
 
-	return PyInt_FromLong((int) result);
+	return PyLong_FromLong((int) result);
 }
 
 static PyObject *
@@ -493,7 +493,7 @@ sp_GetVersion(PyObject* self, PyObject* args)
 	if (! PyArg_ParseTuple(args, ":GetVersion"))
 		return NULL;
 
-	return PyInt_FromLong((int) GetVersion());
+	return PyLong_FromLong((int) GetVersion());
 }
 
 static PyObject *
@@ -534,7 +534,7 @@ static PyMethodDef sp_functions[] = {
 static void
 defint(PyObject* d, const char* name, int value)
 {
-	PyObject* v = PyInt_FromLong((long) value);
+	PyObject* v = PyLong_FromLong((long) value);
 	if (v) {
 		PyDict_SetItemString(d, (char*) name, v);
 		Py_DECREF(v);
@@ -552,7 +552,7 @@ init_subprocess()
 	PyObject *m;
 
 	/* patch up object descriptors */
-	Py_Type(&sp_handle_type) = &PyType_Type;
+	Py_TYPE(&sp_handle_type) = &PyType_Type;
 	sp_handle_as_number.nb_int = (unaryfunc) sp_handle_as_int;
 
 	m = Py_InitModule("_subprocess", sp_functions);

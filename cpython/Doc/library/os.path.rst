@@ -130,7 +130,9 @@ write files see :func:`open`, and for accessing the filesystem see the
 
 .. function:: isabs(path)
 
-   Return ``True`` if *path* is an absolute pathname (begins with a slash).
+   Return ``True`` if *path* is an absolute pathname.  On Unix, that means it
+   begins with a slash, on Windows that it begins with a (back)slash after chopping
+   off a potential drive letter.
 
 
 .. function:: isfile(path)
@@ -279,12 +281,12 @@ write files see :func:`open`, and for accessing the filesystem see the
 
    .. note::
 
-      The newer :func:`os.walk` generator supplies similar functionality and can be
-      easier to use.
+      The newer :func:`os.walk` :term:`generator` supplies similar functionality
+      and can be easier to use.
 
 
 .. data:: supports_unicode_filenames
 
    True if arbitrary Unicode strings can be used as file names (within limitations
-   imposed by the file system), and if :func:`os.listdir` returns Unicode strings
-   for a Unicode argument.
+   imposed by the file system), and if :func:`os.listdir` returns strings that
+   contain characters that cannot be represented by ASCII.

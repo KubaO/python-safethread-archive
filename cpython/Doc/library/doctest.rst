@@ -38,17 +38,10 @@ Here's a complete but small example module::
    def factorial(n):
        """Return the factorial of n, an exact integer >= 0.
 
-       If the result is small enough to fit in an int, return an int.
-       Else return a long.
-
        >>> [factorial(n) for n in range(6)]
        [1, 1, 2, 6, 24, 120]
-       >>> [factorial(long(n)) for n in range(6)]
-       [1, 1, 2, 6, 24, 120]
        >>> factorial(30)
-       265252859812191058636308480000000L
-       >>> factorial(30L)
-       265252859812191058636308480000000L
+       265252859812191058636308480000000
        >>> factorial(-1)
        Traceback (most recent call last):
            ...
@@ -60,7 +53,7 @@ Here's a complete but small example module::
            ...
        ValueError: n must be exact integer
        >>> factorial(30.0)
-       265252859812191058636308480000000L
+       265252859812191058636308480000000
 
        It must also not be ridiculously large:
        >>> factorial(1e100)
@@ -106,11 +99,6 @@ it's trying, and prints a summary at the end::
    ok
    Trying:
        [factorial(n) for n in range(6)]
-   Expecting:
-       [1, 1, 2, 6, 24, 120]
-   ok
-   Trying:
-       [factorial(long(n)) for n in range(6)]
    Expecting:
        [1, 1, 2, 6, 24, 120]
    ok
@@ -703,12 +691,7 @@ even a single character doesn't match, the test fails.  This will probably
 surprise you a few times, as you learn exactly what Python does and doesn't
 guarantee about output.  For example, when printing a dict, Python doesn't
 guarantee that the key-value pairs will be printed in any particular order, so a
-test like
-
-.. % Hey! What happened to Monty Python examples?
-.. % Tim: ask Guido -- it's his example!
-
-::
+test like ::
 
    >>> foo()
    {"Hermione": "hippogryph", "Harry": "broomstick"}
@@ -1082,7 +1065,8 @@ capabilities, then you should use the advanced API.
 The advanced API revolves around two container classes, which are used to store
 the interactive examples extracted from doctest cases:
 
-* :class:`Example`: A single python statement, paired with its expected output.
+* :class:`Example`: A single python :term:`statement`, paired with its expected
+  output.
 
 * :class:`DocTest`: A collection of :class:`Example`\ s, typically extracted
   from a single docstring or text file.
@@ -1452,10 +1436,13 @@ DocTestRunner objects
 .. method:: DocTestRunner.summarize([verbose])
 
    Print a summary of all the test cases that have been run by this DocTestRunner,
-   and return a tuple ``(failure_count, test_count)``.
+   and return a :term:`named tuple` ``TestResults(failed, attempted)``.
 
    The optional *verbose* argument controls how detailed the summary is.  If the
    verbosity is not specified, then the :class:`DocTestRunner`'s verbosity is used.
+
+   .. versionchanged:: 2.6
+      Use a named tuple.
 
 
 .. _doctest-outputchecker:

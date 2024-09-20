@@ -273,9 +273,51 @@ Here are some nested for loops and other fancy behavior::
 
 List comprehensions can be applied to complex expressions and nested functions::
 
-   >>> [str(round(355/113.0, i)) for i in range(1, 6)]
+   >>> [str(round(355/113, i)) for i in range(1, 6)]
    ['3.1', '3.14', '3.142', '3.1416', '3.14159']
 
+
+Nested List Comprehensions
+--------------------------
+
+If you've got the stomach for it, list comprehensions can be nested. They are a
+powerful tool but -- like all powerful tools -- they need to be used carefully,
+if at all.
+
+Consider the following example of a 3x3 matrix held as a list containing three 
+lists, one list per row::
+
+    >>> mat = [
+    ...        [1, 2, 3],
+    ...        [4, 5, 6],
+    ...        [7, 8, 9],
+    ...       ]
+
+Now, if you wanted to swap rows and columns, you could use a list 
+comprehension::
+
+    >>> print [[row[i] for row in mat] for i in [0, 1, 2]]
+    [[1, 4, 7], [2, 5, 8], [3, 6, 9]]
+
+Special care has to be taken for the *nested* list comprehension:
+
+    To avoid apprehension when nesting list comprehensions, read from right to
+    left.
+
+A more verbose version of this snippet shows the flow explicitly::
+
+    for i in [0, 1, 2]:
+        for row in mat:
+            print row[i],
+        print
+
+In real world, you should prefer builtin functions to complex flow statements. 
+The :func:`zip` function would do a great job for this use case::
+
+    >>> zip(*mat)
+    [(1, 4, 7), (2, 5, 8), (3, 6, 9)]
+
+See :ref:`tut-unpacking-arguments` for details on the asterisk in this line.
 
 .. _tut-del:
 
@@ -308,6 +350,70 @@ is assigned to it).  We'll find other uses for :keyword:`del` later.
 
 
 
+Tuples and Sequences
+====================
+
+We saw that lists and strings have many common properties, such as indexing and
+slicing operations.  They are two examples of *sequence* data types (see
+:ref:`typesseq`).  Since Python is an evolving language, other sequence data
+types may be added.  There is also another standard sequence data type: the
+*tuple*.
+
+A tuple consists of a number of values separated by commas, for instance::
+
+   >>> t = 12345, 54321, 'hello!'
+   >>> t[0]
+   12345
+   >>> t
+   (12345, 54321, 'hello!')
+   >>> # Tuples may be nested:
+   ... u = t, (1, 2, 3, 4, 5)
+   >>> u
+   ((12345, 54321, 'hello!'), (1, 2, 3, 4, 5))
+
+As you see, on output tuples are always enclosed in parentheses, so that nested
+tuples are interpreted correctly; they may be input with or without surrounding
+parentheses, although often parentheses are necessary anyway (if the tuple is
+part of a larger expression).
+
+Tuples have many uses.  For example: (x, y) coordinate pairs, employee records
+from a database, etc.  Tuples, like strings, are immutable: it is not possible
+to assign to the individual items of a tuple (you can simulate much of the same
+effect with slicing and concatenation, though).  It is also possible to create
+tuples which contain mutable objects, such as lists.
+
+A special problem is the construction of tuples containing 0 or 1 items: the
+syntax has some extra quirks to accommodate these.  Empty tuples are constructed
+by an empty pair of parentheses; a tuple with one item is constructed by
+following a value with a comma (it is not sufficient to enclose a single value
+in parentheses). Ugly, but effective.  For example::
+
+   >>> empty = ()
+   >>> singleton = 'hello',    # <-- note trailing comma
+   >>> len(empty)
+   0
+   >>> len(singleton)
+   1
+   >>> singleton
+   ('hello',)
+
+The statement ``t = 12345, 54321, 'hello!'`` is an example of *tuple packing*:
+the values ``12345``, ``54321`` and ``'hello!'`` are packed together in a tuple.
+The reverse operation is also possible::
+
+   >>> x, y, z = t
+
+This is called, appropriately enough, *sequence unpacking*. Sequence unpacking
+requires the list of variables on the left to have the same number of elements
+as the length of the sequence.  Note that multiple assignment is really just a
+combination of tuple packing and sequence unpacking!
+
+There is a small bit of asymmetry here:  packing multiple values always creates
+a tuple, and unpacking works for any sequence.
+
+.. XXX Add a bit on the difference between tuples and lists.
+
+
 .. _tut-sets:
 
 Sets
@@ -331,6 +437,9 @@ Here is a brief demonstration::
    >>> fruit = set(basket)               # create a set without duplicates
    >>> fruit
    {'orange', 'pear', 'apple', 'banana'}
+   >>> fruit = {'orange', 'apple'}       # {} syntax is equivalent to [] for lists
+   >>> fruit
+   {'orange', 'apple'}
    >>> 'orange' in fruit                 # fast membership testing
    True
    >>> 'crabgrass' in fruit
@@ -351,6 +460,11 @@ Here is a brief demonstration::
    >>> a ^ b                              # letters in a or b but not both
    {'r', 'd', 'b', 'm', 'z', 'l'}
 
+Like for lists, there is a set comprehension syntax::
+
+   >>> a = {x for x in 'abracadabra' if x not in 'abc'}
+   >>> a
+   {'r', 'd'}
 
 
 
@@ -412,12 +526,12 @@ comprehensions can compactly specify the key-value list. ::
 
    >>> dict([('sape', 4139), ('guido', 4127), ('jack', 4098)])
    {'sape': 4139, 'jack': 4098, 'guido': 4127}
-   >>> dict([(x, x**2) for x in (2, 4, 6)])     # use a list comprehension
-   {2: 4, 4: 16, 6: 36}
 
-Later in the tutorial, we will learn about Generator Expressions which are even
-better suited for the task of supplying key-values pairs to the :func:`dict`
-constructor.
+In addition, dict comprehensions can be used to create dictionaries from
+arbitrary key and value expressions::
+
+   >>> {x: x**2 for x in (2, 4, 6)}
+   {2: 4, 4: 16, 6: 36}
 
 When the keys are simple strings, it is sometimes easier to specify pairs using
 keyword arguments::
@@ -426,9 +540,8 @@ keyword arguments::
    {'sape': 4139, 'jack': 4098, 'guido': 4127}
 
 
+.. XXX Find out the right way to do these DUBOIS
 .. _tut-loopidioms:
-.. % 
-   Find out the right way to do these DUBOIS
 
 Looping Techniques
 ==================
@@ -560,15 +673,8 @@ sequences of the same type::
    (1, 2, 3)             == (1.0, 2.0, 3.0)
    (1, 2, ('aa', 'ab'))   < (1, 2, ('abc', 'a'), 4)
 
-Note that comparing objects of different types is legal.  The outcome is
-deterministic but arbitrary: the types are ordered by their name. Thus, a list
-is always smaller than a string, a string is always smaller than a tuple, etc.
-[#]_ Mixed numeric types are compared according to their numeric value, so 0
-equals 0.0, etc.
-
-
-.. rubric:: Footnotes
-
-.. [#] The rules for comparing objects of different types should not be relied upon;
-   they may change in a future version of the language.
-
+Note that comparing objects of different types with ``<`` or ``>`` is legal
+provided that the objects have appropriate comparison methods.  For example,
+mixed numeric types are compared according to their numeric value, so 0 equals
+0.0, etc.  Otherwise, rather than providing an arbitrary ordering, the
+interpreter will raise a :exc:`TypeError` exception.

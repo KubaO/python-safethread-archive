@@ -48,6 +48,7 @@ class KeywordOnlyArgTestCase(unittest.TestCase):
         self.assertRaisesSyntaxError("def f(p1, *, p1=100):\n  pass\n")
         self.assertRaisesSyntaxError("def f(p1, *k1, k1=100):\n  pass\n")
         self.assertRaisesSyntaxError("def f(p1, *, k1, k1=100):\n  pass\n")
+        self.assertRaisesSyntaxError("def f(p1, *, **k1):\n  pass\n")
         self.assertRaisesSyntaxError("def f(p1, *, k1, **k1):\n  pass\n")
         self.assertRaisesSyntaxError("def f(p1, *, None, **k1):\n  pass\n")
         self.assertRaisesSyntaxError("def f(p, *, (k1, k2), **kw):\n  pass\n")
@@ -143,6 +144,15 @@ class KeywordOnlyArgTestCase(unittest.TestCase):
             self.fail("__kwdefaults__ is not properly changed")
         except TypeError:
             pass
+
+    def test_kwonly_methods(self):
+        class Example:
+            def f(self, *, k1=1, k2=2):
+                return k1, k2
+
+        self.assertEqual(Example().f(k1=1, k2=2), (1, 2))
+        self.assertEqual(Example.f(Example(), k1=1, k2=2), (1, 2))
+        self.assertRaises(TypeError, Example.f, k1=1, k2=2)
 
 def test_main():
     run_unittest(KeywordOnlyArgTestCase)

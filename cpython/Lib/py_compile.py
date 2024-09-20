@@ -3,7 +3,7 @@
 This module has intimate knowledge of the format of .pyc files.
 """
 
-import __builtin__
+import builtins
 import imp
 import marshal
 import os
@@ -88,7 +88,7 @@ def read_encoding(file, default):
                 break
             m = re.match(r".*\bcoding:\s*(\S+)\b", line)
             if m:
-                return str(m.group(1))
+                return m.group(1).decode("ascii")
         return default
     finally:
         f.close()
@@ -139,7 +139,7 @@ def compile(file, cfile=None, dfile=None, doraise=False):
     if codestring and codestring[-1] != '\n':
         codestring = codestring + '\n'
     try:
-        codeobject = __builtin__.compile(codestring, dfile or file,'exec')
+        codeobject = builtins.compile(codestring, dfile or file,'exec')
     except Exception as err:
         py_exc = PyCompileError(err.__class__, err, dfile or file)
         if doraise:

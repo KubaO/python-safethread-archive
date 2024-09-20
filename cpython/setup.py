@@ -4,6 +4,7 @@
 __version__ = "$Revision$"
 
 import sys, os, imp, re, optparse
+from glob import glob
 
 from distutils import log
 from distutils import sysconfig
@@ -101,8 +102,14 @@ class PyBuildExt(build_ext):
         missing = self.detect_modules()
 
         # Remove modules that are present on the disabled list
-        self.extensions = [ext for ext in self.extensions
-                           if ext.name not in disabled_module_list]
+        extensions = [ext for ext in self.extensions
+                      if ext.name not in disabled_module_list]
+        # move ctypes to the end, it depends on other modules
+        ext_map = dict((ext.name, i) for i, ext in enumerate(extensions))
+        if "_ctypes" in ext_map:
+            ctypes = extensions.pop(ext_map["_ctypes"])
+            extensions.append(ctypes)
+        self.extensions = extensions
 
         # Fix up the autodetected modules, prefixing all the source files
         # with Modules/ and adding Python's include directory to the path.
@@ -136,12 +143,20 @@ class PyBuildExt(build_ext):
         self.distribution.scripts = [os.path.join(srcdir, filename)
                                      for filename in self.distribution.scripts]
 
+        # Python header files
+        headers = glob("Include/*.h") + ["pyconfig.h"]
+
         for ext in self.extensions[:]:
             ext.sources = [ find_module_file(filename, moddirlist)
                             for filename in ext.sources ]
             if ext.depends is not None:
                 ext.depends = [find_module_file(filename, alldirlist)
                                for filename in ext.depends]
+            else:
+                ext.depends = []
+            # re-compile extensions if a header file has been changed
+            ext.depends.extend(headers)
+
             ext.include_dirs.append( '.' ) # to get config.h
             for incdir in incdirlist:
                 ext.include_dirs.append( os.path.join(srcdir, incdir) )
@@ -312,7 +327,7 @@ class PyBuildExt(build_ext):
                 parser.add_option(arg_name, dest="dirs", action="append")
                 options = parser.parse_args(env_val.split())[0]
                 if options.dirs:
-                    for directory in options.dirs:
+                    for directory in reversed(options.dirs):
                         add_dir_to_list(dir_list, directory)
 
         if os.path.normpath(sys.prefix) != '/usr':
@@ -413,8 +428,7 @@ class PyBuildExt(build_ext):
         exts.append( Extension("atexit", ["atexitmodule.c"]) )
         # Python C API test module
         exts.append( Extension('_testcapi', ['_testcapimodule.c']) )
-        # profilers (_lsprof is for cProfile.py)
-        exts.append( Extension('_hotshot', ['_hotshot.c']) )
+        # profiler (_lsprof is for cProfile.py)
         exts.append( Extension('_lsprof', ['_lsprof.c', 'rotatingtree.c']) )
         # static Unicode character database
         exts.append( Extension('unicodedata', ['unicodedata.c']) )
@@ -638,7 +652,10 @@ class PyBuildExt(build_ext):
         # a release.  Most open source OSes come with one or more
         # versions of BerkeleyDB already installed.
 
-        max_db_ver = (4, 6)
+        max_db_ver = (4, 5)  # XXX(gregory.p.smith): 4.6 "works" but seems to
+                             # have issues on many platforms.  I've temporarily
+                             # disabled 4.6 to see what the odd platform
+                             # buildbots say.
         min_db_ver = (3, 3)
         db_setup_debug = False   # verbose debug prints from this script?
 
@@ -681,10 +698,10 @@ class PyBuildExt(build_ext):
         for dn in inc_dirs:
             std_variants.append(os.path.join(dn, 'db3'))
             std_variants.append(os.path.join(dn, 'db4'))
-            for x in (0,1,2,3,4,5,6):
+            for x in range(max_db_ver[1]+1):
                 std_variants.append(os.path.join(dn, "db4%d"%x))
                 std_variants.append(os.path.join(dn, "db4.%d"%x))
-            for x in (2,3):
+            for x in (3,):
                 std_variants.append(os.path.join(dn, "db3%d"%x))
                 std_variants.append(os.path.join(dn, "db3.%d"%x))
 
@@ -774,6 +791,7 @@ class PyBuildExt(build_ext):
             # some unusual system configurations (e.g. the directory
             # is on an NFS server that goes away).
             exts.append(Extension('_bsddb', ['_bsddb.c'],
+                                  depends = ['bsddb.h'],
                                   library_dirs=dblib_dir,
                                   runtime_library_dirs=dblib_dir,
                                   include_dirs=db_incs,
@@ -1074,7 +1092,7 @@ class PyBuildExt(build_ext):
                                   ['cjkcodecs/_codecs_%s.c' % loc]))
 
         # Dynamic loading module
-        if sys.maxint == 0x7fffffff:
+        if sys.maxsize == 0x7fffffff:
             # This requires sizeof(int) == sizeof(long) == sizeof(char*)
             dl_inc = find_file('dlfcn.h', [], inc_dirs)
             if (dl_inc is not None) and (platform not in ['atheos']):
@@ -1092,7 +1110,7 @@ class PyBuildExt(build_ext):
 
         # Platform-specific libraries
         if platform in ('linux2', 'freebsd4', 'freebsd5', 'freebsd6',
-                        'freebsd7'):
+                        'freebsd7', 'freebsd8'):
             exts.append( Extension('ossaudiodev', ['ossaudiodev.c']) )
         else:
             missing.append('ossaudiodev')

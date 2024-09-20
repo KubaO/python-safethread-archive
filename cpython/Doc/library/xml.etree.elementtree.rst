@@ -31,6 +31,9 @@ convert it from and to XML.
 
 A C implementation of this API is available as :mod:`xml.etree.cElementTree`.
 
+See http://effbot.org/zone/element-index.htm for tutorials and links to other
+docs. Fredrik Lundh's page is also the location of the development version of the 
+xml.etree.ElementTree.
 
 .. _elementtree-functions:
 
@@ -40,10 +43,11 @@ Functions
 
 .. function:: Comment([text])
 
-   Comment element factory.  This factory function creates a special element that
-   will be serialized as an XML comment. The comment string can be either an 8-bit
-   ASCII string or a Unicode string. *text* is a string containing the comment
-   string. Returns an element instance representing a comment.
+   Comment element factory.  This factory function creates a special element
+   that will be serialized as an XML comment. The comment string can be either
+   an ASCII-only :class:`bytes` object or a :class:`str` object. *text* is a
+   string containing the comment string. Returns an element instance
+   representing a comment.
 
 
 .. function:: dump(elem)
@@ -64,10 +68,11 @@ Functions
    dependent, but it will always be compatible with the _ElementInterface class in
    this module.
 
-   The element name, attribute names, and attribute values can be either 8-bit
-   ASCII strings or Unicode strings. *tag* is the element name. *attrib* is an
-   optional dictionary, containing element attributes. *extra* contains additional
-   attributes, given as keyword arguments. Returns an element instance.
+   The element name, attribute names, and attribute values can be either an
+   ASCII-only :class:`bytes` object or a :class:`str` object. *tag* is the
+   element name. *attrib* is an optional dictionary, containing element
+   attributes. *extra* contains additional attributes, given as keyword
+   arguments. Returns an element instance.
 
 
 .. function:: fromstring(text)
@@ -87,7 +92,7 @@ Functions
    Parses an XML section into an element tree incrementally, and reports what's
    going on to the user. *source* is a filename or file object containing XML data.
    *events* is a list of events to report back.  If omitted, only "end" events are
-   reported. Returns an iterator providing ``(event, elem)`` pairs.
+   reported. Returns an :term:`iterator` providing ``(event, elem)`` pairs.
 
 
 .. function:: parse(source[, parser])
@@ -111,11 +116,11 @@ Functions
    Subelement factory.  This function creates an element instance, and appends it
    to an existing element.
 
-   The element name, attribute names, and attribute values can be either 8-bit
-   ASCII strings or Unicode strings. *parent* is the parent element. *tag* is the
-   subelement name. *attrib* is an optional dictionary, containing element
-   attributes. *extra* contains additional attributes, given as keyword arguments.
-   Returns an element instance.
+   The element name, attribute names, and attribute values can be an ASCII-only
+   :class:`bytes` object or a :class:`str` object. *parent* is the parent
+   element. *tag* is the subelement name. *attrib* is an optional dictionary,
+   containing element attributes. *extra* contains additional attributes, given
+   as keyword arguments. Returns an element instance.
 
 
 .. function:: tostring(element[, encoding])
@@ -272,7 +277,7 @@ Element objects also support the following sequence type methods for working
 with subelements: :meth:`__delitem__`, :meth:`__getitem__`, :meth:`__setitem__`,
 :meth:`__len__`.
 
-Caution: Because Element objects do not define a :meth:`__nonzero__` method,
+Caution: Because Element objects do not define a :meth:`__bool__` method,
 elements with no subelements will test as ``False``. ::
 
    element = root.find('foo')
@@ -316,7 +321,7 @@ ElementTree Objects
 .. method:: ElementTree.findall(path)
 
    Finds all toplevel elements with the given tag. Same as getroot().findall(path).
-   *path* is the element to look for. Returns a list or iterator containing all
+   *path* is the element to look for. Returns a list or :term:`iterator` containing all
    matching elements, in document order.
 
 
@@ -355,6 +360,33 @@ ElementTree Objects
    object opened for writing. *encoding* is the output encoding (default is
    US-ASCII).
 
+This is the XML file that is going to be manipulated::
+
+    <html>
+        <head>
+            <title>Example page</title>
+        </head>
+        <body>
+            <p>Moved to <a href="http://example.org/">example.org</a> 
+            or <a href="http://example.com/">example.com</a>.</p>
+        </body>
+    </html>
+
+Example of changing the attribute "target" of every link in first paragraph::
+
+    >>> from xml.etree.ElementTree import ElementTree
+    >>> tree = ElementTree()
+    >>> tree.parse("index.xhtml")
+    <Element html at b7d3f1ec>
+    >>> p = tree.find("body/p")     # Finds first occurrence of tag p in body
+    >>> p
+    <Element p at 8416e0c>
+    >>> links = p.getiterator("a")  # Returns list of all links
+    >>> links
+    [<Element a at b7d4f9ec>, <Element a at b7d4fb0c>]
+    >>> for i in links:             # Iterates through all found links
+    ...     i.attrib["target"] = "blank"
+    >>> tree.write("output.xhtml")
 
 .. _elementtree-qname-objects:
 
@@ -389,14 +421,14 @@ TreeBuilder Objects
 
 .. method:: TreeBuilder.close()
 
-   Flushes the parser buffers, and returns the toplevel documen element. Returns an
+   Flushes the parser buffers, and returns the toplevel document element. Returns an
    Element instance.
 
 
 .. method:: TreeBuilder.data(data)
 
    Adds text to the current element. *data* is a string.  This should be either an
-   8-bit string containing ASCII text, or a Unicode string.
+   ASCII-only :class:`bytes` object or a :class:`str` object.
 
 
 .. method:: TreeBuilder.end(tag)
@@ -440,3 +472,41 @@ XMLTreeBuilder Objects
 
    Feeds data to the parser. *data* is encoded data.
 
+:meth:`XMLTreeBuilder.feed` calls *target*\'s :meth:`start` method
+for each opening tag, its :meth:`end` method for each closing tag,
+and data is processed by method :meth:`data`. :meth:`XMLTreeBuilder.close` 
+calls *target*\'s method :meth:`close`. 
+:class:`XMLTreeBuilder` can be used not only for building a tree structure. 
+This is an example of counting the maximum depth of an XML file::
+
+    >>> from xml.etree.ElementTree import XMLTreeBuilder
+    >>> class MaxDepth:                     # The target object of the parser
+    ...     maxDepth = 0
+    ...     depth = 0
+    ...     def start(self, tag, attrib):   # Called for each opening tag.
+    ...         self.depth += 1 
+    ...         if self.depth > self.maxDepth:
+    ...             self.maxDepth = self.depth
+    ...     def end(self, tag):             # Called for each closing tag.
+    ...         self.depth -= 1
+    ...     def data(self, data):   
+    ...         pass            # We do not need to do anything with data.
+    ...     def close(self):    # Called when all data has been parsed.
+    ...         return self.maxDepth
+    ... 
+    >>> target = MaxDepth()
+    >>> parser = XMLTreeBuilder(target=target)
+    >>> exampleXml = """
+    ... <a>
+    ...   <b>
+    ...   </b>
+    ...   <b>
+    ...     <c>
+    ...       <d>
+    ...       </d>
+    ...     </c>
+    ...   </b>
+    ... </a>"""
+    >>> parser.feed(exampleXml)
+    >>> parser.close()
+    4

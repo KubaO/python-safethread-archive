@@ -5,12 +5,11 @@ executing have not been removed.
 
 """
 import unittest
-from test.test_support import TestSkipped, TestFailed, run_unittest, TESTFN
-import __builtin__
+from test.test_support import TestSkipped, run_unittest, TESTFN
+import builtins
 import os
 import sys
 import encodings
-import tempfile
 # Need to make sure to not import 'site' if someone specified ``-S`` at the
 # command-line.  Detect this by just making sure 'site' has not been imported
 # already.
@@ -162,7 +161,7 @@ class ImportSideEffectTests(unittest.TestCase):
         # as an absolute path.
         # Handled by abs__file__()
         site.abs__file__()
-        for module in (sys, os, __builtin__):
+        for module in (sys, os, builtins):
             try:
                 self.failUnless(os.path.isabs(module.__file__), repr(module))
             except AttributeError:
@@ -187,18 +186,18 @@ class ImportSideEffectTests(unittest.TestCase):
         pass
 
     def test_setting_quit(self):
-        # 'quit' and 'exit' should be injected into __builtin__
-        self.failUnless(hasattr(__builtin__, "quit"))
-        self.failUnless(hasattr(__builtin__, "exit"))
+        # 'quit' and 'exit' should be injected into builtins
+        self.failUnless(hasattr(builtins, "quit"))
+        self.failUnless(hasattr(builtins, "exit"))
 
     def test_setting_copyright(self):
-        # 'copyright' and 'credits' should be in __builtin__
-        self.failUnless(hasattr(__builtin__, "copyright"))
-        self.failUnless(hasattr(__builtin__, "credits"))
+        # 'copyright' and 'credits' should be in builtins
+        self.failUnless(hasattr(builtins, "copyright"))
+        self.failUnless(hasattr(builtins, "credits"))
 
     def test_setting_help(self):
-        # 'help' should be set in __builtin__
-        self.failUnless(hasattr(__builtin__, "help"))
+        # 'help' should be set in builtins
+        self.failUnless(hasattr(builtins, "help"))
 
     def test_aliasing_mbcs(self):
         if sys.platform == "win32":

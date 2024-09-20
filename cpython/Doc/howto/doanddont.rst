@@ -75,46 +75,13 @@ There are situations in which ``from module import *`` is just fine:
 * When the module advertises itself as ``from import *`` safe.
 
 
-Unadorned :keyword:`exec` and friends
--------------------------------------
-
-The word "unadorned" refers to the use without an explicit dictionary, in which
-case those constructs evaluate code in the *current* environment. This is
-dangerous for the same reasons ``from import *`` is dangerous --- it might step
-over variables you are counting on and mess up things for the rest of your code.
-Simply do not do that.
-
-Bad examples::
-
-   >>> for name in sys.argv[1:]:
-   >>>     exec "%s=1" % name
-   >>> def func(s, **kw):
-   >>>     for var, val in kw.items():
-   >>>         exec "s.%s=val" % var  # invalid!
-   >>> exec(open("handler.py").read())
-   >>> handle()
-
-Good examples::
-
-   >>> d = {}
-   >>> for name in sys.argv[1:]:
-   >>>     d[name] = 1
-   >>> def func(s, **kw):
-   >>>     for var, val in kw.items():
-   >>>         setattr(s, var, val)
-   >>> d={}
-   >>> exec(open("handle.py").read(), d, d)
-   >>> handle = d['handle']
-   >>> handle()
-
-
 from module import name1, name2
 -------------------------------
 
 This is a "don't" which is much weaker then the previous "don't"s but is still
 something you should not do if you don't have good reasons to do that. The
 reason it is usually bad idea is because you suddenly have an object which lives
-in two seperate namespaces. When the binding in one namespace changes, the
+in two separate namespaces. When the binding in one namespace changes, the
 binding in the other will not, so there will be a discrepancy between them. This
 happens when, for example, one module is reloaded, or changes the definition of
 a function at runtime.
@@ -276,9 +243,9 @@ This cute little script prints the average of all numbers given on the command
 line. The :func:`reduce` adds up all the numbers, and the rest is just some
 pre- and postprocessing.
 
-On the same note, note that :func:`float`, :func:`int` and :func:`long` all
-accept arguments of type string, and so are suited to parsing --- assuming you
-are ready to deal with the :exc:`ValueError` they raise.
+On the same note, note that :func:`float` and :func:`int` accept arguments of
+type string, and so are suited to parsing --- assuming you are ready to deal
+with the :exc:`ValueError` they raise.
 
 
 Using Backslash to Continue Statements
@@ -291,7 +258,7 @@ are often more then is comfortable to put in one line, many people do::
       calculate_number(10, 20) != forbulate(500, 360):
          pass
 
-You should realize that this is dangerous: a stray space after the ``XXX`` would
+You should realize that this is dangerous: a stray space after the ``\`` would
 make this line wrong, and stray spaces are notoriously hard to see in editors.
 In this case, at least it would be a syntax error, but if the code was::
 

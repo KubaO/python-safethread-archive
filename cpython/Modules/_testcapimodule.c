@@ -5,6 +5,8 @@
  * standard Python regression test, via Lib/test/test_capi.py.
  */
 
+#define PY_SSIZE_T_CLEAN
+
 #include "Python.h"
 #include <float.h>
 #include "structmember.h"
@@ -83,7 +85,7 @@ test_list_api(PyObject *self)
 		return (PyObject*)NULL;
 	/* list = range(NLIST) */
 	for (i = 0; i < NLIST; ++i) {
-		PyObject* anint = PyInt_FromLong(i);
+		PyObject* anint = PyLong_FromLong(i);
 		if (anint == (PyObject*)NULL) {
 			Py_DECREF(list);
 			return (PyObject*)NULL;
@@ -99,7 +101,7 @@ test_list_api(PyObject *self)
 	/* Check that list == range(29, -1, -1) now */
 	for (i = 0; i < NLIST; ++i) {
 		PyObject* anint = PyList_GET_ITEM(list, i);
-		if (PyInt_AS_LONG(anint) != NLIST-1-i) {
+		if (PyLong_AS_LONG(anint) != NLIST-1-i) {
 			PyErr_SetString(TestError,
 			                "test_list_api: reverse screwed up");
 			Py_DECREF(list);
@@ -125,7 +127,7 @@ test_dict_inner(int count)
 		return -1;
 
 	for (i = 0; i < count; i++) {
-		v = PyInt_FromLong(i);
+		v = PyLong_FromLong(i);
 		PyDict_SetItem(dict, v, v);
 		Py_DECREF(v);
 	}
@@ -134,8 +136,8 @@ test_dict_inner(int count)
 		PyObject *o;
 		iterations++;
 
-		i = PyInt_AS_LONG(v) + 1;
-		o = PyInt_FromLong(i);
+		i = PyLong_AS_LONG(v) + 1;
+		o = PyLong_FromLong(i);
 		if (o == NULL)
 			return -1;
 		if (PyDict_SetItem(dict, k, o) < 0) {
@@ -276,7 +278,7 @@ test_L_code(PyObject *self)
 			"L code returned wrong value for long 42");
 
 	Py_DECREF(num);
-        num = PyInt_FromLong(42);
+        num = PyLong_FromLong(42);
         if (num == NULL)
         	return NULL;
 
@@ -304,6 +306,22 @@ getargs_tuple(PyObject *self, PyObject *args)
 	if (!PyArg_ParseTuple(args, "i(ii)", &a, &b, &c))
 		return NULL;
 	return Py_BuildValue("iii", a, b, c);
+}
+
+/* test PyArg_ParseTupleAndKeywords */
+static PyObject *getargs_keywords(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+	static char *keywords[] = {"arg1","arg2","arg3","arg4","arg5", NULL};
+	static char *fmt="(ii)i|(i(ii))(iii)i";
+	int int_args[10]={-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+
+	if (!PyArg_ParseTupleAndKeywords(args, kwargs, fmt, keywords,
+		&int_args[0], &int_args[1], &int_args[2], &int_args[3], &int_args[4],
+		&int_args[5], &int_args[6], &int_args[7], &int_args[8], &int_args[9]))
+		return NULL;
+	return Py_BuildValue("iiiiiiiiii",
+		int_args[0], int_args[1], int_args[2], int_args[3], int_args[4],
+		int_args[5], int_args[6], int_args[7], int_args[8], int_args[9]);
 }
 
 /* Functions to call PyArg_ParseTuple with integer format codes,
@@ -377,8 +395,8 @@ getargs_n(PyObject *self, PyObject *args)
 {
 	Py_ssize_t value;
 	if (!PyArg_ParseTuple(args, "n", &value))
-	return NULL;
-	return PyInt_FromSsize_t(value);
+		return NULL;
+	return PyLong_FromSsize_t(value);
 }
 
 #ifdef HAVE_LONG_LONG
@@ -402,7 +420,7 @@ getargs_K(PyObject *self, PyObject *args)
 #endif
 
 /* This function not only tests the 'k' getargs code, but also the
-   PyInt_AsUnsignedLongMask() and PyInt_AsUnsignedLongMask() functions. */
+   PyLong_AsUnsignedLongMask() and PyLong_AsUnsignedLongMask() functions. */
 static PyObject *
 test_k_code(PyObject *self)
 {
@@ -418,10 +436,10 @@ test_k_code(PyObject *self)
         if (num == NULL)
         	return NULL;
 
-	value = PyInt_AsUnsignedLongMask(num);
+	value = PyLong_AsUnsignedLongMask(num);
 	if (value != ULONG_MAX)
         	return raiseTestError("test_k_code",
-	    "PyInt_AsUnsignedLongMask() returned wrong value for long 0xFFF...FFF");
+	    "PyLong_AsUnsignedLongMask() returned wrong value for long 0xFFF...FFF");
 
         PyTuple_SET_ITEM(tuple, 0, num);
 
@@ -437,10 +455,10 @@ test_k_code(PyObject *self)
         if (num == NULL)
         	return NULL;
 
-	value = PyInt_AsUnsignedLongMask(num);
+	value = PyLong_AsUnsignedLongMask(num);
 	if (value != (unsigned long)-0x42)
         	return raiseTestError("test_k_code",
-	    "PyInt_AsUnsignedLongMask() returned wrong value for long 0xFFF...FFF");
+	    "PyLong_AsUnsignedLongMask() returned wrong value for long 0xFFF...FFF");
 
         PyTuple_SET_ITEM(tuple, 0, num);
 
@@ -465,7 +483,7 @@ test_u_code(PyObject *self)
 {
 	PyObject *tuple, *obj;
 	Py_UNICODE *value;
-	int len;
+	Py_ssize_t len;
 
         tuple = PyTuple_New(1);
         if (tuple == NULL)
@@ -503,7 +521,7 @@ test_Z_code(PyObject *self)
 {
 	PyObject *tuple, *obj;
 	Py_UNICODE *value1, *value2;
-	int len1, len2;
+	Py_ssize_t len1, len2;
 
         tuple = PyTuple_New(2);
         if (tuple == NULL)
@@ -613,12 +631,12 @@ test_long_numbits(PyObject *self)
 	return Py_None;
 }
 
-/* Example passing NULLs to PyObject_Str(NULL) and PyObject_Unicode(NULL). */
+/* Example passing NULLs to PyObject_Str(NULL). */
 
 static PyObject *
 test_null_strings(PyObject *self)
 {
-	PyObject *o1 = PyObject_Str(NULL), *o2 = PyObject_Unicode(NULL);
+	PyObject *o1 = PyObject_Str(NULL), *o2 = PyObject_Str(NULL);
 	PyObject *tuple = PyTuple_Pack(2, o1, o2);
 	Py_XDECREF(o1);
 	Py_XDECREF(o2);
@@ -640,7 +658,7 @@ raise_exception(PyObject *self, PyObject *args)
 	if (exc_args == NULL)
 		return NULL;
 	for (i = 0; i < num_args; ++i) {
-		v = PyInt_FromLong(i);
+		v = PyLong_FromLong(i);
 		if (v == NULL) {
 			Py_DECREF(exc_args);
 			return NULL;
@@ -794,7 +812,7 @@ profile_int(PyObject *self, PyObject* args)
 	gettimeofday(&start, NULL);
 	for(k=0; k < 20000; k++)
 		for(i=0; i < 1000; i++) {
-			single = PyInt_FromLong(i);
+			single = PyLong_FromLong(i);
 			Py_DECREF(single);
 		}
 	gettimeofday(&stop, NULL);
@@ -805,7 +823,7 @@ profile_int(PyObject *self, PyObject* args)
 	gettimeofday(&start, NULL);
 	for(k=0; k < 20000; k++)
 		for(i=0; i < 1000; i++) {
-			single = PyInt_FromLong(i+1000000);
+			single = PyLong_FromLong(i+1000000);
 			Py_DECREF(single);
 		}
 	gettimeofday(&stop, NULL);
@@ -817,7 +835,7 @@ profile_int(PyObject *self, PyObject* args)
 	gettimeofday(&start, NULL);
 	for(k=0; k < 20000; k++) {
 		for(i=0; i < 1000; i++) {
-			multiple[i] = PyInt_FromLong(i+1000000);
+			multiple[i] = PyLong_FromLong(i+1000000);
 		}
 		for(i=0; i < 1000; i++) {
 			Py_DECREF(multiple[i]);
@@ -832,7 +850,7 @@ profile_int(PyObject *self, PyObject* args)
 	gettimeofday(&start, NULL);
 	for(k=0; k < 20; k++) {
 		for(i=0; i < 1000000; i++) {
-			multiple[i] = PyInt_FromLong(i+1000000);
+			multiple[i] = PyLong_FromLong(i+1000000);
 		}
 		for(i=0; i < 1000000; i++) {
 			Py_DECREF(multiple[i]);
@@ -846,7 +864,7 @@ profile_int(PyObject *self, PyObject* args)
 	gettimeofday(&start, NULL);
 	for(k=0; k < 10; k++) {
 		for(i=0; i < 1000000; i++) {
-			multiple[i] = PyInt_FromLong(i+1000);
+			multiple[i] = PyLong_FromLong(i+1000);
 		}
 		for(i=0; i < 1000000; i++) {
 			Py_DECREF(multiple[i]);
@@ -856,7 +874,7 @@ profile_int(PyObject *self, PyObject* args)
 	print_delta(5, &start, &stop);
 
 	/* Test 6: Perform small int addition */
-	op1 = PyInt_FromLong(1);
+	op1 = PyLong_FromLong(1);
 	gettimeofday(&start, NULL);
 	for(i=0; i < 10000000; i++) {
 		result = PyNumber_Add(op1, op1);
@@ -867,7 +885,7 @@ profile_int(PyObject *self, PyObject* args)
 	print_delta(6, &start, &stop);
 
 	/* Test 7: Perform medium int addition */
-	op1 = PyInt_FromLong(1000);
+	op1 = PyLong_FromLong(1000);
 	gettimeofday(&start, NULL);
 	for(i=0; i < 10000000; i++) {
 		result = PyNumber_Add(op1, op1);
@@ -896,6 +914,8 @@ static PyMethodDef TestMethods[] = {
 	 PyDoc_STR("This is a pretty normal docstring.")},
 
 	{"getargs_tuple",	getargs_tuple,			 METH_VARARGS},
+	{"getargs_keywords", (PyCFunction)getargs_keywords, 
+	  METH_VARARGS|METH_KEYWORDS},
 	{"getargs_b",		getargs_b,			 METH_VARARGS},
 	{"getargs_B",		getargs_B,			 METH_VARARGS},
 	{"getargs_H",		getargs_H,			 METH_VARARGS},
@@ -928,6 +948,7 @@ static PyMethodDef TestMethods[] = {
 #define AddSym(d, n, f, v) {PyObject *o = f(v); PyDict_SetItemString(d, n, o); Py_DECREF(o);}
 
 typedef struct {
+	char bool_member;
 	char byte_member;
 	unsigned char ubyte_member;
 	short short_member;
@@ -950,6 +971,7 @@ typedef struct {
 } test_structmembers;
 
 static struct PyMemberDef test_members[] = {
+	{"T_BOOL", T_BOOL, offsetof(test_structmembers, structmembers.bool_member), 0, NULL},
 	{"T_BYTE", T_BYTE, offsetof(test_structmembers, structmembers.byte_member), 0, NULL},
 	{"T_UBYTE", T_UBYTE, offsetof(test_structmembers, structmembers.ubyte_member), 0, NULL},
 	{"T_SHORT", T_SHORT, offsetof(test_structmembers, structmembers.short_member), 0, NULL},
@@ -968,39 +990,53 @@ static struct PyMemberDef test_members[] = {
 };
 
 
-static PyObject *test_structmembers_new(PyTypeObject *type, PyObject *args, PyObject *kwargs){
-	static char *keywords[]={"T_BYTE", "T_UBYTE", "T_SHORT", "T_USHORT", "T_INT", "T_UINT",
-		"T_LONG", "T_ULONG", "T_FLOAT", "T_DOUBLE",
-		#ifdef HAVE_LONG_LONG	
+static PyObject *
+test_structmembers_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+{
+	static char *keywords[] = {
+		"T_BOOL", "T_BYTE", "T_UBYTE", "T_SHORT", "T_USHORT",
+		"T_INT", "T_UINT", "T_LONG", "T_ULONG",
+		"T_FLOAT", "T_DOUBLE",
+#ifdef HAVE_LONG_LONG	
 		"T_LONGLONG", "T_ULONGLONG",
-		#endif
+#endif
 		NULL};
-	static char *fmt="|bBhHiIlkfd"
-		#ifdef HAVE_LONG_LONG
+	static char *fmt = "|bbBhHiIlkfd"
+#ifdef HAVE_LONG_LONG
 		"LK"
-		#endif
+#endif
 		;
-	test_structmembers *ob=PyObject_New(test_structmembers, type);
-	if (ob==NULL)
+	test_structmembers *ob;
+	ob = PyObject_New(test_structmembers, type);
+	if (ob == NULL)
 		return NULL;
 	memset(&ob->structmembers, 0, sizeof(all_structmembers));
 	if (!PyArg_ParseTupleAndKeywords(args, kwargs, fmt, keywords,
-		&ob->structmembers.byte_member, &ob->structmembers.ubyte_member,
-		&ob->structmembers.short_member, &ob->structmembers.ushort_member,
-		&ob->structmembers.int_member, &ob->structmembers.uint_member, 
-		&ob->structmembers.long_member, &ob->structmembers.ulong_member,
-		&ob->structmembers.float_member, &ob->structmembers.double_member
-		#ifdef HAVE_LONG_LONG
-		,&ob->structmembers.longlong_member, &ob->structmembers.ulonglong_member
-		#endif
-		)){
+					 &ob->structmembers.bool_member,
+					 &ob->structmembers.byte_member,
+					 &ob->structmembers.ubyte_member,
+					 &ob->structmembers.short_member,
+					 &ob->structmembers.ushort_member,
+					 &ob->structmembers.int_member,
+					 &ob->structmembers.uint_member, 
+					 &ob->structmembers.long_member,
+					 &ob->structmembers.ulong_member,
+					 &ob->structmembers.float_member,
+					 &ob->structmembers.double_member
+#ifdef HAVE_LONG_LONG
+					 , &ob->structmembers.longlong_member,
+					 &ob->structmembers.ulonglong_member
+#endif
+		)) {
 		Py_DECREF(ob);
 		return NULL;
-		}
+	}
 	return (PyObject *)ob;
 }
 
-static void test_structmembers_free(PyObject *ob){
+static void
+test_structmembers_free(PyObject *ob)
+{
 	PyObject_FREE(ob);
 }
 
@@ -1021,8 +1057,8 @@ static PyTypeObject test_structmembersType = {
 	0,				/* tp_hash */
 	0,				/* tp_call */
 	0,				/* tp_str */
-	PyObject_GenericGetAttr,
-	PyObject_GenericSetAttr,
+	PyObject_GenericGetAttr,	/* tp_getattro */
+	PyObject_GenericSetAttr,	/* tp_setattro */
 	0,				/* tp_as_buffer */
 	0,				/* tp_flags */
 	"Type containing all structmember types",
@@ -1033,7 +1069,7 @@ static PyTypeObject test_structmembersType = {
 	0,				/* tp_iter */
 	0,				/* tp_iternext */
 	0,				/* tp_methods */
-	test_members,	/* tp_members */
+	test_members,			/* tp_members */
 	0,
 	0,
 	0,
@@ -1042,7 +1078,7 @@ static PyTypeObject test_structmembersType = {
 	0,
 	0,
 	0,
-	test_structmembers_new,			/* tp_new */
+	test_structmembers_new,	       	/* tp_new */
 };
 
 
@@ -1055,21 +1091,21 @@ init_testcapi(void)
 	if (m == NULL)
 		return;
 
-	Py_Type(&test_structmembersType)=&PyType_Type;
+	Py_TYPE(&test_structmembersType)=&PyType_Type;
 	Py_INCREF(&test_structmembersType);
 	PyModule_AddObject(m, "test_structmembersType", (PyObject *)&test_structmembersType);
 
-	PyModule_AddObject(m, "CHAR_MAX", PyInt_FromLong(CHAR_MAX));
-	PyModule_AddObject(m, "CHAR_MIN", PyInt_FromLong(CHAR_MIN));
-	PyModule_AddObject(m, "UCHAR_MAX", PyInt_FromLong(UCHAR_MAX));
-	PyModule_AddObject(m, "SHRT_MAX", PyInt_FromLong(SHRT_MAX));
-	PyModule_AddObject(m, "SHRT_MIN", PyInt_FromLong(SHRT_MIN));
-	PyModule_AddObject(m, "USHRT_MAX", PyInt_FromLong(USHRT_MAX));
+	PyModule_AddObject(m, "CHAR_MAX", PyLong_FromLong(CHAR_MAX));
+	PyModule_AddObject(m, "CHAR_MIN", PyLong_FromLong(CHAR_MIN));
+	PyModule_AddObject(m, "UCHAR_MAX", PyLong_FromLong(UCHAR_MAX));
+	PyModule_AddObject(m, "SHRT_MAX", PyLong_FromLong(SHRT_MAX));
+	PyModule_AddObject(m, "SHRT_MIN", PyLong_FromLong(SHRT_MIN));
+	PyModule_AddObject(m, "USHRT_MAX", PyLong_FromLong(USHRT_MAX));
 	PyModule_AddObject(m, "INT_MAX",  PyLong_FromLong(INT_MAX));
 	PyModule_AddObject(m, "INT_MIN",  PyLong_FromLong(INT_MIN));
 	PyModule_AddObject(m, "UINT_MAX",  PyLong_FromUnsignedLong(UINT_MAX));
-	PyModule_AddObject(m, "LONG_MAX", PyInt_FromLong(LONG_MAX));
-	PyModule_AddObject(m, "LONG_MIN", PyInt_FromLong(LONG_MIN));
+	PyModule_AddObject(m, "LONG_MAX", PyLong_FromLong(LONG_MAX));
+	PyModule_AddObject(m, "LONG_MIN", PyLong_FromLong(LONG_MIN));
 	PyModule_AddObject(m, "ULONG_MAX", PyLong_FromUnsignedLong(ULONG_MAX));
 	PyModule_AddObject(m, "FLT_MAX", PyFloat_FromDouble(FLT_MAX));
 	PyModule_AddObject(m, "FLT_MIN", PyFloat_FromDouble(FLT_MIN));
@@ -1078,8 +1114,8 @@ init_testcapi(void)
 	PyModule_AddObject(m, "LLONG_MAX", PyLong_FromLongLong(PY_LLONG_MAX));
 	PyModule_AddObject(m, "LLONG_MIN", PyLong_FromLongLong(PY_LLONG_MIN));
 	PyModule_AddObject(m, "ULLONG_MAX", PyLong_FromUnsignedLongLong(PY_ULLONG_MAX));
-	PyModule_AddObject(m, "PY_SSIZE_T_MAX", PyInt_FromSsize_t(PY_SSIZE_T_MAX));
-	PyModule_AddObject(m, "PY_SSIZE_T_MIN", PyInt_FromSsize_t(PY_SSIZE_T_MIN));
+	PyModule_AddObject(m, "PY_SSIZE_T_MAX", PyLong_FromSsize_t(PY_SSIZE_T_MAX));
+	PyModule_AddObject(m, "PY_SSIZE_T_MIN", PyLong_FromSsize_t(PY_SSIZE_T_MIN));
 
 	TestError = PyErr_NewException("_testcapi.error", NULL, NULL);
 	Py_INCREF(TestError);

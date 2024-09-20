@@ -28,7 +28,7 @@ class HelperMixin:
 class IntTestCase(unittest.TestCase, HelperMixin):
     def test_ints(self):
         # Test the full range of Python ints.
-        n = sys.maxint
+        n = sys.maxsize
         while n:
             for expected in (-n, n):
                 self.helper(expected)
@@ -39,7 +39,7 @@ class IntTestCase(unittest.TestCase, HelperMixin):
         # we're running the test on a 32-bit box, of course.
 
         def to_little_endian_string(value, nbytes):
-            b = bytes()
+            b = bytearray()
             for i in range(nbytes):
                 b.append(value & 0xff)
                 value >>= 8
@@ -66,7 +66,7 @@ class FloatTestCase(unittest.TestCase, HelperMixin):
     def test_floats(self):
         # Test a few floats
         small = 1e-25
-        n = sys.maxint * 3.7e250
+        n = sys.maxsize * 3.7e250
         while n > small:
             for expected in (-n, n):
                 self.helper(float(expected))
@@ -81,7 +81,7 @@ class FloatTestCase(unittest.TestCase, HelperMixin):
         got = marshal.loads(s)
         self.assertEqual(f, got)
 
-        n = sys.maxint * 3.7e-250
+        n = sys.maxsize * 3.7e-250
         while n < small:
             for expected in (-n, n):
                 f = float(expected)
@@ -187,6 +187,17 @@ class BugsTestCase(unittest.TestCase):
 
         last.append([0])
         self.assertRaises(ValueError, marshal.dumps, head)
+
+    def test_exact_type_match(self):
+        # Former bug:
+        #   >>> class Int(int): pass
+        #   >>> type(loads(dumps(Int())))
+        #   <type 'int'>
+        for typ in (int, float, complex, tuple, list, dict, set, frozenset):
+            # Note: str sublclasses are not tested because they get handled
+            # by marshal's routines for objects supporting the buffer API.
+            subtyp = type('subtyp', (typ,), {})
+            self.assertRaises(ValueError, marshal.dumps, subtyp())
 
 def test_main():
     test_support.run_unittest(IntTestCase,

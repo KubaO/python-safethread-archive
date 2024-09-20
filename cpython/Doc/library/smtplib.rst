@@ -184,6 +184,16 @@ An :class:`SMTP` instance has the following methods:
    necessary to call this method explicitly.  It will be implicitly called by
    :meth:`sendmail` when necessary.
 
+.. method:: SMTP.ehlo_or_helo_if_needed()
+
+   This method call :meth:`ehlo` and or :meth:`helo` if there has been no
+   previous ``EHLO`` or ``HELO`` command this session.  It tries ESMTP ``EHLO``
+   first.
+
+   :exc:SMTPHeloError
+     The server didn't reply properly to the ``HELO`` greeting.
+
+   .. versionadded:: 2.6
 
 .. method:: SMTP.has_extn(name)
 
@@ -229,6 +239,22 @@ An :class:`SMTP` instance has the following methods:
 
    If *keyfile* and *certfile* are provided, these are passed to the :mod:`socket`
    module's :func:`ssl` function.
+
+   If there has been no previous ``EHLO`` or ``HELO`` command this session,
+   this method tries ESMTP ``EHLO`` first.
+
+   .. versionchanged:: 2.6
+
+   :exc:`SMTPHeloError`
+      The server didn't reply properly to the ``HELO`` greeting.
+
+   :exc:`SMTPException`
+     The server does not support the STARTTLS extension.
+
+   .. versionchanged:: 2.6
+
+   :exc:`RuntimeError`
+     SSL/TLS support is not available to your python interpreter.
 
 
 .. method:: SMTP.sendmail(from_addr, to_addrs, msg[, mail_options, rcpt_options])
@@ -306,14 +332,8 @@ example doesn't do any processing of the :rfc:`822` headers.  In particular, the
 
    import smtplib
 
-   def raw_input(prompt):
-       import sys
-       sys.stdout.write(prompt)
-       sys.stdout.flush()
-       return sys.stdin.readline()
-
    def prompt(prompt):
-       return raw_input(prompt).strip()
+       return input(prompt).strip()
 
    fromaddr = prompt("From: ")
    toaddrs  = prompt("To: ").split()
@@ -324,7 +344,7 @@ example doesn't do any processing of the :rfc:`822` headers.  In particular, the
           % (fromaddr, ", ".join(toaddrs)))
    while True:
        try:
-           line = raw_input()
+           line = input()
        except EOFError:
            break
        if not line:

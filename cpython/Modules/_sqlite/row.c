@@ -30,7 +30,7 @@ void pysqlite_row_dealloc(pysqlite_Row* self)
     Py_XDECREF(self->data);
     Py_XDECREF(self->description);
 
-    Py_Type(self)->tp_free((PyObject*)self);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 int pysqlite_row_init(pysqlite_Row* self, PyObject* args, PyObject* kwargs)
@@ -76,12 +76,7 @@ PyObject* pysqlite_row_subscript(pysqlite_Row* self, PyObject* idx)
 
     PyObject* item;
 
-    if (PyInt_Check(idx)) {
-        _idx = PyInt_AsLong(idx);
-        item = PyTuple_GetItem(self->data, _idx);
-        Py_XINCREF(item);
-        return item;
-    } else if (PyLong_Check(idx)) {
+    if (PyLong_Check(idx)) {
         _idx = PyLong_AsLong(idx);
         item = PyTuple_GetItem(self->data, _idx);
         Py_XINCREF(item);
@@ -92,7 +87,7 @@ PyObject* pysqlite_row_subscript(pysqlite_Row* self, PyObject* idx)
         nitems = PyTuple_Size(self->description);
 
         for (i = 0; i < nitems; i++) {
-            compare_key = PyString_AsString(PyTuple_GET_ITEM(PyTuple_GET_ITEM(self->description, i), 0));
+            compare_key = PyUnicode_AsString(PyTuple_GET_ITEM(PyTuple_GET_ITEM(self->description, i), 0));
             if (!compare_key) {
                 return NULL;
             }

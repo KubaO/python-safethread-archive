@@ -197,10 +197,11 @@ PyZlib_decompress(PyObject *self, PyObject *args)
     PyObject *result_str;
     Byte *input;
     int length, err;
-    int wsize=DEF_WBITS, r_strlen=DEFAULTALLOC;
+    int wsize=DEF_WBITS;
+    Py_ssize_t r_strlen=DEFAULTALLOC;
     z_stream zst;
 
-    if (!PyArg_ParseTuple(args, "s#|ii:decompress",
+    if (!PyArg_ParseTuple(args, "s#|in:decompress",
 			  &input, &length, &wsize, &r_strlen))
 	return NULL;
 
@@ -921,7 +922,7 @@ PyZlib_adler32(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "s#|k:adler32", &buf, &len, &adler32val))
 	return NULL;
     adler32val = adler32(adler32val, buf, len);
-    return PyInt_FromLong(adler32val);
+    return PyLong_FromLong(adler32val);
 }
 
 PyDoc_STRVAR(crc32__doc__,
@@ -939,7 +940,7 @@ PyZlib_crc32(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "s#|k:crc32", &buf, &len, &crc32val))
 	return NULL;
     crc32val = crc32(crc32val, buf, len);
-    return PyInt_FromLong(crc32val);
+    return PyLong_FromLong(crc32val);
 }
 
 
@@ -1011,8 +1012,8 @@ PyMODINIT_FUNC
 PyInit_zlib(void)
 {
     PyObject *m, *ver;
-    Py_Type(&Comptype) = &PyType_Type;
-    Py_Type(&Decomptype) = &PyType_Type;
+    Py_TYPE(&Comptype) = &PyType_Type;
+    Py_TYPE(&Decomptype) = &PyType_Type;
     m = Py_InitModule4("zlib", zlib_methods,
 		       zlib_module_documentation,
 		       (PyObject*)NULL,PYTHON_API_VERSION);

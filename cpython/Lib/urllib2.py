@@ -359,7 +359,7 @@ class OpenerDirector:
 
     def open(self, fullurl, data=None, timeout=None):
         # accept a URL or a Request object
-        if isinstance(fullurl, basestring):
+        if isinstance(fullurl, str):
             req = Request(fullurl, data)
         else:
             req = fullurl
@@ -531,8 +531,11 @@ class HTTPRedirectHandler(BaseHandler):
             # do the same.
             # be conciliant with URIs containing a space
             newurl = newurl.replace(' ', '%20')
+            newheaders = dict((k,v) for k,v in req.headers.items()
+                              if k.lower() not in ("content-length", "content-type")
+                             )
             return Request(newurl,
-                           headers=req.headers,
+                           headers=newheaders,
                            origin_req_host=req.get_origin_req_host(),
                            unverifiable=True)
         else:
@@ -702,7 +705,7 @@ class HTTPPasswordMgr:
 
     def add_password(self, realm, uri, user, passwd):
         # uri could be a single URI or a sequence
-        if isinstance(uri, basestring):
+        if isinstance(uri, str):
             uri = [uri]
         if not realm in self.passwd:
             self.passwd[realm] = {}
@@ -802,7 +805,7 @@ class AbstractBasicAuthHandler:
         user, pw = self.passwd.find_user_password(realm, host)
         if pw is not None:
             raw = "%s:%s" % (user, pw)
-            auth = 'Basic %s' % str(base64.b64encode(raw)).strip()
+            auth = 'Basic %s' % base64.b64encode(raw).strip().decode()
             if req.headers.get(self.auth_header, None) == auth:
                 return None
             req.add_header(self.auth_header, auth)
@@ -1240,7 +1243,7 @@ class FTPHandler(BaseHandler):
         import mimetypes
         host = req.get_host()
         if not host:
-            raise URLError('ftp error', 'no host given')
+            raise URLError('ftp error: no host given')
         host, port = splitport(host)
         if port is None:
             port = ftplib.FTP_PORT
@@ -1286,7 +1289,7 @@ class FTPHandler(BaseHandler):
             headers = mimetools.Message(sf)
             return addinfourl(fp, headers, req.get_full_url())
         except ftplib.all_errors as msg:
-            raise URLError('ftp error', msg).with_traceback(sys.exc_info()[2])
+            raise URLError('ftp error: %s' % msg).with_traceback(sys.exc_info()[2])
 
     def connect_ftp(self, user, passwd, host, port, dirs, timeout):
         fw = ftpwrapper(user, passwd, host, port, dirs, timeout)

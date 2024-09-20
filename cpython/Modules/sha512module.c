@@ -498,7 +498,7 @@ SHA512_digest(SHAobject *self, PyObject *unused)
 
     SHAcopy(self, &temp);
     sha512_final(digest, &temp);
-    return PyBytes_FromStringAndSize((const char *)digest, self->digestsize);
+    return PyString_FromStringAndSize((const char *)digest, self->digestsize);
 }
 
 PyDoc_STRVAR(SHA512_hexdigest__doc__,
@@ -569,7 +569,7 @@ static PyMethodDef SHA_methods[] = {
 static PyObject *
 SHA512_get_block_size(PyObject *self, void *closure)
 {
-    return PyInt_FromLong(SHA_BLOCKSIZE);
+    return PyLong_FromLong(SHA_BLOCKSIZE);
 }
 
 static PyObject *
@@ -753,10 +753,10 @@ init_sha512(void)
 {
     PyObject *m;
 
-    Py_Type(&SHA384type) = &PyType_Type;
+    Py_TYPE(&SHA384type) = &PyType_Type;
     if (PyType_Ready(&SHA384type) < 0)
         return;
-    Py_Type(&SHA512type) = &PyType_Type;
+    Py_TYPE(&SHA512type) = &PyType_Type;
     if (PyType_Ready(&SHA512type) < 0)
         return;
     m = Py_InitModule("_sha512", SHA_functions);

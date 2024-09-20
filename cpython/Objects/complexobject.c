@@ -265,13 +265,14 @@ PyComplex_AsCComplex(PyObject *op)
 	/* return -1 on failure */
 	cv.real = -1.;
 	cv.imag = 0.;
-	
+		
+	if (complex_str == NULL) {
+		if (!(complex_str = PyUnicode_FromString("__complex__")))
+			return cv;
+	}
+
         {
 		PyObject *complexfunc;
-		if (!complex_str) {
-			if (!(complex_str = PyUnicode_FromString("__complex__")))
-				return cv;
-		}
 		complexfunc = _PyType_Lookup(op->ob_type, complex_str);
 		/* complexfunc is a borrowed reference */
 		if (complexfunc) {
@@ -313,16 +314,49 @@ complex_to_buf(char *buf, int bufsz, PyComplexObject *v, int precision)
 {
 	char format[32];
 	if (v->cval.real == 0.) {
-		PyOS_snprintf(format, sizeof(format), "%%.%ig", precision);
-		PyOS_ascii_formatd(buf, bufsz - 1, format, v->cval.imag);
-		strncat(buf, "j", 1);
+		if (!Py_IS_FINITE(v->cval.imag)) {
+			if (Py_IS_NAN(v->cval.imag))
+				strncpy(buf, "nan*j", 6);
+			/* else if (copysign(1, v->cval.imag) == 1) */
+			else if (v->cval.imag > 0)
+				strncpy(buf, "inf*j", 6);
+			else
+				strncpy(buf, "-inf*j", 7);
+		}
+		else {
+			PyOS_snprintf(format, sizeof(format), "%%.%ig", precision);
+			PyOS_ascii_formatd(buf, bufsz - 1, format, v->cval.imag);
+			strncat(buf, "j", 1);
+		}
 	} else {
 		char re[64], im[64];
 		/* Format imaginary part with sign, real part without */
-		PyOS_snprintf(format, sizeof(format), "%%.%ig", precision);
-		PyOS_ascii_formatd(re, sizeof(re), format, v->cval.real);
-		PyOS_snprintf(format, sizeof(format), "%%+.%ig", precision);
-		PyOS_ascii_formatd(im, sizeof(im), format, v->cval.imag);
+		if (!Py_IS_FINITE(v->cval.real)) {
+			if (Py_IS_NAN(v->cval.real))
+				strncpy(re, "nan", 4);
+			/* else if (copysign(1, v->cval.real) == 1) */
+			else if (v->cval.real > 0)
+				strncpy(re, "inf", 4);
+			else
+				strncpy(re, "-inf", 5);
+		}
+		else {
+			PyOS_snprintf(format, sizeof(format), "%%.%ig", precision);
+			PyOS_ascii_formatd(re, sizeof(re), format, v->cval.real);
+		}
+		if (!Py_IS_FINITE(v->cval.imag)) {
+			if (Py_IS_NAN(v->cval.imag))
+				strncpy(im, "+nan*", 6);
+			/* else if (copysign(1, v->cval.imag) == 1) */
+			else if (v->cval.imag > 0)
+				strncpy(im, "+inf*", 6);
+			else
+				strncpy(im, "-inf*", 6);
+		}
+		else {
+			PyOS_snprintf(format, sizeof(format), "%%+.%ig", precision);
+			PyOS_ascii_formatd(im, sizeof(im), format, v->cval.imag);
+		}
 		PyOS_snprintf(buf, bufsz, "(%s%sj)", re, im);
 	}
 }
@@ -375,24 +409,24 @@ complex_hash(PyComplexObject *v)
 static int
 to_complex(PyObject **pobj, Py_complex *pc)
 {
-    PyObject *obj = *pobj;
+	PyObject *obj = *pobj;
 
-    pc->real = pc->imag = 0.0;
-    if (PyLong_Check(obj)) {
-        pc->real = PyLong_AsDouble(obj);
-        if (pc->real == -1.0 && PyErr_Occurred()) {
-            *pobj = NULL;
-            return -1;
-        }
-        return 0;
-    }
-    if (PyFloat_Check(obj)) {
-        pc->real = PyFloat_AsDouble(obj);
-        return 0;
-    }
-    Py_INCREF(Py_NotImplemented);
-    *pobj = Py_NotImplemented;
-    return -1;
+	pc->real = pc->imag = 0.0;
+	if (PyLong_Check(obj)) {
+		pc->real = PyLong_AsDouble(obj);
+		if (pc->real == -1.0 && PyErr_Occurred()) {
+			*pobj = NULL;
+			return -1;
+		}
+		return 0;
+	}
+	if (PyFloat_Check(obj)) {
+		pc->real = PyFloat_AsDouble(obj);
+		return 0;
+	}
+	Py_INCREF(Py_NotImplemented);
+	*pobj = Py_NotImplemented;
+	return -1;
 }
 		
 
@@ -401,8 +435,8 @@ complex_add(PyObject *v, PyObject *w)
 {
 	Py_complex result;
 	Py_complex a, b;
-        TO_COMPLEX(v, a);
-        TO_COMPLEX(w, b);
+	TO_COMPLEX(v, a);
+	TO_COMPLEX(w, b);
 	PyFPE_START_PROTECT("complex_add", return 0)
 	result = c_sum(a, b);
 	PyFPE_END_PROTECT(result)
@@ -414,8 +448,8 @@ complex_sub(PyObject *v, PyObject *w)
 {
 	Py_complex result;
 	Py_complex a, b;
-        TO_COMPLEX(v, a);
-        TO_COMPLEX(w, b);
+	TO_COMPLEX(v, a);
+	TO_COMPLEX(w, b);
 	PyFPE_START_PROTECT("complex_sub", return 0)
 	result = c_diff(a, b);
 	PyFPE_END_PROTECT(result)
@@ -427,8 +461,8 @@ complex_mul(PyObject *v, PyObject *w)
 {
 	Py_complex result;
 	Py_complex a, b;
-        TO_COMPLEX(v, a);
-        TO_COMPLEX(w, b);
+	TO_COMPLEX(v, a);
+	TO_COMPLEX(w, b);
 	PyFPE_START_PROTECT("complex_mul", return 0)
 	result = c_prod(a, b);
 	PyFPE_END_PROTECT(result)
@@ -440,8 +474,8 @@ complex_div(PyObject *v, PyObject *w)
 {
 	Py_complex quot;
 	Py_complex a, b;
-        TO_COMPLEX(v, a);
-        TO_COMPLEX(w, b);
+	TO_COMPLEX(v, a);
+	TO_COMPLEX(w, b);
 	PyFPE_START_PROTECT("complex_div", return 0)
 	errno = 0;
 	quot = c_quot(a, b);
@@ -477,8 +511,8 @@ complex_pow(PyObject *v, PyObject *w, PyObject *z)
 	Py_complex exponent;
 	long int_exponent;
 	Py_complex a, b;
-        TO_COMPLEX(v, a);
-        TO_COMPLEX(w, b);
+	TO_COMPLEX(v, a);
+	TO_COMPLEX(w, b);
 
  	if (z != Py_None) {
 		PyErr_SetString(PyExc_ValueError, "complex modulo");
@@ -557,8 +591,8 @@ complex_richcompare(PyObject *v, PyObject *w, int op)
 {
 	PyObject *res;
 	Py_complex i, j;
-        TO_COMPLEX(v, i);
-        TO_COMPLEX(w, j);
+	TO_COMPLEX(v, i);
+	TO_COMPLEX(w, j);
 
 	if (op != Py_EQ && op != Py_NE) {
 		/* XXX Should eventually return NotImplemented */
@@ -673,11 +707,11 @@ complex_subtype_from_string(PyTypeObject *type, PyObject *v)
 	start = s;
 	while (*s && isspace(Py_CHARMASK(*s)))
 		s++;
-    if (s[0] == '\0') {
+	if (s[0] == '\0') {
 		PyErr_SetString(PyExc_ValueError,
 				"complex() arg is an empty string");
 		return NULL;
-    }
+	}
 	if (s[0] == '(') {
 		/* Skip over possible bracket from repr(). */
 		got_bracket = 1;
@@ -809,6 +843,8 @@ complex_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	PyNumberMethods *nbr, *nbi = NULL;
 	Py_complex cr, ci;
 	int own_r = 0;
+	int cr_is_complex = 0;
+	int ci_is_complex = 0;
 	static PyObject *complexstr;
 	static char *kwlist[] = {"real", "imag", 0};
 
@@ -835,7 +871,7 @@ complex_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 					"complex() can't take second arg"
 					" if first is a string");
 			return NULL;
-                }
+		}
 		return complex_subtype_from_string(type, r);
 	}
 	if (i != NULL && PyUnicode_Check(i)) {
@@ -889,6 +925,7 @@ complex_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		   retaining its real & imag parts here, and the return
 		   value is (properly) of the builtin complex type. */
 		cr = ((PyComplexObject*)r)->cval;
+		cr_is_complex = 1;
 		if (own_r) {
 			Py_DECREF(r);
 		}
@@ -897,7 +934,6 @@ complex_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		/* The "real" part really is entirely real, and contributes
 		   nothing in the imaginary direction.  
 		   Just treat it as a double. */
-		cr.imag = 0.0;  
 		tmp = PyNumber_Float(r);
 		if (own_r) {
 			/* r was a newly created complex number, rather
@@ -913,19 +949,19 @@ complex_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 			return NULL;
 		}
 		cr.real = PyFloat_AsDouble(tmp);
+		cr.imag = 0.0; /* Shut up compiler warning */
 		Py_DECREF(tmp);
 	}
 	if (i == NULL) {
 		ci.real = 0.0;
-		ci.imag = 0.0;
 	}
-	else if (PyComplex_Check(i))
+	else if (PyComplex_Check(i)) {
 		ci = ((PyComplexObject*)i)->cval;
-	else {
+		ci_is_complex = 1;
+	} else {
 		/* The "imag" part really is entirely imaginary, and
 		   contributes nothing in the real direction.
 		   Just treat it as a double. */
-		ci.imag = 0.0;
 		tmp = (*nbi->nb_float)(i);
 		if (tmp == NULL)
 			return NULL;
@@ -933,11 +969,16 @@ complex_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		Py_DECREF(tmp);
 	}
 	/*  If the input was in canonical form, then the "real" and "imag"
-	    parts are real numbers, so that ci.real and cr.imag are zero.
+	    parts are real numbers, so that ci.imag and cr.imag are zero.
 	    We need this correction in case they were not real numbers. */
-	cr.real -= ci.imag;
-	cr.imag += ci.real;
-	return complex_subtype_from_c_complex(type, cr);
+
+	if (ci_is_complex) {
+		cr.real -= ci.imag;
+	}
+	if (cr_is_complex) {
+		ci.real += cr.imag;
+	}
+	return complex_subtype_from_doubles(type, cr.real, ci.real);
 }
 
 PyDoc_STRVAR(complex_doc,

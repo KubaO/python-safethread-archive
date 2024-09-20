@@ -1,5 +1,5 @@
 import unittest
-from test.test_support import verbose, run_unittest
+from test.test_support import run_unittest
 import sys
 
 
@@ -36,7 +36,6 @@ class AllTest(unittest.TestCase):
         self.check_all("Queue")
         self.check_all("SimpleHTTPServer")
         self.check_all("SocketServer")
-        self.check_all("UserString")
         self.check_all("aifc")
         self.check_all("base64")
         self.check_all("bdb")

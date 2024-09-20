@@ -8,7 +8,6 @@ __revision__ = "$Id$"
 
 import os, re
 import fnmatch
-from glob import glob
 from distutils.util import convert_path
 from distutils.errors import DistutilsTemplateError, DistutilsInternalError
 from distutils import log
@@ -301,7 +300,7 @@ def translate_pattern(pattern, anchor=1, prefix=None, is_regex=0):
     or just returned as-is (assumes it's a regex object).
     """
     if is_regex:
-        if isinstance(pattern, basestring):
+        if isinstance(pattern, str):
             return re.compile(pattern)
         else:
             return pattern

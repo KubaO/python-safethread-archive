@@ -4,11 +4,233 @@ Python News
 
 (editors: check NEWS.help for information about editing NEWS using ReST.)
 
+What's New in Python 3.0a3?
+===========================
+
+*Release date: 29-Feb-2008*
+
+Core and Builtins
+-----------------
+
+- Issue #2115: Important speedup in setting __slot__ attributes.  Also 
+  prevent a possible crash: an Abstract Base Class would try to access a slot 
+  on a registered virtual subclass.
+
+- Fixed repr() and str() of complex numbers with infinity or nan as real or
+  imaginary part.
+
+- Clear all free list during a gc.collect() of the highest generation in order
+  to allow pymalloc to free more arenas. Python may give back memory to the
+  OS earlier.
+
+- Issue #2045: Fix an infinite recursion triggered when printing a subclass of
+  collections.defaultdict, if its default_factory is set to a bound method.
+
+- Fixed a minor memory leak in dictobject.c. The content of the free
+  list was not freed on interpreter shutdown.
+
+- Limit free list of method and builtin function objects to 256 entries
+  each.
+
+- Patch #1953: Added ``sys._compact_freelists()`` and the C API functions
+  ``PyInt_CompactFreeList`` and ``PyFloat_CompactFreeList``
+  to compact the internal free lists of pre-allocted ints and floats.
+
+- Bug #1983: Fixed return type of fork(), fork1() and forkpty() calls.
+  Python expected the return type int but the fork familie returns pi_t.
+
+- Issue #1678380: Fix a bug that identifies 0j and -0j when they appear
+  in the same code unit.
+
+- Issue #2025 :  Add tuple.count() and tuple.index() methods to comply with
+  the collections.Sequence API.
+
+- Fixed multiple reinitialization of the Python interpreter. The small int
+  list in longobject.c has caused a seg fault during the third finalization.
+
+- Issue #1973: bytes.fromhex('') raises SystemError
+
+- Issue #1771: remove cmp parameter from sorted() and list.sort()
+
+- Issue #1969: split and rsplit in bytearray are inconsistent
+
+- map() and itertools.imap() no longer accept None for the first argument.
+  Use zip() instead.
+
+- Issue #1769: Now int("- 1") is not allowed any more.
+
+- Object/longobject.c: long(float('nan')) raises an OverflowError instead
+  of returning 0.
+
+- Issue #1762972: __file__ points to the source file instead of the pyc/pyo
+  file if the py file exists.
+
+- Issue #1393: object_richcompare() returns NotImplemented instead of
+  False if the objects aren't equal, to give the other side a chance.
+
+- Issue #1692: Interpreter was not displaying location of SyntaxError.
+
+- Improve some exception messages when Windows fails to load an extension
+  module. Now we get for example '%1 is not a valid Win32 application' instead
+  of 'error code 193'.  Also use Unicode strings to deal with non-English
+  locales.
+
+- Issue #1587: Added instancemethod wrapper for PyCFunctions. The Python C API
+  has gained a new type *PyInstanceMethod_Type* and the functions
+  *PyInstanceMethod_Check(o)*, *PyInstanceMethod_New(func)* and
+  *PyInstanceMethod_Function(im)*.
+
+- Constants gc.DEBUG_OBJECT and gc.DEBUG_INSTANCE have been removed from the
+  gc module; gc.DEBUG_COLLECTABLE or gc.DEBUG_UNCOLLECTABLE are now enough to
+  print the corresponding list of objects considered by the garbage collector.
+
+- Issue #1573: Improper use of the keyword-only syntax makes the parser crash.
+
+- Issue #1564: The set implementation should special-case PyUnicode instead
+  of PyString.
+
+- Patch #1031213: Decode source line in SyntaxErrors back to its
+  original source encoding.
+
+- inspect.getsource() includes the decorators again.
+
+- Bug #1713: posixpath.ismount() claims symlink to a mountpoint is a
+  mountpoint.
+
+- Fix utf-8-sig incremental decoder, which didn't recognise a BOM when the
+  first chunk fed to the decoder started with a BOM, but was longer than 3
+  bytes.
+
+
+Extension Modules
+-----------------
+
+- Issue #1762972: Readded the reload() function as imp.reload()
+
+- Bug #2111: mmap segfaults when trying to write a block opened with PROT_READ
+
+- #2063: correct order of utime and stime in os.times() result on Windows.
+
+
+Library
+-------
+
+- Weakref dictionaries now inherit from MutableMapping.
+  XXX their API still needs to be modernized (i.e. eliminate the iter methods).
+
+- Created new UserDict class in collections module.  This one inherits from and
+  complies with the MutableMapping ABC.  Also, moved UserString and UserList
+  to the collections module.  The MutableUserString class was removed.
+
+- Removed UserDict.DictMixin.  Replaced all its uses with
+  collections.MutableMapping.
+
+- Issue #1703: getpass() should flush after writing prompt.
+
+- Issue #1585: IDLE uses non-existent xrange() function.
+
+- Issue #1578: Problems in win_getpass.
+
+
+Build
+-----
+
+- Renamed --enable-unicode configure flag to --with-wide-unicode, since
+  Unicode strings can't be disabled anymore.
+
+
+C API
+-----
+
+- Issue #1629: Renamed Py_Size, Py_Type and Py_Refcnt to Py_SIZE,
+  Py_TYPE and Py_REFCNT.
+
+- New API PyImport_ImportModuleNoBlock(), works like PyImport_ImportModule()
+  but won't block on the import lock (returning an error instead).
+
+
+What's New in Python 3.0a2?
+===========================
+
+*Release date: 07-Dec-2007*
+
+(Note: this list is incomplete.)
+
+Core and Builtins
+-----------------
+
+- str8 now has the same construction signature as bytes.
+
+- Comparisons between str and str8 now return False/True for ==/!=.  sqlite3
+  returns str8 when recreating on object from it's __conform__ value.  The
+  struct module returns str8 for all string-related formats.  This was true
+  before this change, but becomes more apparent thanks to string comparisons
+  always being False.
+
+- Replaced `PyFile_FromFile()` with `PyFile_FromFd(fd, name. mode, buffer, 
+  encoding, newline)`
+
+- Fixed `imp.find_module()` to obey the -*- coding: -*- header.
+
+- Changed `__file__` and `co_filename` to unicode. The path names are decoded
+  with `Py_FileSystemDefaultEncoding` and a new API method 
+  `PyUnicode_DecodeFSDefault(char*)` was added.
+
+- io.open() and _fileio.FileIO have grown a new argument closefd. A false
+  value disables the closing of the file descriptor.
+
+- Added a new option -b to issues warnings (-bb for errors) about certain
+  operations between bytes/buffer and str like str(b'') and comparsion.
+
+- The standards streams sys.stdin, stdout and stderr may be None when the
+  when the C runtime library returns an invalid file descriptor for the
+  streams (fileno(stdin) < 0). For now this happens only for Windows GUI
+  apps and scripts started with `pythonw.exe`.
+
+- Added PCbuild9 directory for VS 2008.
+
+- Renamed structmember.h WRITE_RESTRICTED to PY_WRITE_RESTRICTED to work
+  around a name clash with VS 2008 on Windows.
+
+- Unbound methods are gone for good. ClassObject.method returns an ordinary
+  function object, instance.method still returns a bound method object.
+  The API of bound methods is cleaned up, too. The im_class attribute is
+  removed and im_func + im_self are renamed to __func__ and __self__. The
+  factory PyMethod_New takes only func and instance as argument.
+
+- intobject.h is no longer included by Python.h. The remains were moved
+  to longobject.h. It still exists to define several aliases from PyInt_
+  to PyLong_ functions.
+
+- Removed sys.maxint, use sys.maxsize instead.
+
+
+Extension Modules
+-----------------
+
+- The `hotshot` profiler has been removed; use `cProfile` instead.
+
+
+Library
+-------
+
+- When loading an external file using testfile(), the passed-in encoding
+  argument was being ignored if __loader__ is defined and forcing the source to
+  be UTF-8.
+
+- The methods `os.tmpnam()`, `os.tempnam()` and `os.tmpfile()` have been
+  removed in favor of the tempfile module.
+
+- Removed the 'new' module.
+
+- Removed all types from the 'types' module that are easily accessable through
+  builtins.
+
+
 What's New in Python 3.0a1?
 ==========================
 
 *Release date: 31-Aug-2007*
-
 
 Core and Builtins
 -----------------

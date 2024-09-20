@@ -66,7 +66,6 @@ Req-started-unread-response    _CS_REQ_STARTED    <response_class>
 Req-sent-unread-response       _CS_REQ_SENT       <response_class>
 """
 
-import errno
 import io
 import mimetools
 import socket
@@ -449,7 +448,12 @@ class HTTPResponse:
             try:
                 self.length = int(length)
             except ValueError:
-                pass
+                self.length = None
+            else:
+                if self.length < 0:  # ignore nonsensical negative lengths
+                    self.length = None
+        else:
+            self.length = None
 
         # does the body have a fixed length? (of zero)
         if (status == NO_CONTENT or status == NOT_MODIFIED or
@@ -478,7 +482,7 @@ class HTTPResponse:
         # Some HTTP/1.0 implementations have support for persistent
         # connections, using rules different than HTTP/1.1.
 
-        # For older HTTP, Keep-Alive indiciates persistent connection.
+        # For older HTTP, Keep-Alive indicates persistent connection.
         if self.msg.getheader("keep-alive"):
             return False
 
@@ -527,7 +531,7 @@ class HTTPResponse:
 
     def read(self, amt=None):
         if self.fp is None:
-            return ""
+            return b""
 
         if self.chunked:
             return self._read_chunked(amt)
@@ -553,23 +557,30 @@ class HTTPResponse:
         s = self.fp.read(amt)
         if self.length is not None:
             self.length -= len(s)
-
+            if not self.length:
+                self.close()
         return s
 
     def _read_chunked(self, amt):
         assert self.chunked != _UNKNOWN
         chunk_left = self.chunk_left
-        value = ""
+        value = b""
 
         # XXX This accumulates chunks by repeated string concatenation,
         # which is not efficient as the number or size of chunks gets big.
         while True:
             if chunk_left is None:
                 line = self.fp.readline()
-                i = line.find(";")
+                i = line.find(b";")
                 if i >= 0:
                     line = line[:i] # strip chunk-extensions
-                chunk_left = int(line, 16)
+                try:
+                    chunk_left = int(line, 16)
+                except ValueError:
+                    # close the connection as protocol synchronisation is
+                    # probably lost
+                    self.close()
+                    raise IncompleteRead(value)
                 if chunk_left == 0:
                     break
             if amt is None:
@@ -595,7 +606,11 @@ class HTTPResponse:
         ### note: we shouldn't have any trailers!
         while True:
             line = self.fp.readline()
-            if line == "\r\n":
+            if not line:
+                # a vanishingly small number of sites EOF without
+                # sending the trailer
+                break
+            if line == b"\r\n":
                 break
 
         # we read everything; close the "file"
@@ -826,6 +841,7 @@ class HTTPConnection:
                     if self.port == HTTP_PORT:
                         self.putheader('Host', host_enc)
                     else:
+                        host_enc = host_enc.decode("ascii")
                         self.putheader('Host', "%s:%s" % (host_enc, self.port))
 
             # note: we are assuming that clients will not attempt to set these
@@ -859,8 +875,12 @@ class HTTPConnection:
         if self.__state != _CS_REQ_STARTED:
             raise CannotSendHeader()
 
-        header = '%s: %s' % (header, value)
-        self._output(header.encode('ascii'))
+        if hasattr(header, 'encode'):
+            header = header.encode('ascii')
+        if hasattr(value, 'encode'):
+            value = value.encode('ascii')
+        header = header + b': ' + value
+        self._output(header)
 
     def endheaders(self):
         """Indicate that the last header line has been sent to the server."""

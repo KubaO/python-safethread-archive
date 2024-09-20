@@ -59,7 +59,7 @@ class MixInCheckStateHandling:
 class ReadTest(unittest.TestCase, MixInCheckStateHandling):
     def check_partial(self, input, partialresults):
         # get a StreamReader for the encoding and feed the bytestring version
-        # of input to the reader byte by byte. Read every available from
+        # of input to the reader byte by byte. Read everything available from
         # the StreamReader and check that the results equal the appropriate
         # entries from partialresults.
         q = Queue(b"")
@@ -544,7 +544,17 @@ class UTF8Test(ReadTest):
 class UTF7Test(ReadTest):
     encoding = "utf-7"
 
-    # No test_partial() yet, because UTF-7 doesn't support it.
+    def test_partial(self):
+        self.check_partial(
+            "a+-b",
+            [
+                "a",
+                "a",
+                "a+",
+                "a+-",
+                "a+-b",
+            ]
+        )
 
 class UTF16ExTest(unittest.TestCase):
 
@@ -618,10 +628,53 @@ class UTF8SigTest(ReadTest):
         s = "spam"
         self.assertEqual(d.decode(s.encode("utf-8-sig")), s)
 
-    def test_decoder_state(self):
-        u = "\x00\x7f\x80\xff\u0100\u07ff\u0800\uffff\U0010ffff"
-        self.check_state_handling_decode(self.encoding,
-                                         u, u.encode(self.encoding))
+    def test_stream_bom(self):
+        unistring = "ABC\u00A1\u2200XYZ"
+        bytestring = codecs.BOM_UTF8 + b"ABC\xC2\xA1\xE2\x88\x80XYZ"
+
+        reader = codecs.getreader("utf-8-sig")
+        for sizehint in [None] + list(range(1, 11)) + \
+                        [64, 128, 256, 512, 1024]:
+            istream = reader(io.BytesIO(bytestring))
+            ostream = io.StringIO()
+            while 1:
+                if sizehint is not None:
+                    data = istream.read(sizehint)
+                else:
+                    data = istream.read()
+
+                if not data:
+                    break
+                ostream.write(data)
+
+            got = ostream.getvalue()
+            self.assertEqual(got, unistring)
+
+    def test_stream_bare(self):
+        unistring = "ABC\u00A1\u2200XYZ"
+        bytestring = b"ABC\xC2\xA1\xE2\x88\x80XYZ"
+
+        reader = codecs.getreader("utf-8-sig")
+        for sizehint in [None] + list(range(1, 11)) + \
+                        [64, 128, 256, 512, 1024]:
+            istream = reader(io.BytesIO(bytestring))
+            ostream = io.StringIO()
+            while 1:
+                if sizehint is not None:
+                    data = istream.read(sizehint)
+                else:
+                    data = istream.read()
+
+                if not data:
+                    break
+                ostream.write(data)
+
+            got = ostream.getvalue()
+            self.assertEqual(got, unistring)
+
+class EscapeDecodeTest(unittest.TestCase):
+    def test_empty(self):
+        self.assertEquals(codecs.escape_decode(""), ("", 0))
 
 class RecodingTest(unittest.TestCase):
     def test_recoding(self):
@@ -802,9 +855,10 @@ class UnicodeInternalTest(unittest.TestCase):
         if sys.maxunicode > 0xffff:
             codecs.register_error("UnicodeInternalTest", codecs.ignore_errors)
             decoder = codecs.getdecoder("unicode_internal")
-            ab = "ab".encode("unicode_internal")
-            ignored = decoder(bytes("%s\x22\x22\x22\x22%s" % (ab[:4], ab[4:])),
-                "UnicodeInternalTest")
+            ab = "ab".encode("unicode_internal").decode()
+            ignored = decoder(bytes("%s\x22\x22\x22\x22%s" % (ab[:4], ab[4:]),
+                                    "ascii"),
+                              "UnicodeInternalTest")
             self.assertEquals(("ab", 12), ignored)
 
 # From http://www.gnu.org/software/libidn/draft-josefsson-idn-test-vectors.html
@@ -1264,7 +1318,9 @@ class BasicUnicodeTest(unittest.TestCase, MixInCheckStateHandling):
                 encodedresult = b""
                 for c in s:
                     writer.write(c)
-                    encodedresult += q.read()
+                    chunk = q.read()
+                    self.assert_(type(chunk) is bytes, type(chunk))
+                    encodedresult += chunk
                 q = Queue(b"")
                 reader = codecs.getreader(encoding)(q)
                 decodedresult = ""

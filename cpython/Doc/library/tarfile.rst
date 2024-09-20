@@ -11,10 +11,13 @@
 .. sectionauthor:: Lars Gustäbel <lars@gustaebel.de>
 
 
-The :mod:`tarfile` module makes it possible to read and create tar archives.
+The :mod:`tarfile` module makes it possible to read and write tar
+archives, including those using gzip or bz2 compression.
+(:file:`.zip` files can be read and written using the :mod:`zipfile` module.)
+
 Some facts and figures:
 
-* reads and writes :mod:`gzip` and :mod:`bzip2` compressed archives.
+* reads and writes :mod:`gzip` and :mod:`bz2` compressed archives.
 
 * read/write support for the POSIX.1-1988 (ustar) format.
 
@@ -201,10 +204,6 @@ details.
 
    `GNU tar manual, Basic Tar Format <http://www.gnu.org/software/tar/manual/html_node/tar_134.html#SEC134>`_
       Documentation for tar archive files, including GNU tar extensions.
-
-.. % -----------------
-.. % TarFile Objects
-.. % -----------------
 
 
 .. _tarfile-objects:
@@ -418,10 +417,6 @@ object, see :ref:`tarinfo-objects` for details.
    A dictionary containing key-value pairs of pax global headers.
 
 
-.. % -----------------
-.. % TarInfo Objects
-.. % -----------------
-
 
 .. _tarinfo-objects:
 
@@ -571,10 +566,6 @@ A :class:`TarInfo` object also provides some convenient query methods:
 
    Return :const:`True` if it is one of character device, block device or FIFO.
 
-.. % ------------------------
-.. % Examples
-.. % ------------------------
-
 
 .. _tar-examples:
 
@@ -632,10 +623,6 @@ The *only* way to extract an uncompressed tar stream from ``sys.stdin``::
        tar.extract(tarinfo)
    tar.close()
 
-.. % ------------
-.. % Tar format
-.. % ------------
-
 
 .. _tar-formats:
 
@@ -675,11 +662,6 @@ created:
 
 * The SunOS tar extended format. This format is a variant of the POSIX.1-2001
   pax format, but is not compatible.
-
-.. % ----------------
-.. % Unicode issues
-.. % ----------------
-
 
 .. _tar-unicode:
 

@@ -19,6 +19,7 @@
 struct compiling {
     char *c_encoding; /* source encoding */
     PyArena *c_arena; /* arena for allocating memeory */
+    const char *c_filename; /* filename */
 };
 
 static asdl_seq *seq_for_testlist(struct compiling *, const node *);
@@ -55,7 +56,7 @@ new_identifier(const char* n, PyArena *arena)
        identifier; if so, normalize to NFKC. */
     for (; *u; u++) {
 	if (*u >= 128) {
-	    PyObject *m = PyImport_ImportModule("unicodedata");
+	    PyObject *m = PyImport_ImportModuleNoBlock("unicodedata");
 	    PyObject *id2;
 	    if (!m)
 		return NULL;
@@ -109,7 +110,7 @@ ast_error_finish(const char *filename)
     if (!errstr)
         return;
     Py_INCREF(errstr);
-    lineno = PyInt_AsLong(PyTuple_GetItem(value, 1));
+    lineno = PyLong_AsLong(PyTuple_GetItem(value, 1));
     if (lineno == -1) {
         Py_DECREF(errstr);
         return;
@@ -226,6 +227,7 @@ PyAST_FromNode(const node *n, PyCompilerFlags *flags, const char *filename,
         c.c_encoding = "utf-8";
     }
     c.c_arena = arena;
+    c.c_filename = filename;
 
     k = 0;
     switch (TYPE(n)) {
@@ -647,7 +649,11 @@ handle_keywordonly_args(struct compiling *c, const node *n, int start,
     arg_ty arg;
     int i = start;
     int j = 0; /* index for kwdefaults and kwonlyargs */
-    assert(kwonlyargs != NULL);
+
+    if (kwonlyargs == NULL) {
+        ast_error(CHILD(n, start), "named arguments must follow bare *");
+        return -1;
+    }
     assert(kwdefaults != NULL);
     while (i < NCH(n)) {
         ch = CHILD(n, i);
@@ -812,7 +818,8 @@ ast_for_arguments(struct compiling *c, const node *n)
                 break;
             case STAR:
                 if (i+1 >= NCH(n)) {
-                    ast_error(CHILD(n, i), "no name for vararg");
+                    ast_error(CHILD(n, i), 
+                        "named arguments must follow bare *");
                     goto error;
                 }
                 ch = CHILD(n, i+1);  /* tfpdef or COMMA */
@@ -1007,6 +1014,12 @@ ast_for_decorated(struct compiling *c, const node *n)
       thing = ast_for_funcdef(c, CHILD(n, 1), decorator_seq);
     } else if (TYPE(CHILD(n, 1)) == classdef) {
       thing = ast_for_classdef(c, CHILD(n, 1), decorator_seq);
+    }
+    /* we count the decorators in when talking about the class' or
+     * function's line number */
+    if (thing) {
+        thing->lineno = LINENO(n);
+        thing->col_offset = n->n_col_offset;
     }
     return thing;
 }
@@ -1292,14 +1305,14 @@ ast_for_atom(struct compiling *c, const node *n)
     case STRING: {
         PyObject *str = parsestrplus(c, n, &bytesmode);
         if (!str) {
-            if (PyErr_ExceptionMatches(PyExc_UnicodeError)){
+            if (PyErr_ExceptionMatches(PyExc_UnicodeError)) {
                 PyObject *type, *value, *tback, *errstr;
                 PyErr_Fetch(&type, &value, &tback);
                 errstr = ((PyUnicodeErrorObject *)value)->reason;
                 if (errstr) {
                     char *s = "";
                     char buf[128];
-                    s = PyString_AsString(errstr);
+                    s = PyUnicode_AsString(errstr);
                     PyOS_snprintf(buf, sizeof(buf), "(unicode error) %s", s);
                     ast_error(n, buf);
                 } else {
@@ -1539,7 +1552,7 @@ ast_for_binop(struct compiling *c, const node *n)
         tmp_result = BinOp(result, newoperator, tmp, 
                            LINENO(next_oper), next_oper->n_col_offset,
                            c->c_arena);
-        if (!tmp) 
+        if (!tmp_result) 
             return NULL;
         result = tmp_result;
     }
@@ -3072,7 +3085,7 @@ parsenumber(const char *s)
     if (*end == '\0') {
         if (errno != 0)
             return PyLong_FromString((char *)s, (char **)0, 0);
-        return PyInt_FromLong(x);
+        return PyLong_FromLong(x);
     }
     /* XXX Huge floats may silently fail */
 #ifndef WITHOUT_COMPLEX
@@ -3117,6 +3130,7 @@ decode_unicode(const char *s, size_t len, int rawmode, const char *encoding)
     char *buf;
     char *p;
     const char *end;
+
     if (encoding == NULL) {
         buf = (char *)s;
         u = NULL;
@@ -3147,9 +3161,8 @@ decode_unicode(const char *s, size_t len, int rawmode, const char *encoding)
                     Py_DECREF(u);
                     return NULL;
                 }
-                assert(PyBytes_Check(w));
-                r = PyBytes_AsString(w);
-                rn = PyBytes_Size(w);
+                r = PyString_AS_STRING(w);
+                rn = Py_SIZE(w);
                 assert(rn % 2 == 0);
                 for (i = 0; i < rn; i += 2) {
                     sprintf(p, "\\u%02x%02x",
@@ -3174,7 +3187,7 @@ decode_unicode(const char *s, size_t len, int rawmode, const char *encoding)
 }
 
 /* s is a Python string literal, including the bracketing quote characters,
- * and r &/or u prefixes (if any), and embedded escape sequences (if any).
+ * and r &/or b prefixes (if any), and embedded escape sequences (if any).
  * parsestr parses it, and returns the decoded Python string object.
  */
 static PyObject *
@@ -3186,7 +3199,7 @@ parsestr(const node *n, const char *encoding, int *bytesmode)
     int rawmode = 0;
     int need_encoding;
 
-    if (isalpha(quote) || quote == '_') {
+    if (isalpha(quote)) {
         if (quote == 'b' || quote == 'B') {
             quote = *++s;
             *bytesmode = 1;
@@ -3219,7 +3232,7 @@ parsestr(const node *n, const char *encoding, int *bytesmode)
             return NULL;
         }
     }
-    if (!*bytesmode) {
+    if (!*bytesmode && !rawmode) {
         return decode_unicode(s, len, rawmode, encoding);
     }
     if (*bytesmode) {
@@ -3239,13 +3252,17 @@ parsestr(const node *n, const char *encoding, int *bytesmode)
     if (rawmode || strchr(s, '\\') == NULL) {
         if (need_encoding) {
             PyObject *v, *u = PyUnicode_DecodeUTF8(s, len, NULL);
-            if (u == NULL)
-                return NULL;
+            if (u == NULL || !*bytesmode)
+                return u;
             v = PyUnicode_AsEncodedString(u, encoding, NULL);
             Py_DECREF(u);
             return v;
-        } else {
+        } else if (*bytesmode) {
             return PyString_FromStringAndSize(s, len);
+        } else if (strcmp(encoding, "utf-8") == 0) {
+            return PyUnicode_FromStringAndSize(s, len);
+	} else {
+            return PyUnicode_DecodeLatin1(s, len, NULL);
         }
     }
 
@@ -3253,7 +3270,7 @@ parsestr(const node *n, const char *encoding, int *bytesmode)
                                  need_encoding ? encoding : NULL);
 }
 
-/* Build a Python string object out of a STRING atom.  This takes care of
+/* Build a Python string object out of a STRING+ atom.  This takes care of
  * compile-time literal catenation, calling parsestr() on each piece, and
  * pasting the intermediate results together.
  */
@@ -3273,8 +3290,7 @@ parsestrplus(struct compiling *c, const node *n, int *bytesmode)
             if (s == NULL)
                 goto onError;
             if (*bytesmode != subbm) {
-                ast_error(n, "cannot mix bytes and nonbytes"
-                          "literals");
+                ast_error(n, "cannot mix bytes and nonbytes literals");
                 goto onError;
             }
             if (PyString_Check(v) && PyString_Check(s)) {

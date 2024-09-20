@@ -66,7 +66,6 @@
 
 #include "bytesobject.h"
 #include "unicodeobject.h"
-#include "intobject.h"
 #include "longobject.h"
 #include "longintrepr.h"
 #include "boolobject.h"
@@ -76,7 +75,6 @@
 #endif
 #include "rangeobject.h"
 #include "stringobject.h"
-#include "bufferobject.h"
 #include "memoryobject.h"
 #include "tupleobject.h"
 #include "listobject.h"
@@ -116,6 +114,7 @@
 #include "eval.h"
 
 #include "pystrtod.h"
+#include "pystrcmp.h"
 
 /* _Py_Mangle is defined in compile.c */
 PyAPI_FUNC(PyObject*) _Py_Mangle(PyObject *p, PyObject *name);

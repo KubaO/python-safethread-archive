@@ -8,20 +8,6 @@
 
 #define XML_COMBINED_VERSION (10000*XML_MAJOR_VERSION+100*XML_MINOR_VERSION+XML_MICRO_VERSION)
 
-#ifndef PyDoc_STRVAR
-
-/*
- * fdrake says:
- * Don't change the PyDoc_STR macro definition to (str), because
- * '''the parentheses cause compile failures
- * ("non-constant static initializer" or something like that)
- * on some platforms (Irix?)'''
- */
-#define PyDoc_STR(str)         str
-#define PyDoc_VAR(name)        static char name[]
-#define PyDoc_STRVAR(name,str) PyDoc_VAR(name) = PyDoc_STR(str)
-#endif
-
 #define FIX_TRACE
 
 enum HandlerTypes {
@@ -97,7 +83,7 @@ static struct HandlerInfo handler_info[64];
 static int
 set_error_attr(PyObject *err, char *name, int value)
 {
-    PyObject *v = PyInt_FromLong(value);
+    PyObject *v = PyLong_FromLong(value);
 
     if (v == NULL || PyObject_SetAttrString(err, name, v) == -1) {
         Py_XDECREF(v);
@@ -232,13 +218,13 @@ getcode(enum HandlerTypes slot, char* func_name, int lineno)
         code = PyString_FromString("");
         if (code == NULL)
             goto failed;
-        name = PyString_FromString(func_name);
+        name = PyUnicode_FromString(func_name);
         if (name == NULL)
             goto failed;
         nulltuple = PyTuple_New(0);
         if (nulltuple == NULL)
             goto failed;
-        filename = PyString_FromString(__FILE__);
+        filename = PyUnicode_DecodeFSDefault(__FILE__);
         handler_info[slot].tb_code =
             PyCode_New(0,		/* argcount */
                        0,       /* kwonlyargcount */
@@ -597,7 +583,7 @@ my_##NAME##Handler PARAMS {\
 
 #define INT_HANDLER(NAME, PARAMS, PARAM_FORMAT)\
 	RC_HANDLER(int, NAME, PARAMS, int rc=0;, PARAM_FORMAT, \
-			rc = PyInt_AsLong(rv);, rc, \
+			rc = PyLong_AsLong(rv);, rc, \
 	(xmlparseobject *)userData)
 
 VOID_HANDLER(EndElement,
@@ -798,7 +784,7 @@ RC_HANDLER(int, ExternalEntityRef,
                 ("(O&NNN)",
 		 conv_string_to_unicode ,context, string_intern(self, base),
 		 string_intern(self, systemId), string_intern(self, publicId)),
-		rc = PyInt_AsLong(rv);, rc,
+		rc = PyLong_AsLong(rv);, rc,
 		XML_GetUserData(parser))
 
 /* XXX UnknownEncodingHandler */
@@ -827,7 +813,7 @@ get_parse_result(xmlparseobject *self, int rv)
     if (flush_character_buffer(self) < 0) {
         return NULL;
     }
-    return PyInt_FromLong(rv);
+    return PyLong_FromLong(rv);
 }
 
 PyDoc_STRVAR(xmlparse_Parse__doc__,
@@ -858,8 +844,9 @@ readinst(char *buf, int buf_size, PyObject *meth)
     PyObject *bytes = NULL;
     PyObject *str = NULL;
     int len = -1;
+    char *ptr;
 
-    if ((bytes = PyInt_FromLong(buf_size)) == NULL)
+    if ((bytes = PyLong_FromLong(buf_size)) == NULL)
         goto finally;
 
     if ((arg = PyTuple_New(1)) == NULL) {
@@ -877,14 +864,17 @@ readinst(char *buf, int buf_size, PyObject *meth)
     if (str == NULL)
         goto finally;
 
-    /* XXX what to do if it returns a Unicode string? */
-    if (!PyBytes_Check(str)) {
+    if (PyString_Check(str))
+        ptr = PyString_AS_STRING(str);
+    else if (PyBytes_Check(str))
+        ptr = PyBytes_AS_STRING(str);
+    else {
         PyErr_Format(PyExc_TypeError,
                      "read() did not return a bytes object (type=%.400s)",
-                     Py_Type(str)->tp_name);
+                     Py_TYPE(str)->tp_name);
         goto finally;
     }
-    len = PyBytes_GET_SIZE(str);
+    len = Py_SIZE(str);
     if (len > buf_size) {
         PyErr_Format(PyExc_ValueError,
                      "read() returned too much data: "
@@ -892,7 +882,7 @@ readinst(char *buf, int buf_size, PyObject *meth)
                      buf_size, len);
         goto finally;
     }
-    memcpy(buf, PyBytes_AsString(str), len);
+    memcpy(buf, ptr, len);
 finally:
     Py_XDECREF(arg);
     Py_XDECREF(str);
@@ -998,7 +988,7 @@ xmlparse_GetInputContext(xmlparseobject *self, PyObject *unused)
             = XML_GetInputContext(self->itself, &offset, &size);
 
         if (buffer != NULL)
-            return PyBytes_FromStringAndSize(buffer + offset,
+            return PyString_FromStringAndSize(buffer + offset,
                                               size - offset);
         else
             Py_RETURN_NONE;
@@ -1113,7 +1103,7 @@ xmlparse_SetParamEntityParsing(xmlparseobject *p, PyObject* args)
     if (!PyArg_ParseTuple(args, "i", &flag))
         return NULL;
     flag = XML_SetParamEntityParsing(p->itself, flag);
-    return PyInt_FromLong(flag);
+    return PyLong_FromLong(flag);
 }
 
 
@@ -1352,36 +1342,36 @@ xmlparse_getattr(xmlparseobject *self, char *name)
     }
     if (name[0] == 'E') {
         if (strcmp(name, "ErrorCode") == 0)
-            return PyInt_FromLong((long)
+            return PyLong_FromLong((long)
                                   XML_GetErrorCode(self->itself));
         if (strcmp(name, "ErrorLineNumber") == 0)
-            return PyInt_FromLong((long)
+            return PyLong_FromLong((long)
                                   XML_GetErrorLineNumber(self->itself));
         if (strcmp(name, "ErrorColumnNumber") == 0)
-            return PyInt_FromLong((long)
+            return PyLong_FromLong((long)
                                   XML_GetErrorColumnNumber(self->itself));
         if (strcmp(name, "ErrorByteIndex") == 0)
-            return PyInt_FromLong((long)
+            return PyLong_FromLong((long)
                                   XML_GetErrorByteIndex(self->itself));
     }
     if (name[0] == 'C') {
         if (strcmp(name, "CurrentLineNumber") == 0)
-            return PyInt_FromLong((long)
+            return PyLong_FromLong((long)
                                   XML_GetCurrentLineNumber(self->itself));
         if (strcmp(name, "CurrentColumnNumber") == 0)
-            return PyInt_FromLong((long)
+            return PyLong_FromLong((long)
                                   XML_GetCurrentColumnNumber(self->itself));
         if (strcmp(name, "CurrentByteIndex") == 0)
-            return PyInt_FromLong((long)
+            return PyLong_FromLong((long)
                                   XML_GetCurrentByteIndex(self->itself));
     }
     if (name[0] == 'b') {
         if (strcmp(name, "buffer_size") == 0)
-            return PyInt_FromLong((long) self->buffer_size);
+            return PyLong_FromLong((long) self->buffer_size);
         if (strcmp(name, "buffer_text") == 0)
             return get_pybool(self->buffer != NULL);
         if (strcmp(name, "buffer_used") == 0)
-            return PyInt_FromLong((long) self->buffer_used);
+            return PyLong_FromLong((long) self->buffer_used);
     }
     if (strcmp(name, "namespace_prefixes") == 0)
         return get_pybool(self->ns_prefixes);
@@ -1534,6 +1524,50 @@ xmlparse_setattr(xmlparseobject *self, char *name, PyObject *v)
             self->specified_attributes = 0;
         return 0;
     }
+
+    if (strcmp(name, "buffer_size") == 0) {
+      long new_buffer_size;
+      if (!PyLong_Check(v)) {
+      	PyErr_SetString(PyExc_TypeError, "buffer_size must be an integer");
+      	return -1;
+      }
+
+      new_buffer_size=PyLong_AS_LONG(v);
+      /* trivial case -- no change */
+      if (new_buffer_size == self->buffer_size) {
+	return 0;
+      }
+
+      if (new_buffer_size <= 0) {
+	PyErr_SetString(PyExc_ValueError, "buffer_size must be greater than zero");
+	return -1;
+      }
+
+      /* check maximum */
+      if (new_buffer_size > INT_MAX) {
+	char errmsg[100];
+	sprintf(errmsg, "buffer_size must not be greater than %i", INT_MAX);
+	PyErr_SetString(PyExc_ValueError, errmsg);
+	return -1;	
+      }
+
+      if (self->buffer != NULL) {
+	/* there is already a buffer */
+	if (self->buffer_used != 0) {
+	  flush_character_buffer(self);
+	}
+	/* free existing buffer */
+	free(self->buffer);
+      }
+      self->buffer = malloc(new_buffer_size);
+      if (self->buffer == NULL) {
+	PyErr_NoMemory();
+	return -1;
+      }	  
+      self->buffer_size = new_buffer_size;
+      return 0;
+    }
+
     if (strcmp(name, "CharacterDataHandler") == 0) {
         /* If we're changing the character data handler, flush all
          * cached data with the old handler.  Not sure there's a
@@ -1570,7 +1604,8 @@ xmlparse_clear(xmlparseobject *op)
 PyDoc_STRVAR(Xmlparsetype__doc__, "XML parser");
 
 static PyMethodDef xmlparse_tp_methods[] = {
-    {"__dir__", xmlparse_dir, METH_NOARGS}
+    {"__dir__", xmlparse_dir, METH_NOARGS},
+    {NULL, NULL}    /* sentinel */
 };
 
 static PyTypeObject Xmlparsetype = {
@@ -1747,7 +1782,7 @@ MODULE_INITFUNC(void)
     if (modelmod_name == NULL)
         return;
 
-    Py_Type(&Xmlparsetype) = &PyType_Type;
+    Py_TYPE(&Xmlparsetype) = &PyType_Type;
 
     /* Create the module and add the functions */
     m = Py_InitModule3(MODULE_NAME, pyexpat_methods,

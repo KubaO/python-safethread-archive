@@ -109,9 +109,9 @@ typedef struct {
 	Py_ssize_t ob_size; /* Number of items in variable part */
 } PyVarObject;
 
-#define Py_Refcnt(ob)		(((PyObject*)(ob))->ob_refcnt)
-#define Py_Type(ob)		(((PyObject*)(ob))->ob_type)
-#define Py_Size(ob)		(((PyVarObject*)(ob))->ob_size)
+#define Py_REFCNT(ob)		(((PyObject*)(ob))->ob_refcnt)
+#define Py_TYPE(ob)		(((PyObject*)(ob))->ob_type)
+#define Py_SIZE(ob)		(((PyVarObject*)(ob))->ob_size)
 
 /*
 Type objects contain a string containing the type name (to help somewhat
@@ -160,34 +160,39 @@ typedef void (*releasebufferproc)(PyObject *, Py_buffer *);
 
         /* Flags for getting buffers */
 #define PyBUF_SIMPLE 0
-#define PyBUF_CHARACTER 1
-#define PyBUF_WRITABLE 0x0002
+#define PyBUF_WRITABLE 0x0001
 /*  we used to include an E, backwards compatible alias  */
 #define PyBUF_WRITEABLE PyBUF_WRITABLE
-#define PyBUF_LOCKDATA 0x0004
-#define PyBUF_FORMAT 0x0008
-#define PyBUF_ND 0x0010
-#define PyBUF_STRIDES (0x0020 | PyBUF_ND)
-#define PyBUF_C_CONTIGUOUS (0x0040 | PyBUF_STRIDES)
-#define PyBUF_F_CONTIGUOUS (0x0080 | PyBUF_STRIDES)
-#define PyBUF_ANY_CONTIGUOUS (0x0100 | PyBUF_STRIDES)
-#define PyBUF_INDIRECT (0x0200 | PyBUF_STRIDES)
+#define PyBUF_LOCK 0x0002
+#define PyBUF_FORMAT 0x0004
+#define PyBUF_ND 0x0008
+#define PyBUF_STRIDES (0x0010 | PyBUF_ND)
+#define PyBUF_C_CONTIGUOUS (0x0020 | PyBUF_STRIDES)
+#define PyBUF_F_CONTIGUOUS (0x0040 | PyBUF_STRIDES)
+#define PyBUF_ANY_CONTIGUOUS (0x0080 | PyBUF_STRIDES)
+#define PyBUF_INDIRECT (0x0100 | PyBUF_STRIDES)
 
 #define PyBUF_CONTIG (PyBUF_ND | PyBUF_WRITABLE)
 #define PyBUF_CONTIG_RO (PyBUF_ND)
-#define PyBUF_CONTIG_LCK (PyBUF_ND | PyBUF_LOCKDATA)
+#define PyBUF_CONTIG_LCK (PyBUF_ND | PyBUF_LOCK)
+#define PyBUF_CONTIG_XLCK (PyBUF_ND | PyBUF_LOCK | PyBUF_WRITABLE)
 
 #define PyBUF_STRIDED (PyBUF_STRIDES | PyBUF_WRITABLE)
 #define PyBUF_STRIDED_RO (PyBUF_STRIDES)
-#define PyBUF_STRIDED_LCK (PyBUF_STRIDES | PyBUF_LOCKDATA)
+#define PyBUF_STRIDED_LCK (PyBUF_STRIDES | PyBUF_LOCK)
+#define PyBUF_STRIDED_XLCK (PyBUF_STRIDES | PyBUF_LOCK | PyBUF_WRITABLE)
 
 #define PyBUF_RECORDS (PyBUF_STRIDES | PyBUF_WRITABLE | PyBUF_FORMAT)
 #define PyBUF_RECORDS_RO (PyBUF_STRIDES | PyBUF_FORMAT)
-#define PyBUF_RECORDS_LCK (PyBUF_STRIDES | PyBUF_LOCKDATA | PyBUF_FORMAT)
+#define PyBUF_RECORDS_LCK (PyBUF_STRIDES | PyBUF_LOCK | PyBUF_FORMAT)
+#define PyBUF_RECORDS_XLCK (PyBUF_STRIDES | PyBUF_LOCK | PyBUF_WRITABLE \
+			    | PyBUF_FORMAT)
 
 #define PyBUF_FULL (PyBUF_INDIRECT | PyBUF_WRITABLE | PyBUF_FORMAT)
 #define PyBUF_FULL_RO (PyBUF_INDIRECT | PyBUF_FORMAT)
-#define PyBUF_FULL_LCK (PyBUF_INDIRECT | PyBUF_LOCKDATA | PyBUF_FORMAT)
+#define PyBUF_FULL_LCK (PyBUF_INDIRECT | PyBUF_LOCK | PyBUF_FORMAT)
+#define PyBUF_FULL_XLCK (PyBUF_INDIRECT | PyBUF_LOCK | PyBUF_WRITABLE \
+			 | PyBUF_FORMAT)
 
 
 #define PyBUF_READ  0x100
@@ -272,7 +277,6 @@ typedef struct {
 typedef struct {
      getbufferproc bf_getbuffer;
      releasebufferproc bf_releasebuffer;
-     inquiry bf_multisegment;
 } PyBufferProcs;
 
 typedef void (*freefunc)(void *);
@@ -369,6 +373,9 @@ typedef struct _typeobject {
 	PyObject *tp_weaklist;
 	destructor tp_del;
 
+	/* Type attribute cache version tag. Added in version 2.6 */
+	unsigned int tp_version_tag;
+
 #ifdef COUNT_ALLOCS
 	/* these must be last and never explicitly initialized */
 	Py_ssize_t tp_allocs;
@@ -399,37 +406,35 @@ typedef struct _heaptypeobject {
 
 /* access macro to the members which are floating "behind" the object */
 #define PyHeapType_GET_MEMBERS(etype) \
-    ((PyMemberDef *)(((char *)etype) + Py_Type(etype)->tp_basicsize))
+    ((PyMemberDef *)(((char *)etype) + Py_TYPE(etype)->tp_basicsize))
 
 
 /* Generic type check */
 PyAPI_FUNC(int) PyType_IsSubtype(PyTypeObject *, PyTypeObject *);
 #define PyObject_TypeCheck(ob, tp) \
-	(Py_Type(ob) == (tp) || PyType_IsSubtype(Py_Type(ob), (tp)))
+	(Py_TYPE(ob) == (tp) || PyType_IsSubtype(Py_TYPE(ob), (tp)))
 
 PyAPI_DATA(PyTypeObject) PyType_Type; /* built-in 'type' */
 PyAPI_DATA(PyTypeObject) PyBaseObject_Type; /* built-in 'object' */
 PyAPI_DATA(PyTypeObject) PySuper_Type; /* built-in 'super' */
 
 #define PyType_Check(op) \
-	PyType_FastSubclass(Py_Type(op), Py_TPFLAGS_TYPE_SUBCLASS)
-#define PyType_CheckExact(op) (Py_Type(op) == &PyType_Type)
+	PyType_FastSubclass(Py_TYPE(op), Py_TPFLAGS_TYPE_SUBCLASS)
+#define PyType_CheckExact(op) (Py_TYPE(op) == &PyType_Type)
 
 PyAPI_FUNC(int) PyType_Ready(PyTypeObject *);
 PyAPI_FUNC(PyObject *) PyType_GenericAlloc(PyTypeObject *, Py_ssize_t);
 PyAPI_FUNC(PyObject *) PyType_GenericNew(PyTypeObject *,
 					       PyObject *, PyObject *);
 PyAPI_FUNC(PyObject *) _PyType_Lookup(PyTypeObject *, PyObject *);
+PyAPI_FUNC(unsigned int) PyType_ClearCache(void);
 
 /* Generic operations on objects */
 PyAPI_FUNC(int) PyObject_Print(PyObject *, FILE *, int);
 PyAPI_FUNC(void) _Py_BreakPoint(void);
 PyAPI_FUNC(void) _PyObject_Dump(PyObject *);
 PyAPI_FUNC(PyObject *) PyObject_Repr(PyObject *);
-PyAPI_FUNC(PyObject *) PyObject_ReprStr8(PyObject *);
-PyAPI_FUNC(PyObject *) _PyObject_Str(PyObject *);
 PyAPI_FUNC(PyObject *) PyObject_Str(PyObject *);
-PyAPI_FUNC(PyObject *) PyObject_Unicode(PyObject *);
 PyAPI_FUNC(int) PyObject_Compare(PyObject *, PyObject *);
 PyAPI_FUNC(PyObject *) PyObject_RichCompare(PyObject *, PyObject *, int);
 PyAPI_FUNC(int) PyObject_RichCompareBool(PyObject *, PyObject *, int);
@@ -456,8 +461,8 @@ PyAPI_FUNC(void) PyObject_ClearWeakRefs(PyObject *);
 extern int _PyObject_SlotCompare(PyObject *, PyObject *);
 
 
-/* PyObject_Dir(obj) acts like Python __builtin__.dir(obj), returning a
-   list of strings.  PyObject_Dir(NULL) is like __builtin__.dir(),
+/* PyObject_Dir(obj) acts like Python builtins.dir(obj), returning a
+   list of strings.  PyObject_Dir(NULL) is like builtins.dir(),
    returning the names of the current locals.  In this case, if there are
    no current locals, NULL is returned, and PyErr_Occurred() is false.
 */
@@ -473,7 +478,7 @@ PyAPI_FUNC(long) _Py_HashDouble(double);
 PyAPI_FUNC(long) _Py_HashPointer(void*);
 
 /* Helper for passing objects to printf and the like */
-#define PyObject_REPR(obj) PyString_AS_STRING(PyObject_ReprStr8(obj))
+#define PyObject_REPR(obj) PyUnicode_AsString(PyObject_Repr(obj))
 
 /* Flag bits for printing: */
 #define Py_PRINT_RAW	1	/* No string quotes etc. */
@@ -523,6 +528,13 @@ given type object has a specified feature.
 #define Py_TPFLAGS_HAVE_STACKLESS_EXTENSION 0
 #endif
 
+/* Objects support type attribute cache */
+#define Py_TPFLAGS_HAVE_VERSION_TAG   (1L<<18)
+#define Py_TPFLAGS_VALID_VERSION_TAG  (1L<<19)
+
+/* Type is abstract and cannot be instantiated */
+#define Py_TPFLAGS_IS_ABSTRACT (1L<<20)
+
 /* These flags are used to determine if a type is a subclass. */
 #define Py_TPFLAGS_INT_SUBCLASS		(1L<<23)
 #define Py_TPFLAGS_LONG_SUBCLASS	(1L<<24)
@@ -536,6 +548,7 @@ given type object has a specified feature.
 
 #define Py_TPFLAGS_DEFAULT  ( \
                              Py_TPFLAGS_HAVE_STACKLESS_EXTENSION | \
+                             Py_TPFLAGS_HAVE_VERSION_TAG | \
                             0)
 
 #define PyType_HasFeature(t,f)  (((t)->tp_flags & (f)) != 0)
@@ -610,9 +623,9 @@ PyAPI_FUNC(Py_ssize_t) _Py_GetRefTotal(void);
 #ifdef COUNT_ALLOCS
 PyAPI_FUNC(void) inc_count(PyTypeObject *);
 PyAPI_FUNC(void) dec_count(PyTypeObject *);
-#define _Py_INC_TPALLOCS(OP)	inc_count(Py_Type(OP))
-#define _Py_INC_TPFREES(OP)	dec_count(Py_Type(OP))
-#define _Py_DEC_TPFREES(OP)	Py_Type(OP)->tp_frees--
+#define _Py_INC_TPALLOCS(OP)	inc_count(Py_TYPE(OP))
+#define _Py_INC_TPFREES(OP)	dec_count(Py_TYPE(OP))
+#define _Py_DEC_TPFREES(OP)	Py_TYPE(OP)->tp_frees--
 #define _Py_COUNT_ALLOCS_COMMA	,
 #else
 #define _Py_INC_TPALLOCS(OP)
@@ -637,13 +650,13 @@ PyAPI_FUNC(void) _Py_AddToAllObjects(PyObject *, int force);
 #define _Py_NewReference(op) (				\
 	_Py_INC_TPALLOCS(op) _Py_COUNT_ALLOCS_COMMA	\
 	_Py_INC_REFTOTAL  _Py_REF_DEBUG_COMMA		\
-	Py_Refcnt(op) = 1)
+	Py_REFCNT(op) = 1)
 
 #define _Py_ForgetReference(op) _Py_INC_TPFREES(op)
 
 #define _Py_Dealloc(op) (				\
 	_Py_INC_TPFREES(op) _Py_COUNT_ALLOCS_COMMA	\
-	(*Py_Type(op)->tp_dealloc)((PyObject *)(op)))
+	(*Py_TYPE(op)->tp_dealloc)((PyObject *)(op)))
 #endif /* !Py_TRACE_REFS */
 
 #define Py_INCREF(op) (				\

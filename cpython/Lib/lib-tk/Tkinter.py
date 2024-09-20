@@ -255,7 +255,7 @@ class StringVar(Variable):
     def get(self):
         """Return value of variable as string."""
         value = self._tk.globalgetvar(self._name)
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             return value
         return str(value)
 
@@ -1081,7 +1081,7 @@ class Misc:
         f = CallWrapper(func, subst, self).__call__
         name = repr(id(f))
         try:
-            func = func.im_func
+            func = func.__func__
         except AttributeError:
             pass
         try:
@@ -2977,7 +2977,7 @@ class Text(Widget):
         return self.tk.call(self._w, "image", "names")
     def index(self, index):
         """Return the index in the form line.char for INDEX."""
-        return self.tk.call(self._w, 'index', index)
+        return str(self.tk.call(self._w, 'index', index))
     def insert(self, index, chars, *args):
         """Insert CHARS before the characters at INDEX. An additional
         tag can be given in ARGS. Additional CHARS and tags can follow in ARGS."""

@@ -51,7 +51,7 @@ void pysqlite_node_dealloc(pysqlite_Node* self)
     Py_DECREF(self->key);
     Py_DECREF(self->data);
 
-    Py_Type(self)->tp_free((PyObject*)self);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 int pysqlite_cache_init(pysqlite_Cache* self, PyObject* args, PyObject* kwargs)
@@ -109,7 +109,7 @@ void pysqlite_cache_dealloc(pysqlite_Cache* self)
     }
     Py_DECREF(self->mapping);
 
-    Py_Type(self)->tp_free((PyObject*)self);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 PyObject* pysqlite_cache_get(pysqlite_Cache* self, PyObject* args)
@@ -241,12 +241,12 @@ PyObject* pysqlite_cache_display(pysqlite_Cache* self, PyObject* args)
         if (!fmt_args) {
             return NULL;
         }
-        template = PyString_FromString("%s <- %s ->%s\n");
+        template = PyUnicode_FromString("%s <- %s ->%s\n");
         if (!template) {
             Py_DECREF(fmt_args);
             return NULL;
         }
-        display_str = PyString_Format(template, fmt_args);
+        display_str = PyUnicode_Format(template, fmt_args);
         Py_DECREF(template);
         Py_DECREF(fmt_args);
         if (!display_str) {

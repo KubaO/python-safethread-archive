@@ -1,3 +1,27 @@
+What's New in IDLE 3.0a3?
+=========================
+
+*Release date: 29-Feb-2008*
+
+- help() was not paging to the shell.  Issue1650.
+
+- CodeContext was not importing.
+
+- Corrected two 3.0 compatibility errors reported by Mark Summerfield:
+  http://mail.python.org/pipermail/python-3000/2007-December/011491.html
+
+- Shell was not colorizing due to bug introduced at r57998,  Bug 1586.
+
+
+What's New in IDLE 3.0a2?
+=========================
+
+*Release date: 06-Dec-2007*
+
+- Windows EOL sequence not converted correctly, encoding error.
+  Caused file save to fail. Bug 1130.
+
+
 What's New in IDLE 3.0a1?
 =========================
 
@@ -19,7 +43,45 @@ What's New in IDLE 3.0a1?
 What's New in IDLE 2.6a1?
 =========================
 
-*Release date: XX-XXX-200X*  UNRELEASED
+*Release date: XX-XXX-200X*  UNRELEASED, but merged into 3.0
+
+- Configured selection highlighting colors were ignored; updating highlighting
+  in the config dialog would cause non-Python files to be colored as if they
+  were Python source; improve use of ColorDelagator.  Patch 1334. Tal Einat.
+
+- ScriptBinding event handlers weren't returning 'break'. Patch 2050, Tal Einat.
+
+- There was an error on exit if no sys.exitfunc was defined. Issue 1647.
+
+- Could not open files in .idlerc directory if latter was hidden on Windows.
+  Issue 1743, Issue 1862.
+
+- Configure Dialog: improved layout for keybinding.  Patch 1457 Tal Einat.
+
+- tabpage.py updated: tabbedPages.py now supports multiple dynamic rows
+  of tabs.  Patch 1612746 Tal Einat.
+
+- Add confirmation dialog before printing.  Patch 1717170 Tal Einat.
+
+- Show paste position if > 80 col.  Patch 1659326 Tal Einat.
+
+- Update cursor color without restarting.  Patch 1725576 Tal Einat.
+
+- Allow keyboard interrupt only when user code is executing in subprocess.
+  Patch 1225 Tal Einat (reworked from IDLE-Spoon).
+
+- configDialog cleanup. Patch 1730217 Tal Einat.
+
+- textView cleanup. Patch 1718043 Tal Einat.
+
+- Clean up EditorWindow close.
+
+- Patch 1693258: Fix for duplicate "preferences" menu-OS X. Backport of r56204.
+
+- OSX: Avoid crash for those versions of Tcl/Tk which don't have a console
+
+- Bug in idlelib.MultiCall: Options dialog was crashing IDLE if there was an
+  option in config-extensions w/o a value. Patch #1672481, Tal Einat
 
 - Corrected some bugs in AutoComplete.  Also, Page Up/Down in ACW implemented;
   mouse and cursor selection in ACWindow implemented; double Tab inserts
@@ -41,6 +103,8 @@ What's New in IDLE 2.6a1?
 
 - Bug #813342: Start the IDLE subprocess with -Qnew if the parent
   is started with that option.
+
+- Honor the "Cancel" action in the save dialog (Debian bug #299092)
 
 - Some syntax errors were being caught by tokenize during the tabnanny
   check, resulting in obscure error messages.  Do the syntax check

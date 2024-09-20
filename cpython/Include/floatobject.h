@@ -19,7 +19,11 @@ typedef struct {
 PyAPI_DATA(PyTypeObject) PyFloat_Type;
 
 #define PyFloat_Check(op) PyObject_TypeCheck(op, &PyFloat_Type)
-#define PyFloat_CheckExact(op) (Py_Type(op) == &PyFloat_Type)
+#define PyFloat_CheckExact(op) (Py_TYPE(op) == &PyFloat_Type)
+
+PyAPI_FUNC(double) PyFloat_GetMax(void);
+PyAPI_FUNC(double) PyFloat_GetMin(void);
+PyAPI_FUNC(PyObject *) PyFloat_GetInfo(void);
 
 /* Return Python float from string PyObject. */
 PyAPI_FUNC(PyObject *) PyFloat_FromString(PyObject*);
@@ -72,6 +76,10 @@ PyAPI_FUNC(int) _PyFloat_Pack8(double x, unsigned char *p, int le);
  */
 PyAPI_FUNC(int) _PyFloat_Repr(double x, char *p, size_t len);
 
+/* Used to get the important decimal digits of a double */
+PyAPI_FUNC(int) _PyFloat_Digits(char *buf, double v, int *signum);
+PyAPI_FUNC(void) _PyFloat_DigitsInit(void);
+
 /* The unpack routines read 4 or 8 bytes, starting at p.  le is a bool
  * argument, true if the string is in little-endian format (exponent
  * last, at p+3 or p+7), false if big-endian (exponent first, at p).
@@ -82,6 +90,9 @@ PyAPI_FUNC(int) _PyFloat_Repr(double x, char *p, size_t len);
  */
 PyAPI_FUNC(double) _PyFloat_Unpack4(const unsigned char *p, int le);
 PyAPI_FUNC(double) _PyFloat_Unpack8(const unsigned char *p, int le);
+
+/* free list api */
+PyAPI_FUNC(void) PyFloat_CompactFreeList(size_t *, size_t *, size_t *);
 
 #ifdef __cplusplus
 }

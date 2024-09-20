@@ -17,52 +17,8 @@ module instead.
 #include "Python.h"
 #include "structmember.h"
 
-
-/* begin 2.2 compatibility macros */
-#ifndef PyDoc_STRVAR
-/* Define macros for inline documentation. */
-#define PyDoc_VAR(name) static char name[]
-#define PyDoc_STRVAR(name,str) PyDoc_VAR(name) = PyDoc_STR(str)
-#ifdef WITH_DOC_STRINGS
-#define PyDoc_STR(str) str
-#else
-#define PyDoc_STR(str) ""
-#endif
-#endif /* ifndef PyDoc_STRVAR */
-
-#ifndef PyMODINIT_FUNC
-#	if defined(__cplusplus)
-#		define PyMODINIT_FUNC extern "C" void
-#	else /* __cplusplus */
-#		define PyMODINIT_FUNC void
-#	endif /* __cplusplus */
-#endif
-
-#ifndef Py_CLEAR
-#define Py_CLEAR(op)						\
-	do {							\
-		if (op) {					\
-			PyObject *tmp = (PyObject *)(op);	\
-			(op) = NULL;				\
-			Py_DECREF(tmp);				\
-		}						\
-	} while (0)
-#endif
-#ifndef Py_VISIT
-#define Py_VISIT(op)							\
-        do { 								\
-                if (op) {						\
-                        int vret = visit((PyObject *)(op), arg);	\
-                        if (vret)					\
-                                return vret;				\
-                }							\
-        } while (0)
-#endif
-
-/* end 2.2 compatibility macros */
-
 #define IS_BASESTRING(o) \
-	PyObject_TypeCheck(o, &PyBaseString_Type)
+	PyUnicode_Check(o)
 
 static PyObject *error_obj;	/* CSV exception */
 static PyObject *dialects;      /* Dialect registry */
@@ -125,7 +81,7 @@ typedef struct {
 
 static PyTypeObject Reader_Type;
 
-#define ReaderObject_Check(v)   (Py_Type(v) == &Reader_Type)
+#define ReaderObject_Check(v)   (Py_TYPE(v) == &Reader_Type)
 
 typedef struct {
         PyObject_HEAD
@@ -206,7 +162,7 @@ Dialect_get_quotechar(DialectObj *self)
 static PyObject *
 Dialect_get_quoting(DialectObj *self)
 {
-        return PyInt_FromLong(self->quoting);
+        return PyLong_FromLong(self->quoting);
 }
 
 static int
@@ -225,12 +181,23 @@ _set_int(const char *name, int *target, PyObject *src, int dflt)
 	if (src == NULL)
 		*target = dflt;
 	else {
-		if (!PyInt_CheckExact(src)) {
+		long value;
+		if (!PyLong_CheckExact(src)) {
 			PyErr_Format(PyExc_TypeError, 
 				     "\"%s\" must be an integer", name);
 			return -1;
 		}
-		*target = PyInt_AsLong(src);
+		value = PyLong_AsLong(src);
+		if (value == -1 && PyErr_Occurred())
+			return -1;
+#if SIZEOF_LONG > SIZEOF_INT
+		if (value > INT_MAX || value < INT_MIN) {
+			PyErr_Format(PyExc_ValueError,
+				     "integer out of range for \"%s\"", name);
+			return -1;
+		}
+#endif
+		*target = (int)value;
 	}
 	return 0;
 }
@@ -270,7 +237,7 @@ _set_str(const char *name, PyObject **target, PyObject *src, const char *dflt)
 			*target = NULL;
 		else if (!IS_BASESTRING(src)) {
 			PyErr_Format(PyExc_TypeError, 
-				     "\"%s\" must be an string", name);
+				     "\"%s\" must be a string", name);
 			return -1;
 		}
 		else {
@@ -317,7 +284,7 @@ static void
 Dialect_dealloc(DialectObj *self)
 {
         Py_XDECREF(self->lineterminator);
-        Py_Type(self)->tp_free((PyObject *)self);
+        Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static char *dialect_kws[] = {
@@ -793,6 +760,16 @@ Reader_iternext(ReaderObj *self)
 					     "newline inside string");
                         return NULL;
                 }
+		if (!PyUnicode_Check(lineobj)) {
+			PyErr_Format(error_obj,
+				     "iterator should return strings, "
+				     "not %.200s "
+				     "(did you open the file in text mode?)",
+				     lineobj->ob_type->tp_name
+				);
+			Py_DECREF(lineobj);
+			return NULL;
+		}
                 ++self->line_num;
                 line = PyUnicode_AsUnicode(lineobj);
                 linelen = PyUnicode_GetSize(lineobj);
@@ -1185,7 +1162,7 @@ csv_writerow(WriterObj *self, PyObject *seq)
 		else {
 			PyObject *str;
 
-			str = PyObject_Unicode(field);
+			str = PyObject_Str(field);
  			Py_DECREF(field);
 			if (str == NULL)
 				return NULL;
@@ -1419,14 +1396,18 @@ csv_field_size_limit(PyObject *module, PyObject *args)
 	if (!PyArg_UnpackTuple(args, "field_size_limit", 0, 1, &new_limit))
 		return NULL;
 	if (new_limit != NULL) {
-		if (!PyInt_CheckExact(new_limit)) {
+		if (!PyLong_CheckExact(new_limit)) {
 			PyErr_Format(PyExc_TypeError, 
 				     "limit must be an integer");
 			return NULL;
 		}
-		field_limit = PyInt_AsLong(new_limit);
+		field_limit = PyLong_AsLong(new_limit);
+		if (field_limit == -1 && PyErr_Occurred()) {
+			field_limit = old_limit;
+			return NULL;
+		}
 	}
-	return PyInt_FromLong(old_limit);
+	return PyLong_FromLong(old_limit);
 }
 
 /*

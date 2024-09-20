@@ -152,7 +152,7 @@ class SubPattern:
         REPEATCODES = (MIN_REPEAT, MAX_REPEAT)
         for op, av in self.data:
             if op is BRANCH:
-                i = sys.maxint
+                i = sys.maxsize
                 j = 0
                 for av in av[1]:
                     l, h = av.getwidth()
@@ -177,7 +177,7 @@ class SubPattern:
                 hi = hi + 1
             elif op == SUCCESS:
                 break
-        self.width = int(min(lo, sys.maxint)), int(min(hi, sys.maxint))
+        self.width = int(min(lo, sys.maxsize)), int(min(hi, sys.maxsize))
         return self.width
 
 class Tokenizer:
@@ -189,12 +189,18 @@ class Tokenizer:
         if self.index >= len(self.string):
             self.next = None
             return
-        char = self.string[self.index]
-        if char[0] == "\\":
+        char = self.string[self.index:self.index+1]
+        # Special case for the str8, since indexing returns a integer
+        # XXX This is only needed for test_bug_926075 in test_re.py
+        if isinstance(self.string, bytes):
+            char = chr(char)
+        if char == "\\":
             try:
                 c = self.string[self.index + 1]
             except IndexError:
                 raise error("bogus escape (end of line)")
+            if isinstance(self.string, bytes):
+                char = chr(c)
             char = char + c
         self.index = self.index + len(char)
         self.next = char

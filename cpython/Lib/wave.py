@@ -71,7 +71,7 @@ The close() method is called automatically when the class instance
 is destroyed.
 """
 
-import __builtin__
+import builtins
 
 __all__ = ["open", "openfp", "Error"]
 
@@ -155,8 +155,8 @@ class Wave_read:
 
     def __init__(self, f):
         self._i_opened_the_file = None
-        if isinstance(f, basestring):
-            f = __builtin__.open(f, 'rb')
+        if isinstance(f, str):
+            f = builtins.open(f, 'rb')
             self._i_opened_the_file = f
         # else, assume it is an open file object already
         try:
@@ -299,8 +299,8 @@ class Wave_write:
 
     def __init__(self, f):
         self._i_opened_the_file = None
-        if isinstance(f, basestring):
-            f = __builtin__.open(f, 'wb')
+        if isinstance(f, str):
+            f = builtins.open(f, 'wb')
             self._i_opened_the_file = f
         try:
             self.initfp(f)

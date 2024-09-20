@@ -81,9 +81,9 @@ iter_len(seqiterobject *it)
 			return NULL;
 		len = seqsize - it->it_index;
 		if (len >= 0)
-			return PyInt_FromSsize_t(len);
+			return PyLong_FromSsize_t(len);
 	}
-	return PyInt_FromLong(0);
+	return PyLong_FromLong(0);
 }
 
 PyDoc_STRVAR(length_hint_doc, "Private method returning an estimate of len(list(it)).");
@@ -199,7 +199,7 @@ calliter_iternext(calliterobject *it)
 
 PyTypeObject PyCallIter_Type = {
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
-	"callable-iterator",			/* tp_name */
+	"callable_iterator",			/* tp_name */
 	sizeof(calliterobject),			/* tp_basicsize */
 	0,					/* tp_itemsize */
 	/* methods */
@@ -240,7 +240,7 @@ typedef struct zipiterobject_t {
 	PyTupleObject *result;	/* Reusable tuple for optimization */
 } zipiterobject;
 
-static PyTypeObject PyZipIter_Type; /* Forward */
+ /* Forward */
 
 PyObject *
 _PyZip_CreateIter(PyObject* args)
@@ -253,7 +253,7 @@ _PyZip_CreateIter(PyObject* args)
         
         assert(PyTuple_Check(args));
 
-	if (Py_Type(&PyZipIter_Type) == NULL) {
+	if (Py_TYPE(&PyZipIter_Type) == NULL) {
 		if (PyType_Ready(&PyZipIter_Type) < 0)
 			return NULL;
 	}
@@ -367,9 +367,9 @@ zipiter_next(zipiterobject *zit)
 	return result;
 }
 
-static PyTypeObject PyZipIter_Type = {
+PyTypeObject PyZipIter_Type = {
 	PyVarObject_HEAD_INIT(0, 0)
-	"zipiterator",				/* tp_name */
+	"zip_iterator",				/* tp_name */
 	sizeof(zipiterobject),			/* tp_basicsize */
 	0,					/* tp_itemsize */
 	/* methods */

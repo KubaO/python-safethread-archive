@@ -289,6 +289,7 @@ mswindows = (sys.platform == "win32")
 import io
 import os
 import traceback
+import gc
 
 # Exception classes used by this module.
 class CalledProcessError(Exception):
@@ -344,7 +345,7 @@ _active = []
 
 def _cleanup():
     for inst in _active[:]:
-        res = inst.poll(_deadstate=sys.maxint)
+        res = inst.poll(_deadstate=sys.maxsize)
         if res is not None and res >= 0:
             try:
                 _active.remove(inst)
@@ -397,8 +398,8 @@ def list2cmdline(seq):
 
     2) A string surrounded by double quotation marks is
        interpreted as a single argument, regardless of white space
-       contained within.  A quoted string can be embedded in an
-       argument.
+       or pipe characters contained within.  A quoted string can be
+       embedded in an argument.
 
     3) A double quotation mark preceded by a backslash is
        interpreted as a literal double quotation mark.
@@ -424,7 +425,7 @@ def list2cmdline(seq):
         if result:
             result.append(' ')
 
-        needquote = (" " in arg) or ("\t" in arg) or arg == ""
+        needquote = (" " in arg) or ("\t" in arg) or ("|" in arg) or not arg
         if needquote:
             result.append('"')
 
@@ -433,7 +434,7 @@ def list2cmdline(seq):
                 # Don't know if we need to double yet.
                 bs_buf.append(c)
             elif c == '"':
-                # Double backspaces.
+                # Double backslashes.
                 result.append('\\' * len(bs_buf)*2)
                 bs_buf = []
                 result.append('\\"')
@@ -444,7 +445,7 @@ def list2cmdline(seq):
                     bs_buf = []
                 result.append(c)
 
-        # Add remaining backspaces, if any.
+        # Add remaining backslashes, if any.
         if bs_buf:
             result.extend(bs_buf)
 
@@ -552,10 +553,9 @@ class Popen(object):
                 self.stderr = io.TextIOWrapper(self.stderr)
 
 
-    def _translate_newlines(self, data):
-        data = data.replace(b"\r\n", b"\n")
-        data = data.replace(b"\r", b"\n")
-        return str(data)
+    def _translate_newlines(self, data, encoding):
+        data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        return data.decode(encoding)
 
 
     def __del__(self, sys=sys):
@@ -563,7 +563,7 @@ class Popen(object):
             # We didn't get to successfully create a child process.
             return
         # In case the child hasn't been waited on, check if it's done.
-        self.poll(_deadstate=sys.maxint)
+        self.poll(_deadstate=sys.maxsize)
         if self.returncode is None and _active is not None:
             # Child is still running, keep us alive until we can wait on it.
             _active.append(self)
@@ -698,7 +698,7 @@ class Popen(object):
                            errread, errwrite):
             """Execute program (MS Windows version)"""
 
-            if not isinstance(args, basestring):
+            if not isinstance(args, str):
                 args = list2cmdline(args)
 
             # Process startup details
@@ -809,6 +809,8 @@ class Popen(object):
 
             if self.stdin:
                 if input is not None:
+                    if isinstance(input, str):
+                        input = input.encode()
                     self.stdin.write(input)
                 self.stdin.close()
 
@@ -822,16 +824,6 @@ class Popen(object):
                 stdout = stdout[0]
             if stderr is not None:
                 stderr = stderr[0]
-
-            # Translate newlines, if requested.  We cannot let the file
-            # object do the translation: It is based on stdio, which is
-            # impossible to combine with select (unless forcing no
-            # buffering).
-            if self.universal_newlines:
-                if stdout is not None:
-                    stdout = self._translate_newlines(stdout)
-                if stderr is not None:
-                    stderr = self._translate_newlines(stderr)
 
             self.wait()
             return (stdout, stderr)
@@ -896,13 +888,8 @@ class Popen(object):
 
 
         def _close_fds(self, but):
-            for i in range(3, MAXFD):
-                if i == but:
-                    continue
-                try:
-                    os.close(i)
-                except:
-                    pass
+            os.closerange(3, but)
+            os.closerange(but + 1, MAXFD)
 
 
         def _execute_child(self, args, executable, preexec_fn, close_fds,
@@ -913,7 +900,7 @@ class Popen(object):
                            errread, errwrite):
             """Execute program (POSIX version)"""
 
-            if isinstance(args, basestring):
+            if isinstance(args, str):
                 args = [args]
             else:
                 args = list(args)
@@ -930,7 +917,16 @@ class Popen(object):
             errpipe_read, errpipe_write = os.pipe()
             self._set_cloexec_flag(errpipe_write)
 
-            self.pid = os.fork()
+            gc_was_enabled = gc.isenabled()
+            # Disable gc to avoid bug where gc -> file_dealloc ->
+            # write to stderr -> hang.  http://bugs.python.org/issue1336
+            gc.disable()
+            try:
+                self.pid = os.fork()
+            except:
+                if gc_was_enabled:
+                    gc.enable()
+                raise
             self._child_created = True
             if self.pid == 0:
                 # Child
@@ -958,7 +954,8 @@ class Popen(object):
                         os.close(p2cread)
                     if c2pwrite is not None and c2pwrite not in (p2cread, 1):
                         os.close(c2pwrite)
-                    if errwrite is not None and errwrite not in (p2cread, c2pwrite, 2):
+                    if (errwrite is not None and
+                        errwrite not in (p2cread, c2pwrite, 2)):
                         os.close(errwrite)
 
                     # Close all other fds, if asked for
@@ -990,6 +987,8 @@ class Popen(object):
                 os._exit(255)
 
             # Parent
+            if gc_was_enabled:
+                gc.enable()
             os.close(errpipe_write)
             if p2cread is not None and p2cwrite is not None:
                 os.close(p2cread)
@@ -1044,8 +1043,7 @@ class Popen(object):
             if self.stdin:
                 if isinstance(input, str): # Unicode
                     input = input.encode("utf-8") # XXX What else?
-                if not isinstance(input, (bytes, str8)):
-                    input = bytes(input)
+                input = bytes(input)
             read_set = []
             write_set = []
             stdout = None # Return
@@ -1069,6 +1067,9 @@ class Popen(object):
             input_offset = 0
             while read_set or write_set:
                 rlist, wlist, xlist = select.select(read_set, write_set, [])
+
+                # XXX Rewrite these to use non-blocking I/O on the
+                # file objects; they are no longer using C stdio!
 
                 if self.stdin in wlist:
                     # When select has indicated that the file is writable,
@@ -1097,19 +1098,19 @@ class Popen(object):
 
             # All data exchanged.  Translate lists into strings.
             if stdout is not None:
-                stdout = b''.join(stdout)
+                stdout = b"".join(stdout)
             if stderr is not None:
-                stderr = b''.join(stderr)
+                stderr = b"".join(stderr)
 
-            # Translate newlines, if requested.  We cannot let the file
-            # object do the translation: It is based on stdio, which is
-            # impossible to combine with select (unless forcing no
-            # buffering).
+            # Translate newlines, if requested.
+            # This also turns bytes into strings.
             if self.universal_newlines:
                 if stdout is not None:
-                    stdout = self._translate_newlines(stdout)
+                    stdout = self._translate_newlines(stdout,
+                                                      self.stdout.encoding)
                 if stderr is not None:
-                    stderr = self._translate_newlines(stderr)
+                    stderr = self._translate_newlines(stderr,
+                                                      self.stderr.encoding)
 
             self.wait()
             return (stdout, stderr)

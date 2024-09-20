@@ -34,7 +34,6 @@ import abc
 import sys
 import codecs
 import _fileio
-import io
 import warnings
 
 # open() uses st_blksize whenever we can
@@ -50,8 +49,9 @@ class BlockingIOError(IOError):
         self.characters_written = characters_written
 
 
-def open(file, mode="r", buffering=None, encoding=None, newline=None):
-    """Replacement for the built-in open function.
+def open(file, mode="r", buffering=None, encoding=None, errors=None,
+         newline=None, closefd=True):
+    r"""Replacement for the built-in open function.
 
     Args:
       file: string giving the name of the file to be opened;
@@ -61,6 +61,7 @@ def open(file, mode="r", buffering=None, encoding=None, newline=None):
                  can be: 0 = unbuffered, 1 = line buffered,
                  larger = fully buffered.
       encoding: optional string giving the text encoding.
+      errors: optional string giving the encoding error handling.
       newline: optional newlines specifier; must be None, '', '\n', '\r'
                or '\r\n'; all other values are illegal.  It controls the
                handling of line endings.  It works as follows:
@@ -82,9 +83,12 @@ def open(file, mode="r", buffering=None, encoding=None, newline=None):
           other legal values, any `'\n'` characters written are
           translated to the given string.
 
+      closefd: optional argument to keep the underlying file descriptor
+               open when the file is closed.  It must not be false when
+               a filename is given.
+
     (*) If a file descriptor is given, it is closed when the returned
-    I/O object is closed.  If you don't want this to happen, use
-    os.dup() to create a duplicate file descriptor.
+    I/O object is closed, unless closefd=False is given.
 
     Mode strings characters:
       'r': open for reading (default)
@@ -96,7 +100,7 @@ def open(file, mode="r", buffering=None, encoding=None, newline=None):
       'U': universal newline mode (for backwards compatibility)
 
     Constraints:
-      - encoding must not be given when a binary mode is given
+      - encoding or errors must not be given when a binary mode is given
       - buffering must not be zero when a text mode is given
 
     Returns:
@@ -104,14 +108,16 @@ def open(file, mode="r", buffering=None, encoding=None, newline=None):
       binary stream, a buffered binary stream, or a buffered text
       stream, open for reading and/or writing.
     """
-    if not isinstance(file, (basestring, int)):
+    if not isinstance(file, (str, int)):
         raise TypeError("invalid file: %r" % file)
-    if not isinstance(mode, basestring):
+    if not isinstance(mode, str):
         raise TypeError("invalid mode: %r" % mode)
     if buffering is not None and not isinstance(buffering, int):
         raise TypeError("invalid buffering: %r" % buffering)
-    if encoding is not None and not isinstance(encoding, basestring):
+    if encoding is not None and not isinstance(encoding, str):
         raise TypeError("invalid encoding: %r" % encoding)
+    if errors is not None and not isinstance(errors, str):
+        raise TypeError("invalid errors: %r" % errors)
     modes = set(mode)
     if modes - set("arwb+tU") or len(mode) > len(modes):
         raise ValueError("invalid mode: %r" % mode)
@@ -133,17 +139,22 @@ def open(file, mode="r", buffering=None, encoding=None, newline=None):
         raise ValueError("must have exactly one of read/write/append mode")
     if binary and encoding is not None:
         raise ValueError("binary mode doesn't take an encoding argument")
+    if binary and errors is not None:
+        raise ValueError("binary mode doesn't take an errors argument")
     if binary and newline is not None:
         raise ValueError("binary mode doesn't take a newline argument")
     raw = FileIO(file,
                  (reading and "r" or "") +
                  (writing and "w" or "") +
                  (appending and "a" or "") +
-                 (updating and "+" or ""))
+                 (updating and "+" or ""),
+                 closefd)
     if buffering is None:
         buffering = -1
-    if buffering < 0 and raw.isatty():
-        buffering = 1
+    line_buffering = False
+    if buffering == 1 or buffering < 0 and raw.isatty():
+        buffering = -1
+        line_buffering = True
     if buffering < 0:
         buffering = DEFAULT_BUFFER_SIZE
         try:
@@ -173,10 +184,32 @@ def open(file, mode="r", buffering=None, encoding=None, newline=None):
         buffer.name = file
         buffer.mode = mode
         return buffer
-    text = TextIOWrapper(buffer, encoding, newline)
+    text = TextIOWrapper(buffer, encoding, errors, newline, line_buffering)
     text.name = file
     text.mode = mode
     return text
+
+class _DocDescriptor:
+    """Helper for builtins.open.__doc__
+    """
+    def __get__(self, obj, typ):
+        return (
+            "open(file, mode='r', buffering=None, encoding=None, "
+                 "errors=None, newline=None, closefd=True)\n\n" +
+            open.__doc__)
+
+class OpenWrapper:
+    """Wrapper for builtins.open
+
+    Trick so that open won't become a bound method when stored
+    as a class variable (as dumbdbm does).
+
+    See initstdio() in Python/pythonrun.c.
+    """
+    __doc__ = _DocDescriptor()
+
+    def __new__(cls, *args, **kwargs):
+        return open(*args, **kwargs)
 
 
 class UnsupportedOperation(ValueError, IOError):
@@ -332,6 +365,7 @@ class IOBase(metaclass=abc.ABCMeta):
 
     def __enter__(self) -> "IOBase":  # That's a forward reference
         """Context management protocol.  Returns self."""
+        self._checkClosed()
         return self
 
     def __exit__(self, *args) -> None:
@@ -375,7 +409,7 @@ class IOBase(metaclass=abc.ABCMeta):
                 return 1
         if limit is None:
             limit = -1
-        res = bytes()
+        res = bytearray()
         while limit < 0 or len(res) < limit:
             b = self.read(nreadahead())
             if not b:
@@ -383,7 +417,7 @@ class IOBase(metaclass=abc.ABCMeta):
             res += b
             if res.endswith(b"\n"):
                 break
-        return res
+        return bytes(res)
 
     def __iter__(self):
         self._checkClosed()
@@ -438,20 +472,20 @@ class RawIOBase(IOBase):
             n = -1
         if n < 0:
             return self.readall()
-        b = bytes(n.__index__())
+        b = bytearray(n.__index__())
         n = self.readinto(b)
         del b[n:]
-        return b
+        return bytes(b)
 
     def readall(self):
         """readall() -> bytes.  Read until EOF, using multiple read() call."""
-        res = bytes()
+        res = bytearray()
         while True:
             data = self.read(DEFAULT_BUFFER_SIZE)
             if not data:
                 break
             res += data
-        return res
+        return bytes(res)
 
     def readinto(self, b: bytes) -> int:
         """readinto(b: bytes) -> int.  Read up to len(b) bytes into b.
@@ -586,6 +620,11 @@ class _BufferedIOMixin(BufferedIOBase):
         return self.raw.tell()
 
     def truncate(self, pos=None):
+        # Flush the stream.  We're mixing buffered I/O with lower-level I/O,
+        # and a flush may be necessary to synch both views of the current
+        # file state.
+        self.flush()
+
         if pos is None:
             pos = self.tell()
         return self.raw.truncate(pos)
@@ -634,14 +673,14 @@ class BytesIO(BufferedIOBase):
     # XXX More docs
 
     def __init__(self, initial_bytes=None):
-        buffer = b""
+        buf = bytearray()
         if initial_bytes is not None:
-            buffer += initial_bytes
-        self._buffer = buffer
+            buf += initial_bytes
+        self._buffer = buf
         self._pos = 0
 
     def getvalue(self):
-        return self._buffer
+        return bytes(self._buffer)
 
     def read(self, n=None):
         if n is None:
@@ -651,7 +690,7 @@ class BytesIO(BufferedIOBase):
         newpos = min(len(self._buffer), self._pos + n)
         b = self._buffer[self._pos : newpos]
         self._pos = newpos
-        return b
+        return bytes(b)
 
     def read1(self, n):
         return self.read(n)
@@ -673,6 +712,10 @@ class BytesIO(BufferedIOBase):
         return n
 
     def seek(self, pos, whence=0):
+        try:
+            pos = pos.__index__()
+        except AttributeError as err:
+            raise TypeError("an integer is required") from err
         if whence == 0:
             self._pos = max(0, pos)
         elif whence == 1:
@@ -798,7 +841,7 @@ class BufferedWriter(_BufferedIOMixin):
         self.max_buffer_size = (2*buffer_size
                                 if max_buffer_size is None
                                 else max_buffer_size)
-        self._write_buf = b""
+        self._write_buf = bytearray()
 
     def write(self, b):
         if self.closed:
@@ -1016,6 +1059,85 @@ class TextIOBase(IOBase):
         return None
 
 
+class IncrementalNewlineDecoder(codecs.IncrementalDecoder):
+    """Codec used when reading a file in universal newlines mode.
+    It wraps another incremental decoder, translating \\r\\n and \\r into \\n.
+    It also records the types of newlines encountered.
+    When used with translate=False, it ensures that the newline sequence is
+    returned in one piece.
+    """
+    def __init__(self, decoder, translate, errors='strict'):
+        codecs.IncrementalDecoder.__init__(self, errors=errors)
+        self.buffer = b''
+        self.translate = translate
+        self.decoder = decoder
+        self.seennl = 0
+
+    def decode(self, input, final=False):
+        # decode input (with the eventual \r from a previous pass)
+        if self.buffer:
+            input = self.buffer + input
+
+        output = self.decoder.decode(input, final=final)
+
+        # retain last \r even when not translating data:
+        # then readline() is sure to get \r\n in one pass
+        if output.endswith("\r") and not final:
+            output = output[:-1]
+            self.buffer = b'\r'
+        else:
+            self.buffer = b''
+
+        # Record which newlines are read
+        crlf = output.count('\r\n')
+        cr = output.count('\r') - crlf
+        lf = output.count('\n') - crlf
+        self.seennl |= (lf and self._LF) | (cr and self._CR) \
+                    | (crlf and self._CRLF)
+
+        if self.translate:
+            if crlf:
+                output = output.replace("\r\n", "\n")
+            if cr:
+                output = output.replace("\r", "\n")
+
+        return output
+
+    def getstate(self):
+        buf, flag = self.decoder.getstate()
+        return buf + self.buffer, flag
+
+    def setstate(self, state):
+        buf, flag = state
+        if buf.endswith(b'\r'):
+            self.buffer = b'\r'
+            buf = buf[:-1]
+        else:
+            self.buffer = b''
+        self.decoder.setstate((buf, flag))
+
+    def reset(self):
+        self.seennl = 0
+        self.buffer = b''
+        self.decoder.reset()
+
+    _LF = 1
+    _CR = 2
+    _CRLF = 4
+
+    @property
+    def newlines(self):
+        return (None,
+                "\n",
+                "\r",
+                ("\r", "\n"),
+                "\r\n",
+                ("\n", "\r\n"),
+                ("\r", "\r\n"),
+                ("\r", "\n", "\r\n")
+               )[self.seennl]
+
+
 class TextIOWrapper(TextIOBase):
 
     """Buffered text stream.
@@ -1025,13 +1147,14 @@ class TextIOWrapper(TextIOBase):
 
     _CHUNK_SIZE = 128
 
-    def __init__(self, buffer, encoding=None, newline=None):
+    def __init__(self, buffer, encoding=None, errors=None, newline=None,
+                 line_buffering=False):
         if newline not in (None, "", "\n", "\r", "\r\n"):
             raise ValueError("illegal newline value: %r" % (newline,))
         if encoding is None:
             try:
                 encoding = os.device_encoding(buffer.fileno())
-            except (AttributeError, io.UnsupportedOperation):
+            except (AttributeError, UnsupportedOperation):
                 pass
             if encoding is None:
                 try:
@@ -1042,14 +1165,25 @@ class TextIOWrapper(TextIOBase):
                 else:
                     encoding = locale.getpreferredencoding()
 
+        if not isinstance(encoding, str):
+            raise ValueError("invalid encoding: %r" % encoding)
+
+        if errors is None:
+            errors = "strict"
+        else:
+            if not isinstance(errors, str):
+                raise ValueError("invalid errors: %r" % errors)
+
         self.buffer = buffer
+        self._line_buffering = line_buffering
         self._encoding = encoding
+        self._errors = errors
         self._readuniversal = not newline
         self._readtranslate = newline is None
         self._readnl = newline
         self._writetranslate = newline != ''
         self._writenl = newline or os.linesep
-        self._seennl = 0
+        self._encoder = None
         self._decoder = None
         self._pending = ""
         self._snapshot = None
@@ -1058,6 +1192,14 @@ class TextIOWrapper(TextIOBase):
     @property
     def encoding(self):
         return self._encoding
+
+    @property
+    def errors(self):
+        return self._errors
+
+    @property
+    def line_buffering(self):
+        return self._line_buffering
 
     # A word about _snapshot.  This attribute is either None, or a
     # tuple (decoder_state, readahead, pending) where decoder_state is
@@ -1093,26 +1235,35 @@ class TextIOWrapper(TextIOBase):
     def write(self, s: str):
         if self.closed:
             raise ValueError("write to closed file")
-        if not isinstance(s, basestring):
+        if not isinstance(s, str):
             raise TypeError("can't write %s to text stream" %
                             s.__class__.__name__)
-        haslf = "\n" in s
+        length = len(s)
+        haslf = (self._writetranslate or self._line_buffering) and "\n" in s
         if haslf and self._writetranslate and self._writenl != "\n":
             s = s.replace("\n", self._writenl)
+        encoder = self._encoder or self._get_encoder()
         # XXX What if we were just reading?
-        b = s.encode(self._encoding)
+        b = encoder.encode(s)
         self.buffer.write(b)
-        if haslf and self.isatty():
+        if self._line_buffering and (haslf or "\r" in s):
             self.flush()
-        self._snapshot = self._decoder = None
-        return len(s)
+        self._snapshot = None
+        if self._decoder:
+            self._decoder.reset()
+        return length
+
+    def _get_encoder(self):
+        make_encoder = codecs.getincrementalencoder(self._encoding)
+        self._encoder = make_encoder(self._errors)
+        return self._encoder
 
     def _get_decoder(self):
         make_decoder = codecs.getincrementaldecoder(self._encoding)
-        if make_decoder is None:
-            raise IOError("Can't find an incremental decoder for encoding %s" %
-                          self._encoding)
-        decoder = self._decoder = make_decoder()  # XXX: errors
+        decoder = make_decoder(self._errors)
+        if self._readuniversal:
+            decoder = IncrementalNewlineDecoder(decoder, self._readtranslate)
+        self._decoder = decoder
         return decoder
 
     def _read_chunk(self):
@@ -1165,14 +1316,14 @@ class TextIOWrapper(TextIOBase):
         try:
             decoder.setstate((b"", decoder_state))
             n = 0
-            bb = bytes(1)
+            bb = bytearray(1)
             for i, bb[0] in enumerate(readahead):
                 n += len(decoder.decode(bb))
                 if n >= needed:
                     decoder_buffer, decoder_state = decoder.getstate()
                     return self._encode_decoder_state(
                         decoder_state,
-                        position + (i+1) - len(decoder_buffer))
+                        position + (i+1) - len(decoder_buffer) - (n - needed))
             raise IOError("Can't reconstruct logical file position")
         finally:
             decoder.setstate(saved_state)
@@ -1192,7 +1343,8 @@ class TextIOWrapper(TextIOBase):
             pos = self.buffer.seek(0, 2)
             self._snapshot = None
             self._pending = ""
-            self._decoder = None
+            if self._decoder:
+                self._decoder.reset()
             return pos
         if whence != 0:
             raise ValueError("Invalid whence (%r, should be 0, 1 or 2)" %
@@ -1206,7 +1358,8 @@ class TextIOWrapper(TextIOBase):
             self.buffer.seek(pos)
             self._snapshot = None
             self._pending = ""
-            self._decoder = None
+            if self._decoder:
+                self._decoder.reset()
             return pos
         decoder = self._decoder or self._get_decoder()
         decoder.set_state(("", ds))
@@ -1225,7 +1378,7 @@ class TextIOWrapper(TextIOBase):
             res += decoder.decode(self.buffer.read(), True)
             self._pending = ""
             self._snapshot = None
-            return self._replacenl(res)
+            return res
         else:
             while len(res) < n:
                 readahead, pending = self._read_chunk()
@@ -1233,7 +1386,7 @@ class TextIOWrapper(TextIOBase):
                 if not readahead:
                     break
             self._pending = res[n:]
-            return self._replacenl(res[:n])
+            return res[:n]
 
     def __next__(self):
         self._telling = False
@@ -1245,7 +1398,9 @@ class TextIOWrapper(TextIOBase):
         return line
 
     def readline(self, limit=None):
-        if limit is not None:
+        if limit is None:
+            limit = -1
+        if limit >= 0:
             # XXX Hack to support limit argument, for backwards compatibility
             line = self.readline()
             if len(line) <= limit:
@@ -1255,62 +1410,55 @@ class TextIOWrapper(TextIOBase):
 
         line = self._pending
         start = 0
-        cr_eof = False
         decoder = self._decoder or self._get_decoder()
 
         pos = endpos = None
-        ending = None
         while True:
-            if self._readuniversal:
+            if self._readtranslate:
+                # Newlines are already translated, only search for \n
+                pos = line.find('\n', start)
+                if pos >= 0:
+                    endpos = pos + 1
+                    break
+                else:
+                    start = len(line)
+
+            elif self._readuniversal:
                 # Universal newline search. Find any of \r, \r\n, \n
+                # The decoder ensures that \r\n are not split in two pieces
 
                 # In C we'd look for these in parallel of course.
                 nlpos = line.find("\n", start)
                 crpos = line.find("\r", start)
                 if crpos == -1:
                     if nlpos == -1:
+                        # Nothing found
                         start = len(line)
                     else:
                         # Found \n
-                        pos = nlpos
-                        endpos = pos + 1
-                        ending = self._LF
+                        endpos = nlpos + 1
                         break
                 elif nlpos == -1:
-                    if crpos == len(line) - 1:
-                        # Found \r at end of buffer, must keep reading
-                        start = crpos
-                        cr_eof = True
-                    else:
-                        # Found lone \r
-                        ending = self._CR
-                        pos = crpos
-                        endpos = pos + 1
-                        break
+                    # Found lone \r
+                    endpos = crpos + 1
+                    break
                 elif nlpos < crpos:
                     # Found \n
-                    pos = nlpos
-                    endpos = pos + 1
-                    ending = self._LF
+                    endpos = nlpos + 1
                     break
                 elif nlpos == crpos + 1:
                     # Found \r\n
-                    ending = self._CRLF
-                    pos = crpos
-                    endpos = pos + 2
+                    endpos = crpos + 2
                     break
                 else:
                     # Found \r
-                    pos = crpos
-                    endpos = pos + 1
-                    ending = self._CR
+                    endpos = crpos + 1
                     break
             else:
                 # non-universal
                 pos = line.find(self._readnl)
                 if pos >= 0:
-                    endpos = pos+len(self._readnl)
-                    ending = self._nlflag(self._readnl)
+                    endpos = pos + len(self._readnl)
                     break
 
             # No line ending seen yet - get more data
@@ -1326,80 +1474,31 @@ class TextIOWrapper(TextIOBase):
                 # end of file
                 self._pending = ''
                 self._snapshot = None
-                if cr_eof:
-                    self._seennl |= self._CR
-                    return line[:-1] + '\n'
-                else:
-                    return line
+                return line
 
         self._pending = line[endpos:]
-        if self._readtranslate:
-            self._seennl |= ending
-            if ending != self._LF:
-                return line[:pos] + '\n'
-            else:
-                return line[:endpos]
-        else:
-            return line[:endpos]
+        return line[:endpos]
 
-    def _replacenl(self, data):
-        # Replace newlines in data as needed and record that they have
-        # been seen.
-        if not self._readtranslate:
-            return data
-        if self._readuniversal:
-            crlf = data.count('\r\n')
-            cr = data.count('\r') - crlf
-            lf = data.count('\n') - crlf
-            self._seennl |= (lf and self._LF) | (cr and self._CR) \
-                         | (crlf and self._CRLF)
-            if crlf:
-                data = data.replace("\r\n", "\n")
-            if cr:
-                data = data.replace("\r", "\n")
-        elif self._readnl == '\n':
-            # Only need to detect if \n was seen.
-            if data.count('\n'):
-                self._seennl |= self._LF
-        else:
-            newdata = data.replace(self._readnl, '\n')
-            if newdata is not data:
-                self._seennl |= self._nlflag(self._readnl)
-            data = newdata
-        return data
-
-    _LF = 1
-    _CR = 2
-    _CRLF = 4
     @property
     def newlines(self):
-        return (None,
-                "\n",
-                "\r",
-                ("\r", "\n"),
-                "\r\n",
-                ("\n", "\r\n"),
-                ("\r", "\r\n"),
-                ("\r", "\n", "\r\n")
-               )[self._seennl]
-
-    def _nlflag(self, nlstr):
-        return [None, "\n", "\r", None, "\r\n"].index(nlstr)
+        return self._decoder.newlines if self._decoder else None
 
 class StringIO(TextIOWrapper):
 
     # XXX This is really slow, but fully functional
 
-    def __init__(self, initial_value="", encoding="utf-8", newline="\n"):
+    def __init__(self, initial_value="", encoding="utf-8",
+                 errors="strict", newline="\n"):
         super(StringIO, self).__init__(BytesIO(),
                                        encoding=encoding,
+                                       errors=errors,
                                        newline=newline)
         if initial_value:
-            if not isinstance(initial_value, basestring):
+            if not isinstance(initial_value, str):
                 initial_value = str(initial_value)
             self.write(initial_value)
             self.seek(0)
 
     def getvalue(self):
         self.flush()
-        return self.buffer.getvalue().decode(self._encoding)
+        return self.buffer.getvalue().decode(self._encoding, self._errors)

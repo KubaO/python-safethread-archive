@@ -1,4 +1,3 @@
-
 :mod:`os` --- Miscellaneous operating system interfaces
 =======================================================
 
@@ -6,51 +5,32 @@
    :synopsis: Miscellaneous operating system interfaces.
 
 
-This module provides a more portable way of using operating system dependent
-functionality than importing a operating system dependent built-in module like
-:mod:`posix` or :mod:`nt`. If you just want to read or write a file see
-:func:`open`, if you want to manipulate paths, see the :mod:`os.path`
-module, and if you want to read all the lines in all the files on the
-command line see the :mod:`fileinput` module.
+This module provides a portable way of using operating system dependent
+functionality.  If you just want to read or write a file see :func:`open`, if
+you want to manipulate paths, see the :mod:`os.path` module, and if you want to
+read all the lines in all the files on the command line see the :mod:`fileinput`
+module.  For creating temporary files and directories see the :mod:`tempfile`
+module, and for high-level file and directory handling see the :mod:`shutil`
+module.
 
-This module searches for an operating system dependent built-in module like
-:mod:`mac` or :mod:`posix` and exports the same functions and data as found
-there.  The design of all Python's built-in operating system dependent modules
-is such that as long as the same functionality is available, it uses the same
-interface; for example, the function ``os.stat(path)`` returns stat information
-about *path* in the same format (which happens to have originated with the POSIX
+The design of all built-in operating system dependent modules of Python is such
+that as long as the same functionality is available, it uses the same interface;
+for example, the function ``os.stat(path)`` returns stat information about
+*path* in the same format (which happens to have originated with the POSIX
 interface).
 
 Extensions peculiar to a particular operating system are also available through
 the :mod:`os` module, but using them is of course a threat to portability!
 
-Note that after the first time :mod:`os` is imported, there is *no* performance
-penalty in using functions from :mod:`os` instead of directly from the operating
-system dependent built-in module, so there should be *no* reason not to use
-:mod:`os`!
+.. note::
 
-The :mod:`os` module contains many functions and data values. The items below
-and in the following sub-sections are all available directly from the :mod:`os`
-module.
+   All functions in this module raise :exc:`OSError` in the case of invalid or
+   inaccessible file names and paths, or other arguments that have the correct
+   type, but are not accepted by the operating system.
 
 .. exception:: error
 
-   .. index:: module: errno
-
-   This exception is raised when a function returns a system-related error (not for
-   illegal argument types or other incidental errors). This is also known as the
-   built-in exception :exc:`OSError`.  The accompanying value is a pair containing
-   the numeric error code from :cdata:`errno` and the corresponding string, as
-   would be printed by the C function :cfunc:`perror`.  See the module
-   :mod:`errno`, which contains names for the error codes defined by the underlying
-   operating system.
-
-   When exceptions are classes, this exception carries two attributes,
-   :attr:`errno` and :attr:`strerror`.  The first holds the value of the C
-   :cdata:`errno` variable, and the latter holds the corresponding error message
-   from :cfunc:`strerror`.  For exceptions that involve a file system path (such as
-   :func:`chdir` or :func:`unlink`), the exception instance will contain a third
-   attribute, :attr:`filename`, which is the file name passed to the function.
+   An alias for the built-in :exc:`OSError` exception.
 
 
 .. data:: name
@@ -107,9 +87,10 @@ process and user.
    passed to the appropriate process-creation functions to cause  child processes
    to use a modified environment.
 
-   If the platform supports the :func:`unsetenv` function, you can  delete items in
+   If the platform supports the :func:`unsetenv` function, you can delete items in
    this mapping to unset environment variables. :func:`unsetenv` will be called
-   automatically when an item is deleted from ``os.environ``.
+   automatically when an item is deleted from ``os.environ``, and when
+   one of the :meth:`pop` or :meth:`clear` methods is called.
 
 
 .. function:: chdir(path)
@@ -129,7 +110,7 @@ process and user.
 .. function:: getegid()
 
    Return the effective group id of the current process.  This corresponds to the
-   'set id' bit on the file being executed in the current process. Availability:
+   "set id" bit on the file being executed in the current process. Availability:
    Unix.
 
 
@@ -137,7 +118,7 @@ process and user.
 
    .. index:: single: user; effective id
 
-   Return the current process' effective user id. Availability: Unix.
+   Return the current process's effective user id. Availability: Unix.
 
 
 .. function:: getgid()
@@ -159,7 +140,7 @@ process and user.
    process.  For most purposes, it is more useful to use the environment variable
    :envvar:`LOGNAME` to find out who the user is, or
    ``pwd.getpwuid(os.getuid())[0]`` to get the login name of the currently
-   effective user ID. Availability: Unix.
+   effective user id. Availability: Unix.
 
 
 .. function:: getpgid(pid)
@@ -193,7 +174,7 @@ process and user.
 
    .. index:: single: user; id
 
-   Return the current process' user id. Availability: Unix.
+   Return the current process's user id. Availability: Unix.
 
 
 .. function:: getenv(varname[, value])
@@ -242,20 +223,20 @@ process and user.
 
    Set the list of supplemental group ids associated with the current process to
    *groups*. *groups* must be a sequence, and each element must be an integer
-   identifying a group. This operation is typical available only to the superuser.
+   identifying a group. This operation is typically available only to the superuser.
    Availability: Unix.
 
 
 .. function:: setpgrp()
 
-   Calls the system call :cfunc:`setpgrp` or :cfunc:`setpgrp(0, 0)` depending on
+   Call the system call :cfunc:`setpgrp` or :cfunc:`setpgrp(0, 0)` depending on
    which version is implemented (if any).  See the Unix manual for the semantics.
    Availability: Unix.
 
 
 .. function:: setpgid(pid, pgrp)
 
-   Calls the system call :cfunc:`setpgid` to set the process group id of the
+   Call the system call :cfunc:`setpgid` to set the process group id of the
    process with id *pid* to the process group with id *pgrp*.  See the Unix manual
    for the semantics. Availability: Unix.
 
@@ -272,13 +253,13 @@ process and user.
 
 .. function:: getsid(pid)
 
-   Calls the system call :cfunc:`getsid`.  See the Unix manual for the semantics.
+   Call the system call :cfunc:`getsid`.  See the Unix manual for the semantics.
    Availability: Unix.
 
 
 .. function:: setsid()
 
-   Calls the system call :cfunc:`setsid`.  See the Unix manual for the semantics.
+   Call the system call :cfunc:`setsid`.  See the Unix manual for the semantics.
    Availability: Unix.
 
 
@@ -286,11 +267,10 @@ process and user.
 
    .. index:: single: user; id, setting
 
-   Set the current process' user id. Availability: Unix.
-
-.. % placed in this section since it relates to errno.... a little weak
+   Set the current process's user id. Availability: Unix.
 
 
+.. placed in this section since it relates to errno.... a little weak
 .. function:: strerror(code)
 
    Return the error message corresponding to the error code in *code*.
@@ -299,7 +279,7 @@ process and user.
 
 .. function:: umask(mask)
 
-   Set the current numeric umask and returns the previous umask. Availability:
+   Set the current numeric umask and return the previous umask. Availability:
    Unix, Windows.
 
 
@@ -371,14 +351,6 @@ These functions create new file objects. (See also :func:`open`.)
       This function is obsolete.  Use the :mod:`subprocess` module.
 
 
-.. function:: tmpfile()
-
-   Return a new file object opened in update mode (``w+b``).  The file has no
-   directory entries associated with it and will be automatically deleted once
-   there are no file descriptors for the file. Availability: Macintosh, Unix,
-   Windows.
-
-
 .. _os-fd-ops:
 
 File Descriptor Operations
@@ -406,6 +378,24 @@ by file descriptors.
       :func:`fdopen`, use its :meth:`close` method.
 
 
+.. function:: closerange(fd_low, fd_high)
+
+   Close all file descriptors from *fd_low* (inclusive) to *fd_high* (exclusive),
+   ignoring errors. Availability: Macintosh, Unix, Windows. Equivalent to::
+
+      for fd in xrange(fd_low, fd_high):
+          try:
+              os.close(fd)
+          except OSError:
+              pass
+
+
+.. function:: device_encoding(fd)
+
+   Return a string describing the encoding of the device associated with *fd*
+   if it is connected to a terminal; else return :const:`None`.
+
+
 .. function:: dup(fd)
 
    Return a duplicate of file descriptor *fd*. Availability: Macintosh, Unix,
@@ -416,6 +406,19 @@ by file descriptors.
 
    Duplicate file descriptor *fd* to *fd2*, closing the latter first if necessary.
    Availability: Macintosh, Unix, Windows.
+
+
+.. function:: fchmod(fd, mode)
+
+   Change the mode of the file given by *fd* to the numeric *mode*.  See the docs
+   for :func:`chmod` for possible values of *mode*.  Availability: Unix.
+
+
+.. function:: fchown(fd, uid, gid)
+
+   Change the owner and group id of the file given by *fd* to the numeric *uid*
+   and *gid*.  To leave one of the ids unchanged, set it to -1.
+   Availability: Unix.
 
 
 .. function:: fdatasync(fd)
@@ -478,9 +481,10 @@ by file descriptors.
 
 .. function:: lseek(fd, pos, how)
 
-   Set the current position of file descriptor *fd* to position *pos*, modified by
-   *how*: ``0`` to set the position relative to the beginning of the file; ``1`` to
-   set it relative to the current position; ``2`` to set it relative to the end of
+   Set the current position of file descriptor *fd* to position *pos*, modified
+   by *how*: :const:`SEEK_SET` or ``0`` to set the position relative to the
+   beginning of the file; :const:`SEEK_CUR` or ``1`` to set it relative to the
+   current position; :const:`os.SEEK_END` or ``2`` to set it relative to the end of
    the file. Availability: Macintosh, Unix, Windows.
 
 
@@ -509,7 +513,7 @@ by file descriptors.
 
    Open a new pseudo-terminal pair. Return a pair of file descriptors ``(master,
    slave)`` for the pty and the tty, respectively. For a (slightly) more portable
-   approach, use the :mod:`pty` module. Availability: Macintosh, Some flavors of
+   approach, use the :mod:`pty` module. Availability: Macintosh, some flavors of
    Unix.
 
 
@@ -530,7 +534,7 @@ by file descriptors.
       This function is intended for low-level I/O and must be applied to a file
       descriptor as returned by :func:`open` or :func:`pipe`.  To read a "file object"
       returned by the built-in function :func:`open` or by :func:`popen` or
-      :func:`fdopen`, or ``sys.stdin``, use its :meth:`read` or :meth:`readline`
+      :func:`fdopen`, or :data:`sys.stdin`, use its :meth:`read` or :meth:`readline`
       methods.
 
 
@@ -549,7 +553,7 @@ by file descriptors.
 .. function:: ttyname(fd)
 
    Return a string which specifies the terminal device associated with
-   file-descriptor *fd*.  If *fd* is not associated with a terminal device, an
+   file descriptor *fd*.  If *fd* is not associated with a terminal device, an
    exception is raised. Availability:Macintosh, Unix.
 
 
@@ -563,7 +567,7 @@ by file descriptors.
       This function is intended for low-level I/O and must be applied to a file
       descriptor as returned by :func:`open` or :func:`pipe`.  To write a "file
       object" returned by the built-in function :func:`open` or by :func:`popen` or
-      :func:`fdopen`, or ``sys.stdout`` or ``sys.stderr``, use its :meth:`write`
+      :func:`fdopen`, or :data:`sys.stdout` or :data:`sys.stderr`, use its :meth:`write`
       method.
 
 The following data items are available for use in constructing the *flags*
@@ -581,7 +585,7 @@ platforms.  For descriptions of their availability and use, consult
           O_TRUNC
 
    Options for the *flag* argument to the :func:`open` function. These can be
-   bit-wise OR'd together. Availability: Macintosh, Unix, Windows.
+   combined using the bitwise OR operator ``|``. Availability: Macintosh, Unix, Windows.
 
 
 .. data:: O_DSYNC
@@ -598,14 +602,7 @@ platforms.  For descriptions of their availability and use, consult
 
 
 .. data:: O_BINARY
-
-   Option for the *flag* argument to the :func:`open` function. This can be
-   bit-wise OR'd together with those listed above. Availability: Windows.
-
-   .. % XXX need to check on the availability of this one.
-
-
-.. data:: O_NOINHERIT
+          O_NOINHERIT
           O_SHORT_LIVED
           O_TEMPORARY
           O_RANDOM
@@ -613,7 +610,16 @@ platforms.  For descriptions of their availability and use, consult
           O_TEXT
 
    Options for the *flag* argument to the :func:`open` function. These can be
-   bit-wise OR'd together. Availability: Windows.
+   combined using the bitwise OR operator ``|``. Availability: Windows.
+
+
+.. data:: O_DIRECT
+          O_DIRECTORY
+          O_NOFOLLOW
+          O_NOATIME
+
+   Options for the *flag* argument to the :func:`open` function. These are
+   GNU extensions and not present if they are not defined by the C library.
 
 
 .. data:: SEEK_SET
@@ -628,7 +634,6 @@ platforms.  For descriptions of their availability and use, consult
 
 Files and Directories
 ---------------------
-
 
 .. function:: access(path, mode)
 
@@ -696,13 +701,13 @@ Files and Directories
 
 .. function:: getcwd()
 
-   Return a string representing the current working directory. Availability:
-   Macintosh, Unix, Windows.
+   Return a bytestring representing the current working directory.
+   Availability: Macintosh, Unix, Windows.
 
 
 .. function:: getcwdu()
 
-   Return a Unicode object representing the current working directory.
+   Return a string representing the current working directory.
    Availability: Macintosh, Unix, Windows.
 
 
@@ -734,7 +739,7 @@ Files and Directories
 .. function:: chmod(path, mode)
 
    Change the mode of *path* to the numeric *mode*. *mode* may take one of the
-   following values (as defined in the :mod:`stat` module) or bitwise or-ed
+   following values (as defined in the :mod:`stat` module) or bitwise ORed
    combinations of them:
 
    * ``stat.S_ISUID``
@@ -779,9 +784,16 @@ Files and Directories
    follow symbolic links. Availability: Unix.
 
 
+.. function:: lchmod(path, mode)
+
+   Change the mode of *path* to the numeric *mode*. If path is a symlink, this
+   affects the symlink rather than the target. See the docs for :func:`chmod`
+   for possible values of *mode*.  Availability: Unix.
+
+
 .. function:: lchown(path, uid, gid)
 
-   Change the owner and group id of *path* to the numeric *uid* and gid. This
+   Change the owner and group id of *path* to the numeric *uid* and *gid*. This
    function will not follow symbolic links. Availability: Macintosh, Unix.
 
 
@@ -803,8 +815,9 @@ Files and Directories
 
 .. function:: lstat(path)
 
-   Like :func:`stat`, but do not follow symbolic links. Availability: Macintosh,
-   Unix.
+   Like :func:`stat`, but do not follow symbolic links.  This is an alias for
+   :func:`stat` on platforms that do not support symbolic links, such as
+   Windows.
 
 
 .. function:: mkfifo(path[, mode])
@@ -834,19 +847,19 @@ Files and Directories
 
 .. function:: major(device)
 
-   Extracts the device major number from a raw device number (usually the
+   Extract the device major number from a raw device number (usually the
    :attr:`st_dev` or :attr:`st_rdev` field from :ctype:`stat`).
 
 
 .. function:: minor(device)
 
-   Extracts the device minor number from a raw device number (usually the
+   Extract the device minor number from a raw device number (usually the
    :attr:`st_dev` or :attr:`st_rdev` field from :ctype:`stat`).
 
 
 .. function:: makedev(major, minor)
 
-   Composes a raw device number from the major and minor device numbers.
+   Compose a raw device number from the major and minor device numbers.
 
 
 .. function:: mkdir(path[, mode])
@@ -854,6 +867,9 @@ Files and Directories
    Create a directory named *path* with numeric mode *mode*. The default *mode* is
    ``0777`` (octal).  On some systems, *mode* is ignored.  Where it is used, the
    current umask value is first masked out. Availability: Macintosh, Unix, Windows.
+
+   It is also possible to create temporary directories; see the
+   :mod:`tempfile` module's :func:`tempfile.mkdtemp` function.
 
 
 .. function:: makedirs(path[, mode])
@@ -871,7 +887,7 @@ Files and Directories
    .. note::
 
       :func:`makedirs` will become confused if the path elements to create include
-      *os.pardir*.
+      :data:`os.pardir`.
 
    This function handles UNC paths correctly.
 
@@ -928,7 +944,7 @@ Files and Directories
 
    .. index:: single: directory; deleting
 
-   Removes directories recursively.  Works like :func:`rmdir` except that, if the
+   Remove directories recursively.  Works like :func:`rmdir` except that, if the
    leaf directory is successfully removed, :func:`removedirs`  tries to
    successively remove every parent directory mentioned in  *path* until an error
    is raised (which is ignored, because it generally means that a parent directory
@@ -942,7 +958,7 @@ Files and Directories
 
    Rename the file or directory *src* to *dst*.  If *dst* is a directory,
    :exc:`OSError` will be raised.  On Unix, if *dst* exists and is a file, it will
-   be removed silently if the user has permission.  The operation may fail on some
+   be replaced silently if the user has permission.  The operation may fail on some
    Unix flavors if *src* and *dst* are on different filesystems.  If successful,
    the renaming will be an atomic operation (this is a POSIX requirement).  On
    Windows, if *dst* already exists, :exc:`OSError` will be raised even if it is a
@@ -974,7 +990,7 @@ Files and Directories
    object whose attributes correspond to the members of the :ctype:`stat`
    structure, namely: :attr:`st_mode` (protection bits), :attr:`st_ino` (inode
    number), :attr:`st_dev` (device), :attr:`st_nlink` (number of hard links),
-   :attr:`st_uid` (user ID of owner), :attr:`st_gid` (group ID of owner),
+   :attr:`st_uid` (user id of owner), :attr:`st_gid` (group id of owner),
    :attr:`st_size` (size of file, in bytes), :attr:`st_atime` (time of most recent
    access), :attr:`st_mtime` (time of most recent content modification),
    :attr:`st_ctime` (platform dependent; time of most recent metadata change on
@@ -988,10 +1004,6 @@ Files and Directories
       926L
       >>>
 
-   If :func:`stat_float_times` returns true, the time values are floats, measuring
-   seconds. Fractions of a second may be reported if the system supports that. On
-   Mac OS, the times are always floats. See :func:`stat_float_times` for further
-   discussion.
 
    On some Unix systems (such as Linux), the following attributes may also be
    available: :attr:`st_blocks` (number of blocks allocated for file),
@@ -1077,53 +1089,6 @@ Files and Directories
    Create a symbolic link pointing to *src* named *dst*. Availability: Unix.
 
 
-.. function:: tempnam([dir[, prefix]])
-
-   Return a unique path name that is reasonable for creating a temporary file.
-   This will be an absolute path that names a potential directory entry in the
-   directory *dir* or a common location for temporary files if *dir* is omitted or
-   ``None``.  If given and not ``None``, *prefix* is used to provide a short prefix
-   to the filename.  Applications are responsible for properly creating and
-   managing files created using paths returned by :func:`tempnam`; no automatic
-   cleanup is provided. On Unix, the environment variable :envvar:`TMPDIR`
-   overrides *dir*, while on Windows the :envvar:`TMP` is used.  The specific
-   behavior of this function depends on the C library implementation; some aspects
-   are underspecified in system documentation.
-
-   .. warning::
-
-      Use of :func:`tempnam` is vulnerable to symlink attacks; consider using
-      :func:`tmpfile` (section :ref:`os-newstreams`) instead.
-
-   Availability: Macintosh, Unix, Windows.
-
-
-.. function:: tmpnam()
-
-   Return a unique path name that is reasonable for creating a temporary file.
-   This will be an absolute path that names a potential directory entry in a common
-   location for temporary files.  Applications are responsible for properly
-   creating and managing files created using paths returned by :func:`tmpnam`; no
-   automatic cleanup is provided.
-
-   .. warning::
-
-      Use of :func:`tmpnam` is vulnerable to symlink attacks; consider using
-      :func:`tmpfile` (section :ref:`os-newstreams`) instead.
-
-   Availability: Unix, Windows.  This function probably shouldn't be used on
-   Windows, though: Microsoft's implementation of :func:`tmpnam` always creates a
-   name in the root directory of the current drive, and that's generally a poor
-   location for a temp file (depending on privileges, you may not even be able to
-   open a file using this name).
-
-
-.. data:: TMP_MAX
-
-   The maximum number of unique names that :func:`tmpnam` will generate before
-   reusing names.
-
-
 .. function:: unlink(path)
 
    Remove the file *path*.  This is the same function as :func:`remove`; the
@@ -1152,8 +1117,8 @@ Files and Directories
       single: directory; walking
       single: directory; traversal
 
-   :func:`walk` generates the file names in a directory tree, by walking the tree
-   either top down or bottom up. For each directory in the tree rooted at directory
+   Generate the file names in a directory tree by walking the tree
+   either top-down or bottom-up. For each directory in the tree rooted at directory
    *top* (including *top* itself), it yields a 3-tuple ``(dirpath, dirnames,
    filenames)``.
 
@@ -1164,34 +1129,34 @@ Files and Directories
    (which begins with *top*) to a file or directory in *dirpath*, do
    ``os.path.join(dirpath, name)``.
 
-   If optional argument *topdown* is true or not specified, the triple for a
+   If optional argument *topdown* is ``True`` or not specified, the triple for a
    directory is generated before the triples for any of its subdirectories
-   (directories are generated top down).  If *topdown* is false, the triple for a
+   (directories are generated top-down).  If *topdown* is ``False``, the triple for a
    directory is generated after the triples for all of its subdirectories
-   (directories are generated bottom up).
+   (directories are generated bottom-up).
 
-   When *topdown* is true, the caller can modify the *dirnames* list in-place
+   When *topdown* is ``True``, the caller can modify the *dirnames* list in-place
    (perhaps using :keyword:`del` or slice assignment), and :func:`walk` will only
    recurse into the subdirectories whose names remain in *dirnames*; this can be
    used to prune the search, impose a specific order of visiting, or even to inform
    :func:`walk` about directories the caller creates or renames before it resumes
-   :func:`walk` again.  Modifying *dirnames* when *topdown* is false is
+   :func:`walk` again.  Modifying *dirnames* when *topdown* is ``False`` is
    ineffective, because in bottom-up mode the directories in *dirnames* are
    generated before *dirpath* itself is generated.
 
-   By default errors from the ``os.listdir()`` call are ignored.  If optional
+   By default errors from the :func:`listdir` call are ignored.  If optional
    argument *onerror* is specified, it should be a function; it will be called with
    one argument, an :exc:`OSError` instance.  It can report the error to continue
    with the walk, or raise the exception to abort the walk.  Note that the filename
    is available as the ``filename`` attribute of the exception object.
 
    By default, :func:`walk` will not walk down into symbolic links that resolve to
-   directories. Set *followlinks* to True to visit directories pointed to by
+   directories. Set *followlinks* to ``True`` to visit directories pointed to by
    symlinks, on systems that support them.
 
    .. note::
 
-      Be aware that setting *followlinks* to true can lead to infinite recursion if a
+      Be aware that setting *followlinks* to ``True`` can lead to infinite recursion if a
       link points to a parent directory of itself. :func:`walk` does not keep track of
       the directories it visited already.
 
@@ -1214,10 +1179,10 @@ Files and Directories
           if 'CVS' in dirs:
               dirs.remove('CVS')  # don't visit CVS directories
 
-   In the next example, walking the tree bottom up is essential: :func:`rmdir`
+   In the next example, walking the tree bottom-up is essential: :func:`rmdir`
    doesn't allow deleting a directory before the directory is empty::
 
-      # Delete everything reachable from the directory named in 'top',
+      # Delete everything reachable from the directory named in "top",
       # assuming there are no symbolic links.
       # CAUTION:  This is dangerous!  For example, if top == '/', it
       # could delete all your disk files.
@@ -1265,19 +1230,19 @@ to be ignored.
 
    These functions all execute a new program, replacing the current process; they
    do not return.  On Unix, the new executable is loaded into the current process,
-   and will have the same process ID as the caller.  Errors will be reported as
+   and will have the same process id as the caller.  Errors will be reported as
    :exc:`OSError` exceptions.
 
-   The ``'l'`` and ``'v'`` variants of the :func:`exec\*` functions differ in how
-   command-line arguments are passed.  The ``'l'`` variants are perhaps the easiest
+   The "l" and "v" variants of the :func:`exec\*` functions differ in how
+   command-line arguments are passed.  The "l" variants are perhaps the easiest
    to work with if the number of parameters is fixed when the code is written; the
    individual parameters simply become additional parameters to the :func:`execl\*`
-   functions.  The ``'v'`` variants are good when the number of parameters is
+   functions.  The "v" variants are good when the number of parameters is
    variable, with the arguments being passed in a list or tuple as the *args*
    parameter.  In either case, the arguments to the child process should start with
    the name of the command being run, but this is not enforced.
 
-   The variants which include a ``'p'`` near the end (:func:`execlp`,
+   The variants which include a "p" near the end (:func:`execlp`,
    :func:`execlpe`, :func:`execvp`, and :func:`execvpe`) will use the
    :envvar:`PATH` environment variable to locate the program *file*.  When the
    environment is being replaced (using one of the :func:`exec\*e` variants,
@@ -1288,7 +1253,7 @@ to be ignored.
    path.
 
    For :func:`execle`, :func:`execlpe`, :func:`execve`, and :func:`execvpe` (note
-   that these all end in ``'e'``), the *env* parameter must be a mapping which is
+   that these all end in "e"), the *env* parameter must be a mapping which is
    used to define the environment variables for the new process; the :func:`execl`,
    :func:`execlp`, :func:`execv`, and :func:`execvp` all cause the new process to
    inherit the environment of the current process. Availability: Macintosh, Unix,
@@ -1305,7 +1270,7 @@ to be ignored.
       The standard way to exit is ``sys.exit(n)``. :func:`_exit` should normally only
       be used in the child process after a :func:`fork`.
 
-The following exit codes are a defined, and can be used with :func:`_exit`,
+The following exit codes are defined and can be used with :func:`_exit`,
 although they are not required.  These are typically used for system programs
 written in Python, such as a mail server's external command delivery program.
 
@@ -1421,7 +1386,7 @@ written in Python, such as a mail server's external command delivery program.
 
 .. function:: fork()
 
-   Fork a child process.  Return ``0`` in the child, the child's process id in the
+   Fork a child process.  Return ``0`` in the child and the child's process id in the
    parent. Availability: Macintosh, Unix.
 
 
@@ -1431,7 +1396,7 @@ written in Python, such as a mail server's external command delivery program.
    terminal. Return a pair of ``(pid, fd)``, where *pid* is ``0`` in the child, the
    new child's process id in the parent, and *fd* is the file descriptor of the
    master end of the pseudo-terminal.  For a more portable approach, use the
-   :mod:`pty` module. Availability: Macintosh, Some flavors of Unix.
+   :mod:`pty` module. Availability: Macintosh, some flavors of Unix.
 
 
 .. function:: kill(pid, sig)
@@ -1490,22 +1455,22 @@ written in Python, such as a mail server's external command delivery program.
    spawning new processes and retrieving their results; using that module is
    preferable to using these functions.)
 
-   If *mode* is :const:`P_NOWAIT`, this function returns the process ID of the new
+   If *mode* is :const:`P_NOWAIT`, this function returns the process id of the new
    process; if *mode* is :const:`P_WAIT`, returns the process's exit code if it
    exits normally, or ``-signal``, where *signal* is the signal that killed the
-   process.  On Windows, the process ID will actually be the process handle, so can
+   process.  On Windows, the process id will actually be the process handle, so can
    be used with the :func:`waitpid` function.
 
-   The ``'l'`` and ``'v'`` variants of the :func:`spawn\*` functions differ in how
-   command-line arguments are passed.  The ``'l'`` variants are perhaps the easiest
+   The "l" and "v" variants of the :func:`spawn\*` functions differ in how
+   command-line arguments are passed.  The "l" variants are perhaps the easiest
    to work with if the number of parameters is fixed when the code is written; the
    individual parameters simply become additional parameters to the
-   :func:`spawnl\*` functions.  The ``'v'`` variants are good when the number of
+   :func:`spawnl\*` functions.  The "v" variants are good when the number of
    parameters is variable, with the arguments being passed in a list or tuple as
    the *args* parameter.  In either case, the arguments to the child process must
    start with the name of the command being run.
 
-   The variants which include a second ``'p'`` near the end (:func:`spawnlp`,
+   The variants which include a second "p" near the end (:func:`spawnlp`,
    :func:`spawnlpe`, :func:`spawnvp`, and :func:`spawnvpe`) will use the
    :envvar:`PATH` environment variable to locate the program *file*.  When the
    environment is being replaced (using one of the :func:`spawn\*e` variants,
@@ -1516,7 +1481,7 @@ written in Python, such as a mail server's external command delivery program.
    appropriate absolute or relative path.
 
    For :func:`spawnle`, :func:`spawnlpe`, :func:`spawnve`, and :func:`spawnvpe`
-   (note that these all end in ``'e'``), the *env* parameter must be a mapping
+   (note that these all end in "e"), the *env* parameter must be a mapping
    which is used to define the environment variables for the new process; the
    :func:`spawnl`, :func:`spawnlp`, :func:`spawnv`, and :func:`spawnvp` all cause
    the new process to inherit the environment of the current process.
@@ -1539,7 +1504,7 @@ written in Python, such as a mail server's external command delivery program.
 
    Possible values for the *mode* parameter to the :func:`spawn\*` family of
    functions.  If either of these values is given, the :func:`spawn\*` functions
-   will return as soon as the new process has been created, with the process ID as
+   will return as soon as the new process has been created, with the process id as
    the return value. Availability: Macintosh, Unix, Windows.
 
 
@@ -1590,8 +1555,8 @@ written in Python, such as a mail server's external command delivery program.
 
    Execute the command (a string) in a subshell.  This is implemented by calling
    the Standard C function :cfunc:`system`, and has the same limitations.  Changes
-   to ``posix.environ``, ``sys.stdin``, etc. are not reflected in the environment
-   of the executed command.
+   to :data:`os.environ`, :data:`sys.stdin`, etc. are not reflected in the
+   environment of the executed command.
 
    On Unix, the return value is the exit status of the process encoded in the
    format specified for :func:`wait`.  Note that POSIX does not specify the meaning
@@ -1619,7 +1584,7 @@ written in Python, such as a mail server's external command delivery program.
    user time, children's system time, and elapsed real time since a fixed point in
    the past, in that order.  See the Unix manual page :manpage:`times(2)` or the
    corresponding Windows Platform API documentation. Availability: Macintosh, Unix,
-   Windows.
+   Windows.  On Windows, only the first two items are filled, the others are zero.
 
 
 .. function:: wait()
@@ -1702,32 +1667,32 @@ used to determine the disposition of a process.
 
 .. function:: WCOREDUMP(status)
 
-   Returns ``True`` if a core dump was generated for the process, otherwise it
-   returns ``False``. Availability: Macintosh, Unix.
+   Return ``True`` if a core dump was generated for the process, otherwise
+   return ``False``. Availability: Macintosh, Unix.
 
 
 .. function:: WIFCONTINUED(status)
 
-   Returns ``True`` if the process has been continued from a job control stop,
-   otherwise it returns ``False``. Availability: Unix.
+   Return ``True`` if the process has been continued from a job control stop,
+   otherwise return ``False``. Availability: Unix.
 
 
 .. function:: WIFSTOPPED(status)
 
-   Returns ``True`` if the process has been stopped, otherwise it returns
+   Return ``True`` if the process has been stopped, otherwise return
    ``False``. Availability: Unix.
 
 
 .. function:: WIFSIGNALED(status)
 
-   Returns ``True`` if the process exited due to a signal, otherwise it returns
+   Return ``True`` if the process exited due to a signal, otherwise return
    ``False``. Availability: Macintosh, Unix.
 
 
 .. function:: WIFEXITED(status)
 
-   Returns ``True`` if the process exited using the :manpage:`exit(2)` system call,
-   otherwise it returns ``False``. Availability: Macintosh, Unix.
+   Return ``True`` if the process exited using the :manpage:`exit(2)` system call,
+   otherwise return ``False``. Availability: Macintosh, Unix.
 
 
 .. function:: WEXITSTATUS(status)
@@ -1784,8 +1749,8 @@ Miscellaneous System Information
 
 .. function:: getloadavg()
 
-   Return the number of processes in the system run queue averaged over the last 1,
-   5, and 15 minutes or raises :exc:`OSError` if the load  average was
+   Return the number of processes in the system run queue averaged over the last
+   1, 5, and 15 minutes or raises :exc:`OSError` if the load average was
    unobtainable.
 
 
@@ -1804,7 +1769,7 @@ Miscellaneous System Information
    defined for those names by the host operating system. This can be used to
    determine the set of names known to the system. Availability: Macintosh, Unix.
 
-The follow data values are used to support path manipulation operations.  These
+The following data values are used to support path manipulation operations.  These
 are defined for all platforms.
 
 Higher-level operations on pathnames are defined in the :mod:`os.path` module.

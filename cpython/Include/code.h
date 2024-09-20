@@ -21,8 +21,8 @@ typedef struct {
     PyObject *co_freevars;	/* tuple of strings (free variable names) */
     PyObject *co_cellvars;      /* tuple of strings (cell variable names) */
     /* The rest doesn't count for hash/cmp */
-    PyObject *co_filename;	/* string (where it was loaded from) */
-    PyObject *co_name;		/* string (name, for reference) */
+    PyObject *co_filename;	/* unicode (where it was loaded from) */
+    PyObject *co_name;		/* unicode (name, for reference) */
     int co_firstlineno;		/* first source line number */
     PyObject *co_lnotab;	/* string (encoding addr<->lineno mapping) */
     void *co_zombieframe;     /* for optimization only (see frameobject.c) */
@@ -59,7 +59,7 @@ typedef struct {
 
 PyAPI_DATA(PyTypeObject) PyCode_Type;
 
-#define PyCode_Check(op) (Py_Type(op) == &PyCode_Type)
+#define PyCode_Check(op) (Py_TYPE(op) == &PyCode_Type)
 #define PyCode_GetNumFree(op) (PyTuple_GET_SIZE((op)->co_freevars))
 
 /* Public interface */
@@ -72,7 +72,7 @@ PyAPI_FUNC(int) PyCode_Addr2Line(PyCodeObject *, int);
 
 /* for internal use only */
 #define _PyCode_GETCODEPTR(co, pp) \
-	((*Py_Type((co)->co_code)->tp_as_buffer->bf_getreadbuffer) \
+	((*Py_TYPE((co)->co_code)->tp_as_buffer->bf_getreadbuffer) \
 	 ((co)->co_code, 0, (void **)(pp)))
 
 typedef struct _addr_pair {

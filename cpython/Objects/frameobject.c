@@ -44,7 +44,7 @@ frame_getlineno(PyFrameObject *f, void *closure)
 	else
 		lineno = PyCode_Addr2Line(f->f_code, f->f_lasti);
 
-	return PyInt_FromLong(lineno);
+	return PyLong_FromLong(lineno);
 }
 
 /* Setter for f_lineno - you can set f_lineno from within a trace function in
@@ -66,6 +66,8 @@ static int
 frame_setlineno(PyFrameObject *f, PyObject* p_new_lineno)
 {
 	int new_lineno = 0;		/* The new value of f_lineno */
+	long l_new_lineno;
+	int overflow;
 	int new_lasti = 0;		/* The new value of f_lasti */
 	int new_iblock = 0;		/* The new value of f_iblock */
 	unsigned char *code = NULL;	/* The bytecode for the frame... */
@@ -88,7 +90,7 @@ frame_setlineno(PyFrameObject *f, PyObject* p_new_lineno)
 	unsigned char setup_op = 0;	/* (ditto) */
 
 	/* f_lineno must be an integer. */
-	if (!PyInt_CheckExact(p_new_lineno)) {
+	if (!PyLong_CheckExact(p_new_lineno)) {
 		PyErr_SetString(PyExc_ValueError,
 				"lineno must be an integer");
 		return -1;
@@ -104,7 +106,19 @@ frame_setlineno(PyFrameObject *f, PyObject* p_new_lineno)
 	}
 
 	/* Fail if the line comes before the start of the code block. */
-	new_lineno = (int) PyInt_AsLong(p_new_lineno);
+	l_new_lineno = PyLong_AsLongAndOverflow(p_new_lineno, &overflow);
+	if (overflow
+#if SIZEOF_LONG > SIZEOF_INT
+	    || l_new_lineno > INT_MAX
+	    || l_new_lineno < INT_MIN
+#endif
+	   ) {
+		PyErr_SetString(PyExc_ValueError,
+				"lineno out of range");
+		return -1;
+	}
+	new_lineno = (int)l_new_lineno;
+	    
 	if (new_lineno < f->f_code->co_firstlineno) {
 		PyErr_Format(PyExc_ValueError,
 			     "line %d comes before the current code block",
@@ -387,14 +401,15 @@ static PyGetSetDef frame_getsetlist[] = {
    call depth of more than 20 or 30 is probably already exceptional
    unless the program contains run-away recursion.  I hope.
 
-   Later, MAXFREELIST was added to bound the # of frames saved on
+   Later, PyFrame_MAXFREELIST was added to bound the # of frames saved on
    free_list.  Else programs creating lots of cyclic trash involving
    frames could provoke free_list into growing without bound.
 */
 
 static PyFrameObject *free_list = NULL;
 static int numfree = 0;		/* number of frames currently in free_list */
-#define MAXFREELIST 200		/* max value for numfree */
+/* max value for numfree */
+#define PyFrame_MAXFREELIST 200	
 
 static void
 frame_dealloc(PyFrameObject *f)
@@ -427,7 +442,7 @@ frame_dealloc(PyFrameObject *f)
 	co = f->f_code;
 	if (co->co_zombieframe == NULL)
 		co->co_zombieframe = f;
-	else if (numfree < MAXFREELIST) {
+	else if (numfree < PyFrame_MAXFREELIST) {
 		++numfree;
 		f->f_back = free_list;
 		free_list = f;
@@ -616,7 +631,7 @@ PyFrame_New(PyThreadState *tstate, PyCodeObject *code, PyObject *globals,
 		    --numfree;
 		    f = free_list;
 		    free_list = free_list->f_back;
-		    if (Py_Size(f) < extras) {
+		    if (Py_SIZE(f) < extras) {
 			    f = PyObject_GC_Resize(PyFrameObject, f, extras);
 			    if (f == NULL) {
 				    Py_DECREF(builtins);
@@ -721,7 +736,7 @@ map_to_dict(PyObject *map, Py_ssize_t nmap, PyObject *dict, PyObject **values,
 	for (j = nmap; --j >= 0; ) {
 		PyObject *key = PyTuple_GET_ITEM(map, j);
 		PyObject *value = values[j];
-		assert(PyString_Check(key)/*XXX this should go*/ || PyUnicode_Check(key));
+		assert(PyUnicode_Check(key));
 		if (deref) {
 			assert(PyCell_Check(value));
 			value = PyCell_GET(value);
@@ -882,10 +897,11 @@ PyFrame_LocalsToFast(PyFrameObject *f, int clear)
 }
 
 /* Clear out the free list */
-
-void
-PyFrame_Fini(void)
+int
+PyFrame_ClearFreeList(void)
 {
+	int freelist_size = numfree;
+	
 	while (free_list != NULL) {
 		PyFrameObject *f = free_list;
 		free_list = free_list->f_back;
@@ -893,6 +909,13 @@ PyFrame_Fini(void)
 		--numfree;
 	}
 	assert(numfree == 0);
+	return freelist_size;
+}
+
+void
+PyFrame_Fini(void)
+{
+	(void)PyFrame_ClearFreeList();
 	Py_XDECREF(builtin_object);
 	builtin_object = NULL;
 }

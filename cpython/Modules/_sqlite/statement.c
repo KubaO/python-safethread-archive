@@ -80,37 +80,34 @@ int pysqlite_statement_create(pysqlite_Statement* self, pysqlite_Connection* con
 int pysqlite_statement_bind_parameter(pysqlite_Statement* self, int pos, PyObject* parameter)
 {
     int rc = SQLITE_OK;
-    long longval;
 #ifdef HAVE_LONG_LONG
     PY_LONG_LONG longlongval;
+#else
+    long longval;
 #endif
     const char* buffer;
     char* string;
     Py_ssize_t buflen;
-    PyObject* stringval;
 
     if (parameter == Py_None) {
         rc = sqlite3_bind_null(self->st, pos);
-    } else if (PyInt_CheckExact(parameter)) {
-        longval = PyInt_AsLong(parameter);
-        rc = sqlite3_bind_int64(self->st, pos, (sqlite_int64)longval);
 #ifdef HAVE_LONG_LONG
     } else if (PyLong_Check(parameter)) {
         longlongval = PyLong_AsLongLong(parameter);
         /* in the overflow error case, longlongval is -1, and an exception is set */
         rc = sqlite3_bind_int64(self->st, pos, (sqlite_int64)longlongval);
+#else
+    } else if (PyLong_Check(parameter)) {
+        longval = PyLong_AsLong(parameter);
+        /* in the overflow error case, longval is -1, and an exception is set */
+        rc = sqlite3_bind_int64(self->st, pos, (sqlite_int64)longval);
 #endif
     } else if (PyFloat_Check(parameter)) {
         rc = sqlite3_bind_double(self->st, pos, PyFloat_AsDouble(parameter));
-    } else if PyString_Check(parameter) {
-        string = PyString_AsString(parameter);
-        rc = sqlite3_bind_text(self->st, pos, string, -1, SQLITE_TRANSIENT);
     } else if PyUnicode_Check(parameter) {
-        stringval = PyUnicode_AsUTF8String(parameter);
-        string = PyBytes_AsString(stringval);
+        string = PyUnicode_AsString(parameter);
 
         rc = sqlite3_bind_text(self->st, pos, string, -1, SQLITE_TRANSIENT);
-        Py_DECREF(stringval);
     } else if (PyObject_CheckBuffer(parameter)) {
         if (PyObject_AsCharBuffer(parameter, &buffer, &buflen) == 0) {
             rc = sqlite3_bind_blob(self->st, pos, buffer, buflen, SQLITE_TRANSIENT);
@@ -234,7 +231,11 @@ int pysqlite_statement_recompile(pysqlite_Statement* self, PyObject* params)
          */
         #ifdef SQLITE_VERSION_NUMBER
         #if SQLITE_VERSION_NUMBER >= 3002002
-        (void)sqlite3_transfer_bindings(self->st, new_st);
+        /* The check for the number of parameters is necessary to not trigger a
+         * bug in certain SQLite versions (experienced in 3.2.8 and 3.3.4). */
+        if (sqlite3_bind_parameter_count(self->st) > 0) {
+            (void)sqlite3_transfer_bindings(self->st, new_st);
+        }
         #endif
         #else
         statement_bind_parameters(self, params);
@@ -306,7 +307,7 @@ void pysqlite_statement_dealloc(pysqlite_Statement* self)
         PyObject_ClearWeakRefs((PyObject*)self);
     }
 
-    Py_Type(self)->tp_free((PyObject*)self);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 /*

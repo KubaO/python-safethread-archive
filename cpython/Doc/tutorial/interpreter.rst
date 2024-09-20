@@ -169,6 +169,12 @@ The script can be given an executable mode, or permission, using the
 
    $ chmod +x myscript.py
 
+On Windows systems, there is no notion of an "executable mode".  The Python
+installer automatically associates ``.py`` files with ``python.exe`` so that
+a double-click on a Python file will run it as a script.  The extension can
+also be ``.pyw``, in that case, the console window that normally appears is
+suppressed.
+
 
 Source Code Encoding
 --------------------
@@ -212,8 +218,8 @@ setting an environment variable named :envvar:`PYTHONSTARTUP` to the name of a
 file containing your start-up commands.  This is similar to the :file:`.profile`
 feature of the Unix shells.
 
-.. % XXX This should probably be dumped in an appendix, since most people
-.. % don't use Python interactively in non-trivial ways.
+.. XXX This should probably be dumped in an appendix, since most people
+   don't use Python interactively in non-trivial ways.
 
 This file is only read in interactive sessions, not when Python reads commands
 from a script, and not when :file:`/dev/tty` is given as the explicit source of

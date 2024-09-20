@@ -152,7 +152,7 @@ Ellipsis
    object is accessed through the literal ``...`` or the built-in name
    ``Ellipsis``.  Its truth value is true.
 
-Numbers
+:class:`numbers.Number`
    .. index:: object: numeric
 
    These are created by numeric literals and returned as results by arithmetic
@@ -164,30 +164,18 @@ Numbers
    Python distinguishes between integers, floating point numbers, and complex
    numbers:
 
-   Integers
+   :class:`numbers.Integral`
       .. index:: object: integer
 
       These represent elements from the mathematical set of integers (positive and
       negative).
 
-      There are three types of integers:
+      There are two types of integers:
 
       Plain integers
          .. index::
             object: plain integer
             single: OverflowError (built-in exception)
-
-         These represent numbers in the range -2147483648 through 2147483647. (The range
-         may be larger on machines with a larger natural word size, but not smaller.)
-         When the result of an operation would fall outside this range, the result is
-         normally returned as a long integer (in some cases, the exception
-         :exc:`OverflowError` is raised instead). For the purpose of shift and mask
-         operations, integers are assumed to have a binary, 2's complement notation using
-         32 or more bits, and hiding no bits from the user (i.e., all 4294967296
-         different bit patterns correspond to different values).
-
-      Long integers
-         .. index:: object: long integer
 
          These represent numbers in an unlimited range, subject to available (virtual)
          memory only.  For the purpose of shift and mask operations, a binary
@@ -210,15 +198,11 @@ Numbers
       .. index:: pair: integer; representation
 
       The rules for integer representation are intended to give the most meaningful
-      interpretation of shift and mask operations involving negative integers and the
-      least surprises when switching between the plain and long integer domains.  Any
+      interpretation of shift and mask operations involving negative integers.  Any
       operation except left shift, if it yields a result in the plain integer domain
-      without causing overflow, will yield the same result in the long integer domain
-      or when using mixed operands.
+      without causing overflow, will yield the same result when using mixed operands.
 
-      .. % Integers
-
-   Floating point numbers
+   :class:`numbers.Real` (:class:`float`)
       .. index::
          object: floating point
          pair: floating point; number
@@ -233,7 +217,7 @@ Numbers
       overhead of using objects in Python, so there is no reason to complicate the
       language with two kinds of floating point numbers.
 
-   Complex numbers
+   :class:`numbers.Complex`
       .. index::
          object: complex
          pair: complex; number
@@ -242,8 +226,6 @@ Numbers
       floating point numbers.  The same caveats apply as for floating point numbers.
       The real and imaginary parts of a complex number ``z`` can be retrieved through
       the read-only attributes ``z.real`` and ``z.imag``.
-
-   .. % Numbers
 
 Sequences
    .. index::
@@ -316,8 +298,6 @@ Sequences
          parentheses must be usable for grouping of expressions).  An empty
          tuple can be formed by an empty pair of parentheses.
 
-      .. % Immutable sequences
-
    Mutable sequences
       .. index::
          object: mutable sequence
@@ -355,10 +335,6 @@ Sequences
       The extension module :mod:`array` provides an additional example of a
       mutable sequence type.
 
-      .. % Mutable sequences
-
-   .. % Sequences
-
 Set types
    .. index::
       builtin: len
@@ -388,11 +364,10 @@ Set types
    Frozen sets
       .. index:: object: frozenset
 
-      These represent an immutable set. They are created by the built-in
-      :func:`frozenset` constructor. As a frozenset is immutable and hashable, it can
-      be used again as an element of another set, or as a dictionary key.
-
-   .. % Set types
+      These represent an immutable set.  They are created by the built-in
+      :func:`frozenset` constructor.  As a frozenset is immutable and
+      :term:`hashable`, it can be used again as an element of another set, or as
+      a dictionary key.
 
 Mappings
    .. index::
@@ -430,8 +405,6 @@ Mappings
 
       The extension modules :mod:`dbm`, :mod:`gdbm`, and :mod:`bsddb` provide
       additional examples of mapping types.
-
-   .. % Mapping types
 
 Callable types
    .. index::
@@ -528,97 +501,74 @@ Callable types
          single: __kwdefaults__ (function attribute)
          pair: global; namespace
 
-   User-defined methods
+   Instance methods
       .. index::
          object: method
          object: user-defined method
          pair: user-defined; method
 
-      A user-defined method object combines a class, a class instance (or ``None``)
-      and any callable object (normally a user-defined function).
-
-      Special read-only attributes: :attr:`im_self` is the class instance object,
-      :attr:`im_func` is the function object; :attr:`im_class` is the class of
-      :attr:`im_self` for bound methods or the class that asked for the method for
-      unbound methods; :attr:`__doc__` is the method's documentation (same as
-      ``im_func.__doc__``); :attr:`__name__` is the method name (same as
-      ``im_func.__name__``); :attr:`__module__` is the name of the module the method
-      was defined in, or ``None`` if unavailable.
+      An instance method object combines a class, a class instance and any
+      callable object (normally a user-defined function).
 
       .. index::
+         single: __func__ (method attribute)
+         single: __self__ (method attribute)
          single: __doc__ (method attribute)
          single: __name__ (method attribute)
          single: __module__ (method attribute)
-         single: im_func (method attribute)
-         single: im_self (method attribute)
+
+      Special read-only attributes: :attr:`__self__` is the class instance object,
+      :attr:`__func__` is the function object; :attr:`__doc__` is the method's
+      documentation (same as ``__func__.__doc__``); :attr:`__name__` is the
+      method name (same as ``__func__.__name__``); :attr:`__module__` is the
+      name of the module the method was defined in, or ``None`` if unavailable.
 
       Methods also support accessing (but not setting) the arbitrary function
       attributes on the underlying function object.
 
-      User-defined method objects may be created when getting an attribute of a class
-      (perhaps via an instance of that class), if that attribute is a user-defined
-      function object, an unbound user-defined method object, or a class method
-      object. When the attribute is a user-defined method object, a new method object
-      is only created if the class from which it is being retrieved is the same as, or
-      a derived class of, the class stored in the original method object; otherwise,
-      the original method object is used as it is.
+      User-defined method objects may be created when getting an attribute of a
+      class (perhaps via an instance of that class), if that attribute is a
+      user-defined function object or a class method object.
+      
+      When an instance method object is created by retrieving a user-defined
+      function object from a class via one of its instances, its
+      :attr:`__self__` attribute is the instance, and the method object is said
+      to be bound.  The new method's :attr:`__func__` attribute is the original
+      function object.
 
-      .. index::
-         single: im_class (method attribute)
-         single: im_func (method attribute)
-         single: im_self (method attribute)
+      When a user-defined method object is created by retrieving another method
+      object from a class or instance, the behaviour is the same as for a
+      function object, except that the :attr:`__func__` attribute of the new
+      instance is not the original method object but its :attr:`__func__`
+      attribute.
 
-      When a user-defined method object is created by retrieving a user-defined
-      function object from a class, its :attr:`im_self` attribute is ``None``
-      and the method object is said to be unbound. When one is created by
-      retrieving a user-defined function object from a class via one of its
-      instances, its :attr:`im_self` attribute is the instance, and the method
-      object is said to be bound. In either case, the new method's
-      :attr:`im_class` attribute is the class from which the retrieval takes
-      place, and its :attr:`im_func` attribute is the original function object.
+      When an instance method object is created by retrieving a class method
+      object from a class or instance, its :attr:`__self__` attribute is the
+      class itself, and its :attr:`__func__` attribute is the function object
+      underlying the class method.
 
-      .. index:: single: im_func (method attribute)
+      When an instance method object is called, the underlying function
+      (:attr:`__func__`) is called, inserting the class instance
+      (:attr:`__self__`) in front of the argument list.  For instance, when
+      :class:`C` is a class which contains a definition for a function
+      :meth:`f`, and ``x`` is an instance of :class:`C`, calling ``x.f(1)`` is
+      equivalent to calling ``C.f(x, 1)``.
 
-      When a user-defined method object is created by retrieving another method object
-      from a class or instance, the behaviour is the same as for a function object,
-      except that the :attr:`im_func` attribute of the new instance is not the
-      original method object but its :attr:`im_func` attribute.
+      When an instance method object is derived from a class method object, the
+      "class instance" stored in :attr:`__self__` will actually be the class
+      itself, so that calling either ``x.f(1)`` or ``C.f(1)`` is equivalent to
+      calling ``f(C,1)`` where ``f`` is the underlying function.
 
-      .. index::
-         single: im_class (method attribute)
-         single: im_func (method attribute)
-         single: im_self (method attribute)
-
-      When a user-defined method object is created by retrieving a class method object
-      from a class or instance, its :attr:`im_self` attribute is the class itself (the
-      same as the :attr:`im_class` attribute), and its :attr:`im_func` attribute is
-      the function object underlying the class method.
-
-      When an unbound user-defined method object is called, the underlying function
-      (:attr:`im_func`) is called, with the restriction that the first argument must
-      be an instance of the proper class (:attr:`im_class`) or of a derived class
-      thereof.
-
-      When a bound user-defined method object is called, the underlying function
-      (:attr:`im_func`) is called, inserting the class instance (:attr:`im_self`) in
-      front of the argument list.  For instance, when :class:`C` is a class which
-      contains a definition for a function :meth:`f`, and ``x`` is an instance of
-      :class:`C`, calling ``x.f(1)`` is equivalent to calling ``C.f(x, 1)``.
-
-      When a user-defined method object is derived from a class method object, the
-      "class instance" stored in :attr:`im_self` will actually be the class itself, so
-      that calling either ``x.f(1)`` or ``C.f(1)`` is equivalent to calling ``f(C,1)``
-      where ``f`` is the underlying function.
-
-      Note that the transformation from function object to (unbound or bound) method
-      object happens each time the attribute is retrieved from the class or instance.
-      In some cases, a fruitful optimization is to assign the attribute to a local
-      variable and call that local variable. Also notice that this transformation only
-      happens for user-defined functions; other callable objects (and all non-callable
-      objects) are retrieved without transformation.  It is also important to note
-      that user-defined functions which are attributes of a class instance are not
-      converted to bound methods; this *only* happens when the function is an
-      attribute of the class.
+      Note that the transformation from function object to instance method
+      object happens each time the attribute is retrieved from the instance.  In
+      some cases, a fruitful optimization is to assign the attribute to a local
+      variable and call that local variable. Also notice that this
+      transformation only happens for user-defined functions; other callable
+      objects (and all non-callable objects) are retrieved without
+      transformation.  It is also important to note that user-defined functions
+      which are attributes of a class instance are not converted to bound
+      methods; this *only* happens when the function is an attribute of the
+      class.
 
    Generator functions
       .. index::
@@ -688,8 +638,6 @@ Modules
    object used to initialize the module (since it isn't needed once the
    initialization is done).
 
-   .. % 
-
    Attribute assignment updates the module's namespace dictionary, e.g., ``m.x =
    1`` is equivalent to ``m.__dict__["x"] = 1``.
 
@@ -735,16 +683,12 @@ Custom classes
       pair: class; attribute
 
    When a class attribute reference (for class :class:`C`, say) would yield a
-   user-defined function object or an unbound user-defined method object whose
-   associated class is either :class:`C` or one of its base classes, it is
-   transformed into an unbound user-defined method object whose :attr:`im_class`
-   attribute is :class:`C`. When it would yield a class method object, it is
-   transformed into a bound user-defined method object whose :attr:`im_class`
-   and :attr:`im_self` attributes are both :class:`C`.  When it would yield a
-   static method object, it is transformed into the object wrapped by the static
-   method object. See section :ref:`descriptors` for another way in which
-   attributes retrieved from a class may differ from those actually contained in
-   its :attr:`__dict__`.
+   class method object, it is transformed into an instance method object whose
+   :attr:`__self__` attributes is :class:`C`.  When it would yield a static
+   method object, it is transformed into the object wrapped by the static method
+   object. See section :ref:`descriptors` for another way in which attributes
+   retrieved from a class may differ from those actually contained in its
+   :attr:`__dict__`.
 
    .. index:: triple: class; attribute; assignment
 
@@ -776,22 +720,19 @@ Class instances
       pair: class; instance
       pair: class instance; attribute
 
-   A class instance is created by calling a class object (see above). A class
-   instance has a namespace implemented as a dictionary which is the first place in
-   which attribute references are searched.  When an attribute is not found there,
-   and the instance's class has an attribute by that name, the search continues
-   with the class attributes.  If a class attribute is found that is a user-defined
-   function object or an unbound user-defined method object whose associated class
-   is the class (call it :class:`C`) of the instance for which the attribute
-   reference was initiated or one of its bases, it is transformed into a bound
-   user-defined method object whose :attr:`im_class` attribute is :class:`C` and
-   whose :attr:`im_self` attribute is the instance. Static method and class method
-   objects are also transformed, as if they had been retrieved from class
-   :class:`C`; see above under "Classes". See section :ref:`descriptors` for
-   another way in which attributes of a class retrieved via its instances may
-   differ from the objects actually stored in the class's :attr:`__dict__`. If no
-   class attribute is found, and the object's class has a :meth:`__getattr__`
-   method, that is called to satisfy the lookup.
+   A class instance is created by calling a class object (see above).  A class
+   instance has a namespace implemented as a dictionary which is the first place
+   in which attribute references are searched.  When an attribute is not found
+   there, and the instance's class has an attribute by that name, the search
+   continues with the class attributes.  If a class attribute is found that is a
+   user-defined function object, it is transformed into an instance method
+   object whose :attr:`__self__` attribute is the instance.  Static method and
+   class method objects are also transformed; see above under "Classes".  See
+   section :ref:`descriptors` for another way in which attributes of a class
+   retrieved via its instances may differ from the objects actually stored in
+   the class's :attr:`__dict__`.  If no class attribute is found, and the
+   object's class has a :meth:`__getattr__` method, that is called to satisfy
+   the lookup.
 
    .. index:: triple: class instance; attribute; assignment
 
@@ -852,7 +793,7 @@ Internal types
          single: bytecode
          object: code
 
-      Code objects represent *byte-compiled* executable Python code, or *bytecode*.
+      Code objects represent *byte-compiled* executable Python code, or :term:`bytecode`.
       The difference between a code object and a function object is that the function
       object contains an explicit reference to the function's globals (the module in
       which it was defined), while a code object contains no context; also the default
@@ -873,7 +814,7 @@ Internal types
       used by the bytecode; :attr:`co_names` is a tuple containing the names used by
       the bytecode; :attr:`co_filename` is the filename from which the code was
       compiled; :attr:`co_firstlineno` is the first line number of the function;
-      :attr:`co_lnotab` is a string encoding the mapping from byte code offsets to
+      :attr:`co_lnotab` is a string encoding the mapping from bytecode offsets to
       line numbers (for details see the source code of the interpreter);
       :attr:`co_stacksize` is the required stack size (including local variables);
       :attr:`co_flags` is an integer encoding a number of flags for the interpreter.
@@ -960,7 +901,6 @@ Internal types
          pair: exception; handler
          pair: execution; stack
          single: exc_info (in module sys)
-         single: exc_traceback (in module sys)
          single: last_traceback (in module sys)
          single: sys.exc_info
          single: sys.last_traceback
@@ -1035,9 +975,44 @@ Internal types
       described above, under "User-defined methods". Class method objects are created
       by the built-in :func:`classmethod` constructor.
 
-   .. % Internal types
 
-.. % =========================================================================
+.. _newstyle:
+
+New-style and classic classes
+=============================
+
+Classes and instances come in two flavors: old-style or classic, and new-style.
+
+Up to Python 2.1, old-style classes were the only flavour available to the user.
+The concept of (old-style) class is unrelated to the concept of type: if *x* is
+an instance of an old-style class, then ``x.__class__`` designates the class of
+*x*, but ``type(x)`` is always ``<type 'instance'>``.  This reflects the fact
+that all old-style instances, independently of their class, are implemented with
+a single built-in type, called ``instance``.
+
+New-style classes were introduced in Python 2.2 to unify classes and types.  A
+new-style class is neither more nor less than a user-defined type.  If *x* is an
+instance of a new-style class, then ``type(x)`` is the same as ``x.__class__``.
+
+The major motivation for introducing new-style classes is to provide a unified
+object model with a full meta-model.  It also has a number of immediate
+benefits, like the ability to subclass most built-in types, or the introduction
+of "descriptors", which enable computed properties.
+
+For compatibility reasons, classes are still old-style by default.  New-style
+classes are created by specifying another new-style class (i.e. a type) as a
+parent class, or the "top-level type" :class:`object` if no other parent is
+needed.  The behaviour of new-style classes differs from that of old-style
+classes in a number of important details in addition to what :func:`type`
+returns.  Some of these changes are fundamental to the new object model, like
+the way special methods are invoked.  Others are "fixes" that could not be
+implemented before for compatibility concerns, like the method resolution order
+in case of multiple inheritance.
+
+This manual is not up-to-date with respect to new-style classes.  For now,
+please see http://www.python.org/doc/newstyle/ for more information.
+
+.. XXX remove old style classes from docs
 
 
 .. _specialnames:
@@ -1110,7 +1085,8 @@ Basic customization
    :meth:`__init__` method will not be invoked.
 
    :meth:`__new__` is intended mainly to allow subclasses of immutable types (like
-   int, str, or tuple) to customize instance creation.
+   int, str, or tuple) to customize instance creation.  It is also commonly
+   overridden in custom metaclasses in order to customize class creation.
 
 
 .. method:: object.__init__(self[, ...])
@@ -1241,6 +1217,9 @@ Basic customization
             object.__gt__(self, other)
             object.__ge__(self, other)
 
+   .. index::
+      single: comparisons
+
    These are the so-called "rich comparison" methods, and are called for comparison
    operators in preference to :meth:`__cmp__` below. The correspondence between
    operator symbols and method names is as follows: ``x<y`` calls ``x.__lt__(y)``,
@@ -1255,14 +1234,16 @@ Basic customization
    context (e.g., in the condition of an ``if`` statement), Python will call
    :func:`bool` on the value to determine if the result is true or false.
 
-   There are no implied relationships among the comparison operators. The truth of
-   ``x==y`` does not imply that ``x!=y`` is false.  Accordingly, when defining
-   :meth:`__eq__`, one should also define :meth:`__ne__` so that the operators will
-   behave as expected.
+   There are no implied relationships among the comparison operators. The truth
+   of ``x==y`` does not imply that ``x!=y`` is false.  Accordingly, when
+   defining :meth:`__eq__`, one should also define :meth:`__ne__` so that the
+   operators will behave as expected.  See the paragraph on :meth:`__hash__` for
+   some important notes on creating :term:`hashable` objects which support
+   custom comparison operations and are usable as dictionary keys.
 
-   There are no reflected (swapped-argument) versions of these methods (to be used
-   when the left argument does not support the operation but the right argument
-   does); rather, :meth:`__lt__` and :meth:`__gt__` are each other's reflection,
+   There are no swapped-argument versions of these methods (to be used when the
+   left argument does not support the operation but the right argument does);
+   rather, :meth:`__lt__` and :meth:`__gt__` are each other's reflection,
    :meth:`__le__` and :meth:`__ge__` are each other's reflection, and
    :meth:`__eq__` and :meth:`__ne__` are their own reflection.
 
@@ -1275,14 +1256,14 @@ Basic customization
       builtin: cmp
       single: comparisons
 
-   Called by comparison operations if rich comparison (see above) is not defined.
-   Should return a negative integer if ``self < other``, zero if ``self == other``,
-   a positive integer if ``self > other``.  If no :meth:`__cmp__`, :meth:`__eq__`
-   or :meth:`__ne__` operation is defined, class instances are compared by object
-   identity ("address").  See also the description of :meth:`__hash__` for some
-   important notes on creating objects which support custom comparison operations
-   and are usable as dictionary keys. (Note: the restriction that exceptions are
-   not propagated by :meth:`__cmp__` has been removed since Python 1.5.)
+   Called by comparison operations if rich comparison (see above) is not
+   defined.  Should return a negative integer if ``self < other``, zero if
+   ``self == other``, a positive integer if ``self > other``.  If no
+   :meth:`__cmp__`, :meth:`__eq__` or :meth:`__ne__` operation is defined, class
+   instances are compared by object identity ("address").  See also the
+   description of :meth:`__hash__` for some important notes on creating
+   :term:`hashable` objects which support custom comparison operations and are
+   usable as dictionary keys.
 
 
 .. method:: object.__hash__(self)
@@ -1292,22 +1273,25 @@ Basic customization
       builtin: hash
       single: __cmp__() (object method)
 
-   Called for the key object for dictionary  operations, and by the built-in
-   function :func:`hash`.  Should return a 32-bit integer usable as a hash value
+   Called for the key object for dictionary operations, and by the built-in
+   function :func:`hash`.  Should return an integer usable as a hash value
    for dictionary operations.  The only required property is that objects which
    compare equal have the same hash value; it is advised to somehow mix together
    (e.g., using exclusive or) the hash values for the components of the object that
-   also play a part in comparison of objects.  If a class does not define a
-   :meth:`__cmp__` method it should not define a :meth:`__hash__` operation either;
-   if it defines :meth:`__cmp__` or :meth:`__eq__` but not :meth:`__hash__`, its
-   instances will not be usable as dictionary keys.  If a class defines mutable
-   objects and implements a :meth:`__cmp__` or :meth:`__eq__` method, it should not
-   implement :meth:`__hash__`, since the dictionary implementation requires that a
-   key's hash value is immutable (if the object's hash value changes, it will be in
-   the wrong hash bucket).
+   also play a part in comparison of objects.
 
-   :meth:`__hash__` may also return a long integer object; the 32-bit integer is
-   then derived from the hash of that object.
+   If a class does not define a :meth:`__cmp__` or :meth:`__eq__` method it
+   should not define a :meth:`__hash__` operation either; if it defines
+   :meth:`__cmp__` or :meth:`__eq__` but not :meth:`__hash__`, its instances
+   will not be usable as dictionary keys.  If a class defines mutable objects
+   and implements a :meth:`__cmp__` or :meth:`__eq__` method, it should not
+   implement :meth:`__hash__`, since the dictionary implementation requires that
+   a key's hash value is immutable (if the object's hash value changes, it will
+   be in the wrong hash bucket).
+
+   User-defined classes have :meth:`__cmp__` and :meth:`__hash__` methods
+   by default; with them, all objects compare unequal and ``x.__hash__()``
+   returns ``id(x)``.
 
 
 .. method:: object.__bool__(self)
@@ -1524,7 +1508,7 @@ Notes on using *__slots__*
   *__slots__*.
 
 * *__slots__* do not work for classes derived from "variable-length" built-in
-  types such as :class:`long`, :class:`str` and :class:`tuple`.
+  types such as :class:`int`, :class:`str` and :class:`tuple`.
 
 * Any non-string iterable may be assigned to *__slots__*. Mappings may also be
   used; however, in the future, special meaning may be assigned to the values
@@ -1543,7 +1527,7 @@ read into a separate namespace and the value of class name is bound to the
 result of ``type(name, bases, dict)``.
 
 When the class definition is read, if *__metaclass__* is defined then the
-callable assigned to it will be called instead of :func:`type`. The allows
+callable assigned to it will be called instead of :func:`type`. This allows
 classes or functions to be written which monitor or alter the class creation
 process:
 
@@ -1552,7 +1536,21 @@ process:
 * Returning an instance of another class -- essentially performing the role of a
   factory function.
 
-.. XXX needs to be updated for the "new metaclasses" PEP
+These steps will have to be performed in the metaclass's :meth:`__new__` method
+-- :meth:`type.__new__` can then be called from this method to create a class
+with different properties.  This example adds a new element to the class
+dictionary before creating the class::
+
+  class metacls(type):
+      def __new__(mcs, name, bases, dict):
+          dict['foo'] = 'metacls was here'
+          return type.__new__(mcs, name, bases, dict)
+
+You can of course also override other class methods (or add new methods); for
+example defining a custom :meth:`__call__` method in the metaclass allows custom
+behavior when the class is called, e.g. not always creating a new instance.
+
+
 .. data:: __metaclass__
 
    This variable can be any callable accepting arguments for ``name``, ``bases``,
@@ -1695,6 +1693,20 @@ container; for mappings, :meth:`__iter__` should be the same as
 
    Iterator objects also need to implement this method; they are required to return
    themselves.  For more information on iterator objects, see :ref:`typeiter`.
+
+
+.. method:: object.__reversed__(self)
+
+   Called (if present) by the :func:`reversed` builtin to implement
+   reverse iteration.  It should return a new iterator object that iterates
+   over all the objects in the container in reverse order.
+
+   If the :meth:`__reversed__` method is not provided, the
+   :func:`reversed` builtin will fall back to using the sequence protocol
+   (:meth:`__len__` and :meth:`__getitem__`).  Objects should normally
+   only provide :meth:`__reversed__` if they do not support the sequence
+   protocol and an efficient implementation of reverse iteration is possible.
+
 
 The membership test operators (:keyword:`in` and :keyword:`not in`) are normally
 implemented as an iteration through a sequence.  However, container objects can
@@ -1842,24 +1854,22 @@ left undefined.
 
 .. method:: object.__complex__(self)
             object.__int__(self)
-            object.__long__(self)
             object.__float__(self)
 
    .. index::
       builtin: complex
       builtin: int
-      builtin: long
       builtin: float
 
-   Called to implement the built-in functions :func:`complex`, :func:`int`,
-   :func:`long`, and :func:`float`.  Should return a value of the appropriate type.
+   Called to implement the built-in functions :func:`complex`, :func:`int`
+   and :func:`float`.  Should return a value of the appropriate type.
 
 
 .. method:: object.__index__(self)
 
    Called to implement :func:`operator.index`.  Also called whenever Python needs
    an integer object (such as in slicing, or in the built-in :func:`bin`,
-   :func:`hex` and :func:`oct` functions). Must return an integer (int or long).
+   :func:`hex` and :func:`oct` functions). Must return an integer.
 
 
 .. _context-managers:
@@ -1912,6 +1922,18 @@ For more information on context managers, see :ref:`typecontextmanager`.
       statement.
 
 .. rubric:: Footnotes
+
+.. [#] Since Python 2.2, a gradual merging of types and classes has been started that
+   makes this and a few other assertions made in this manual not 100% accurate and
+   complete: for example, it *is* now possible in some cases to change an object's
+   type, under certain controlled conditions.  Until this manual undergoes
+   extensive revision, it must now be taken as authoritative only regarding
+   "classic classes", that are still the default, for compatibility purposes, in
+   Python 2.2 and 2.3.  For more information, see
+   http://www.python.org/doc/newstyle/.
+
+.. [#] This, and other statements, are only roughly true for instances of new-style
+   classes.
 
 .. [#] A descriptor can define any combination of :meth:`__get__`,
    :meth:`__set__` and :meth:`__delete__`.  If it does not define :meth:`__get__`,

@@ -24,7 +24,7 @@ validate_step(PyObject *step)
 {
     /* No step specified, use a step of 1. */
     if (!step)
-        return PyInt_FromLong(1);
+        return PyLong_FromLong(1);
 
     step = PyNumber_Index(step);
     if (step) {
@@ -63,8 +63,8 @@ range_new(PyTypeObject *type, PyObject *args, PyObject *kw)
         stop = PyNumber_Index(stop);
         if (!stop)
             goto Fail;
-        start = PyInt_FromLong(0);
-        step = PyInt_FromLong(1);
+        start = PyLong_FromLong(0);
+        step = PyLong_FromLong(1);
         if (!start || !step)
             goto Fail;
     }
@@ -107,12 +107,13 @@ range_dealloc(rangeobject *r)
     Py_DECREF(r->start);
     Py_DECREF(r->stop);
     Py_DECREF(r->step);
+    PyObject_Del(r);
 }
 
 /* Return number of items in range (lo, hi, step), when arguments are
  * PyInt or PyLong objects.  step > 0 required.  Return a value < 0 if
  * & only if the true value is too large to fit in a signed long.
- * Arguments MUST return 1 with either PyInt_Check() or
+ * Arguments MUST return 1 with either PyLong_Check() or
  * PyLong_Check().  Return -1 when there is an error.
  */
 static PyObject*
@@ -219,7 +220,7 @@ range_item(rangeobject *r, Py_ssize_t i)
         }
 
     /* XXX(nnorwitz): optimize for short ints. */
-    rem = PyLong_FromSsize_t(i % len);
+    rem = PyLong_FromSsize_t(i);
     if (!rem)
         return NULL;
     incr = PyNumber_Multiply(rem, r->step);
@@ -331,14 +332,14 @@ static PyObject *
 rangeiter_next(rangeiterobject *r)
 {
     if (r->index < r->len)
-        return PyInt_FromLong(r->start + (r->index++) * r->step);
+        return PyLong_FromLong(r->start + (r->index++) * r->step);
     return NULL;
 }
 
 static PyObject *
 rangeiter_len(rangeiterobject *r)
 {
-    return PyInt_FromLong(r->len - r->index);
+    return PyLong_FromLong(r->len - r->index);
 }
 
 typedef struct {
@@ -366,9 +367,9 @@ static PyMethodDef rangeiter_methods[] = {
     {NULL,		NULL}		/* sentinel */
 };
 
-PyTypeObject Pyrangeiter_Type = {
+PyTypeObject PyRangeIter_Type = {
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
-	"rangeiterator",                        /* tp_name */
+	"range_iterator",                        /* tp_name */
 	sizeof(rangeiterobject),                /* tp_basicsize */
 	0,                                      /* tp_itemsize */
 	/* methods */
@@ -440,7 +441,7 @@ get_len_of_range(long lo, long hi, long step)
 static PyObject *
 int_range_iter(long start, long stop, long step)
 {
-    rangeiterobject *it = PyObject_New(rangeiterobject, &Pyrangeiter_Type);
+    rangeiterobject *it = PyObject_New(rangeiterobject, &PyRangeIter_Type);
     if (it == NULL)
         return NULL;
     it->start = start;
@@ -481,6 +482,7 @@ longrangeiter_dealloc(longrangeiterobject *r)
     Py_XDECREF(r->start);
     Py_XDECREF(r->step);
     Py_XDECREF(r->len);
+    PyObject_Del(r);
 }
 
 static PyObject *
@@ -517,9 +519,9 @@ longrangeiter_next(longrangeiterobject *r)
     return result;
 }
 
-static PyTypeObject Pylongrangeiter_Type = {
+PyTypeObject PyLongRangeIter_Type = {
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
-	"rangeiterator",                        /* tp_name */
+	"longrange_iterator",                   /* tp_name */
 	sizeof(longrangeiterobject),            /* tp_basicsize */
 	0,                                      /* tp_itemsize */
 	/* methods */
@@ -556,16 +558,25 @@ range_iter(PyObject *seq)
     rangeobject *r = (rangeobject *)seq;
     longrangeiterobject *it;
     PyObject *tmp, *len;
+    long lstart, lstop, lstep;
 
     assert(PyRange_Check(seq));
-    if (_PyLong_FitsInLong(r->start) &&
-        _PyLong_FitsInLong(r->stop) &&
-        _PyLong_FitsInLong(r->step))
-        return int_range_iter(PyLong_AsLong(r->start),
-                      PyLong_AsLong(r->stop),
-                      PyLong_AsLong(r->step));
 
-    it = PyObject_New(longrangeiterobject, &Pylongrangeiter_Type);
+    /* If all three fields convert to long, use the int version */
+    lstart = PyLong_AsLong(r->start);
+    if (lstart != -1 || !PyErr_Occurred()) {
+	lstop = PyLong_AsLong(r->stop);
+	if (lstop != -1 || !PyErr_Occurred()) {
+	    lstep = PyLong_AsLong(r->step);
+	    if (lstep != -1 || !PyErr_Occurred())
+		return int_range_iter(lstart, lstop, lstep);
+	}
+    }
+    /* Some conversion failed, so there is an error set. Clear it,
+       and try again with a long range. */
+    PyErr_Clear();
+
+    it = PyObject_New(longrangeiterobject, &PyLongRangeIter_Type);
     if (it == NULL)
         return NULL;
 
@@ -603,29 +614,35 @@ range_reverse(PyObject *seq)
     rangeobject *range = (rangeobject*) seq;
     longrangeiterobject *it;
     PyObject *one, *sum, *diff, *len = NULL, *product;
+    long lstart, lstop, lstep;
 
     /* XXX(nnorwitz): do the calc for the new start/stop first,
         then if they fit, call the proper iter()?
     */
     assert(PyRange_Check(seq));
-    if (_PyLong_FitsInLong(range->start) &&
-        _PyLong_FitsInLong(range->stop) &&
-        _PyLong_FitsInLong(range->step)) {
-        long start = PyLong_AsLong(range->start);
-        long step = PyLong_AsLong(range->step);
-        long stop = PyLong_AsLong(range->stop);
-        /* XXX(nnorwitz): need to check for overflow and simplify. */
-        long len = get_len_of_range(start, stop, step);
-        long new_start = start + (len - 1) * step;
-        long new_stop = start;
-        if (step > 0)
-            new_stop -= 1;
-        else
-            new_stop += 1;
-        return int_range_iter(new_start, new_stop, -step);
-    }
 
-    it = PyObject_New(longrangeiterobject, &Pylongrangeiter_Type);
+    /* If all three fields convert to long, use the int version */
+    lstart = PyLong_AsLong(range->start);
+    if (lstart != -1 || !PyErr_Occurred()) {
+	lstop = PyLong_AsLong(range->stop);
+	if (lstop != -1 || !PyErr_Occurred()) {
+	    lstep = PyLong_AsLong(range->step);
+	    if (lstep != -1 || !PyErr_Occurred()) {
+		/* XXX(nnorwitz): need to check for overflow and simplify. */
+		long len = get_len_of_range(lstart, lstop, lstep);
+		long new_start = lstart + (len - 1) * lstep;
+		long new_stop = lstart;
+		if (lstep > 0)
+		    new_stop -= 1;
+		else
+		    new_stop += 1;
+		return int_range_iter(new_start, new_stop, -lstep);
+	    }
+	}
+    }
+    PyErr_Clear();
+
+    it = PyObject_New(longrangeiterobject, &PyLongRangeIter_Type);
     if (it == NULL)
         return NULL;
 

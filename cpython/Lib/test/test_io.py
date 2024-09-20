@@ -88,17 +88,19 @@ class IOTest(unittest.TestCase):
         self.assertEqual(f.tell(), 6)
         self.assertEqual(f.seek(-1, 1), 5)
         self.assertEqual(f.tell(), 5)
-        self.assertEqual(f.write(str8(" world\n\n\n")), 9)
+        self.assertEqual(f.write(bytearray(b" world\n\n\n")), 9)
         self.assertEqual(f.seek(0), 0)
         self.assertEqual(f.write(b"h"), 1)
         self.assertEqual(f.seek(-1, 2), 13)
         self.assertEqual(f.tell(), 13)
         self.assertEqual(f.truncate(12), 12)
         self.assertEqual(f.tell(), 13)
+        self.assertRaises(TypeError, f.seek, 0.0)
 
     def read_ops(self, f, buffered=False):
         data = f.read(5)
         self.assertEqual(data, b"hello")
+        data = bytearray(data)
         self.assertEqual(f.readinto(data), 5)
         self.assertEqual(data, b" worl")
         self.assertEqual(f.readinto(data), 2)
@@ -107,14 +109,15 @@ class IOTest(unittest.TestCase):
         self.assertEqual(f.seek(0), 0)
         self.assertEqual(f.read(20), b"hello world\n")
         self.assertEqual(f.read(1), b"")
-        self.assertEqual(f.readinto(b"x"), 0)
+        self.assertEqual(f.readinto(bytearray(b"x")), 0)
         self.assertEqual(f.seek(-6, 2), 6)
         self.assertEqual(f.read(5), b"world")
         self.assertEqual(f.read(0), b"")
-        self.assertEqual(f.readinto(b""), 0)
+        self.assertEqual(f.readinto(bytearray()), 0)
         self.assertEqual(f.seek(-6, 1), 5)
         self.assertEqual(f.read(5), b" worl")
         self.assertEqual(f.tell(), 10)
+        self.assertRaises(TypeError, f.seek, 0.0)
         if buffered:
             f.seek(0)
             self.assertEqual(f.read(), b"hello world\n")
@@ -259,6 +262,9 @@ class IOTest(unittest.TestCase):
         self.assertEqual(f.write(a), n)
         f.close()
 
+    def test_closefd(self):
+        self.assertRaises(ValueError, io.open, test_support.TESTFN, 'w',
+                          closefd=False)
 
 class MemorySeekTestMixin:
 
@@ -292,6 +298,7 @@ class MemorySeekTestMixin:
 
         bytesIo.seek(3)
         self.assertEquals(buf[3:], bytesIo.read())
+        self.assertRaises(TypeError, bytesIo.seek, 0.0)
 
     def testTell(self):
         buf = self.buftype("1234567890")
@@ -477,25 +484,83 @@ class BufferedRandomTest(unittest.TestCase):
         rw.seek(2, 1)
         self.assertEquals(7, rw.tell())
         self.assertEquals(b"fl", rw.read(11))
+        self.assertRaises(TypeError, rw.seek, 0.0)
 
 
 class TextIOWrapperTest(unittest.TestCase):
 
+    def setUp(self):
+        self.testdata = b"AAA\r\nBBB\rCCC\r\nDDD\nEEE\r\n"
+        self.normalized = b"AAA\nBBB\nCCC\nDDD\nEEE\n".decode("ascii")
+
     def tearDown(self):
         test_support.unlink(test_support.TESTFN)
+
+    def testLineBuffering(self):
+        r = io.BytesIO()
+        b = io.BufferedWriter(r, 1000)
+        t = io.TextIOWrapper(b, newline="\n", line_buffering=True)
+        t.write("X")
+        self.assertEquals(r.getvalue(), b"")  # No flush happened
+        t.write("Y\nZ")
+        self.assertEquals(r.getvalue(), b"XY\nZ")  # All got flushed
+        t.write("A\rB")
+        self.assertEquals(r.getvalue(), b"XY\nZA\rB")
+
+    def testEncodingErrorsReading(self):
+        # (1) default
+        b = io.BytesIO(b"abc\n\xff\n")
+        t = io.TextIOWrapper(b, encoding="ascii")
+        self.assertRaises(UnicodeError, t.read)
+        # (2) explicit strict
+        b = io.BytesIO(b"abc\n\xff\n")
+        t = io.TextIOWrapper(b, encoding="ascii", errors="strict")
+        self.assertRaises(UnicodeError, t.read)
+        # (3) ignore
+        b = io.BytesIO(b"abc\n\xff\n")
+        t = io.TextIOWrapper(b, encoding="ascii", errors="ignore")
+        self.assertEquals(t.read(), "abc\n\n")
+        # (4) replace
+        b = io.BytesIO(b"abc\n\xff\n")
+        t = io.TextIOWrapper(b, encoding="ascii", errors="replace")
+        self.assertEquals(t.read(), "abc\n\ufffd\n")
+
+    def testEncodingErrorsWriting(self):
+        # (1) default
+        b = io.BytesIO()
+        t = io.TextIOWrapper(b, encoding="ascii")
+        self.assertRaises(UnicodeError, t.write, "\xff")
+        # (2) explicit strict
+        b = io.BytesIO()
+        t = io.TextIOWrapper(b, encoding="ascii", errors="strict")
+        self.assertRaises(UnicodeError, t.write, "\xff")
+        # (3) ignore
+        b = io.BytesIO()
+        t = io.TextIOWrapper(b, encoding="ascii", errors="ignore",
+                             newline="\n")
+        t.write("abc\xffdef\n")
+        t.flush()
+        self.assertEquals(b.getvalue(), b"abcdef\n")
+        # (4) replace
+        b = io.BytesIO()
+        t = io.TextIOWrapper(b, encoding="ascii", errors="replace",
+                             newline="\n")
+        t.write("abc\xffdef\n")
+        t.flush()
+        self.assertEquals(b.getvalue(), b"abc?def\n")
 
     def testNewlinesInput(self):
         testdata = b"AAA\nBBB\nCCC\rDDD\rEEE\r\nFFF\r\nGGG"
         normalized = testdata.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
         for newline, expected in [
-            (None, normalized.decode("ASCII").splitlines(True)),
-            ("", testdata.decode("ASCII").splitlines(True)),
+            (None, normalized.decode("ascii").splitlines(True)),
+            ("", testdata.decode("ascii").splitlines(True)),
             ("\n", ["AAA\n", "BBB\n", "CCC\rDDD\rEEE\r\n", "FFF\r\n", "GGG"]),
             ("\r\n", ["AAA\nBBB\nCCC\rDDD\rEEE\r\n", "FFF\r\n", "GGG"]),
             ("\r",  ["AAA\nBBB\nCCC\r", "DDD\r", "EEE\r", "\nFFF\r", "\nGGG"]),
             ]:
             buf = io.BytesIO(testdata)
-            txt = io.TextIOWrapper(buf, encoding="ASCII", newline=newline)
+            txt = io.TextIOWrapper(buf, encoding="ascii", newline=newline)
             self.assertEquals(txt.readlines(), expected)
             txt.seek(0)
             self.assertEquals(txt.read(), "".join(expected))
@@ -510,7 +575,7 @@ class TextIOWrapperTest(unittest.TestCase):
         tests = [(None, testdict[os.linesep])] + sorted(testdict.items())
         for newline, expected in tests:
             buf = io.BytesIO()
-            txt = io.TextIOWrapper(buf, encoding="ASCII", newline=newline)
+            txt = io.TextIOWrapper(buf, encoding="ascii", newline=newline)
             txt.write("AAA\nB")
             txt.write("BB\nCCC\n")
             txt.write("X\rY\r\nZ")
@@ -560,14 +625,14 @@ class TextIOWrapperTest(unittest.TestCase):
         testdata = b"AAA\nBBB\nCCC\rDDD\rEEE\r\nFFF\r\nGGG"
         normalized = testdata.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
         for newline, expected in [
-            (None, normalized.decode("ASCII").splitlines(True)),
-            ("", testdata.decode("ASCII").splitlines(True)),
+            (None, normalized.decode("ascii").splitlines(True)),
+            ("", testdata.decode("ascii").splitlines(True)),
             ("\n", ["AAA\n", "BBB\n", "CCC\rDDD\rEEE\r\n", "FFF\r\n", "GGG"]),
             ("\r\n", ["AAA\nBBB\nCCC\rDDD\rEEE\r\n", "FFF\r\n", "GGG"]),
             ("\r",  ["AAA\nBBB\nCCC\r", "DDD\r", "EEE\r", "\nFFF\r", "\nGGG"]),
             ]:
             buf = io.BytesIO(testdata)
-            txt = io.TextIOWrapper(buf, encoding="ASCII", newline=newline)
+            txt = io.TextIOWrapper(buf, encoding="ascii", newline=newline)
             self.assertEquals(txt.readlines(), expected)
             txt.seek(0)
             self.assertEquals(txt.read(), "".join(expected))
@@ -592,7 +657,7 @@ class TextIOWrapperTest(unittest.TestCase):
                 ("\r\n", "\r\n", data_crlf),
                 ]:
                 buf = io.BytesIO()
-                txt = io.TextIOWrapper(buf, encoding="ASCII", newline=newline)
+                txt = io.TextIOWrapper(buf, encoding="ascii", newline=newline)
                 txt.write(data)
                 txt.close()
                 self.assertEquals(buf.getvalue(), expected)
@@ -684,7 +749,7 @@ class TextIOWrapperTest(unittest.TestCase):
         f.close()
         f = io.open(test_support.TESTFN, "r", encoding="utf-8")
         s = f.read(prefix_size)
-        self.assertEquals(s, str(prefix))
+        self.assertEquals(s, str(prefix, "ascii"))
         self.assertEquals(f.tell(), prefix_size)
         self.assertEquals(f.readline(), u_suffix)
 
@@ -699,6 +764,24 @@ class TextIOWrapperTest(unittest.TestCase):
         f._CHUNK_SIZE = 2
         f.readline()
         f.tell()
+
+    def testEncodedWrites(self):
+        data = "1234567890"
+        tests = ("utf-16",
+                 "utf-16-le",
+                 "utf-16-be",
+                 "utf-32",
+                 "utf-32-le",
+                 "utf-32-be")
+        for encoding in tests:
+            buf = io.BytesIO()
+            f = io.TextIOWrapper(buf, encoding=encoding)
+            # Check if the BOM is written only once (see issue1753).
+            f.write(data)
+            f.write(data)
+            f.seek(0)
+            self.assertEquals(f.read(), data * 2)
+            self.assertEquals(buf.getvalue(), (data * 2).encode(encoding))
 
     def timingTest(self):
         timer = time.time
@@ -737,6 +820,130 @@ class TextIOWrapperTest(unittest.TestCase):
                 print("Reading using readline(): %6.3f seconds" % (t3-t2))
                 print("Using readline()+tell():  %6.3f seconds" % (t4-t3))
 
+    def testReadOneByOne(self):
+        txt = io.TextIOWrapper(io.BytesIO(b"AA\r\nBB"))
+        reads = ""
+        while True:
+            c = txt.read(1)
+            if not c:
+                break
+            reads += c
+        self.assertEquals(reads, "AA\nBB")
+
+    # read in amounts equal to TextIOWrapper._CHUNK_SIZE which is 128.
+    def testReadByChunk(self):
+        # make sure "\r\n" straddles 128 char boundary.
+        txt = io.TextIOWrapper(io.BytesIO(b"A" * 127 + b"\r\nB"))
+        reads = ""
+        while True:
+            c = txt.read(128)
+            if not c:
+                break
+            reads += c
+        self.assertEquals(reads, "A"*127+"\nB")
+
+    def test_issue1395_1(self):
+        txt = io.TextIOWrapper(io.BytesIO(self.testdata), encoding="ascii")
+
+        # read one char at a time
+        reads = ""
+        while True:
+            c = txt.read(1)
+            if not c:
+                break
+            reads += c
+        self.assertEquals(reads, self.normalized)
+
+    def test_issue1395_2(self):
+        txt = io.TextIOWrapper(io.BytesIO(self.testdata), encoding="ascii")
+        txt._CHUNK_SIZE = 4
+
+        reads = ""
+        while True:
+            c = txt.read(4)
+            if not c:
+                break
+            reads += c
+        self.assertEquals(reads, self.normalized)
+
+    def test_issue1395_3(self):
+        txt = io.TextIOWrapper(io.BytesIO(self.testdata), encoding="ascii")
+        txt._CHUNK_SIZE = 4
+
+        reads = txt.read(4)
+        reads += txt.read(4)
+        reads += txt.readline()
+        reads += txt.readline()
+        reads += txt.readline()
+        self.assertEquals(reads, self.normalized)
+
+    def test_issue1395_4(self):
+        txt = io.TextIOWrapper(io.BytesIO(self.testdata), encoding="ascii")
+        txt._CHUNK_SIZE = 4
+
+        reads = txt.read(4)
+        reads += txt.read()
+        self.assertEquals(reads, self.normalized)
+
+    def test_issue1395_5(self):
+        txt = io.TextIOWrapper(io.BytesIO(self.testdata), encoding="ascii")
+        txt._CHUNK_SIZE = 4
+
+        reads = txt.read(4)
+        pos = txt.tell()
+        txt.seek(0)
+        txt.seek(pos)
+        self.assertEquals(txt.read(4), "BBB\n")
+
+    def test_newline_decoder(self):
+        import codecs
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        decoder = io.IncrementalNewlineDecoder(decoder, translate=True)
+
+        self.assertEquals(decoder.decode(b'\xe8\xa2\x88'), "\u8888")
+
+        self.assertEquals(decoder.decode(b'\xe8'), "")
+        self.assertEquals(decoder.decode(b'\xa2'), "")
+        self.assertEquals(decoder.decode(b'\x88'), "\u8888")
+
+        self.assertEquals(decoder.decode(b'\xe8'), "")
+        self.assertRaises(UnicodeDecodeError, decoder.decode, b'', final=True)
+
+        decoder.setstate((b'', 0))
+        self.assertEquals(decoder.decode(b'\n'), "\n")
+        self.assertEquals(decoder.decode(b'\r'), "")
+        self.assertEquals(decoder.decode(b'', final=True), "\n")
+        self.assertEquals(decoder.decode(b'\r', final=True), "\n")
+
+        self.assertEquals(decoder.decode(b'\r'), "")
+        self.assertEquals(decoder.decode(b'a'), "\na")
+
+        self.assertEquals(decoder.decode(b'\r\r\n'), "\n\n")
+        self.assertEquals(decoder.decode(b'\r'), "")
+        self.assertEquals(decoder.decode(b'\r'), "\n")
+        self.assertEquals(decoder.decode(b'\na'), "\na")
+
+        self.assertEquals(decoder.decode(b'\xe8\xa2\x88\r\n'), "\u8888\n")
+        self.assertEquals(decoder.decode(b'\xe8\xa2\x88'), "\u8888")
+        self.assertEquals(decoder.decode(b'\n'), "\n")
+        self.assertEquals(decoder.decode(b'\xe8\xa2\x88\r'), "\u8888")
+        self.assertEquals(decoder.decode(b'\n'), "\n")
+
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        decoder = io.IncrementalNewlineDecoder(decoder, translate=True)
+        self.assertEquals(decoder.newlines, None)
+        decoder.decode(b"abc\n\r")
+        self.assertEquals(decoder.newlines, '\n')
+        decoder.decode(b"\nabc")
+        self.assertEquals(decoder.newlines, ('\n', '\r\n'))
+        decoder.decode(b"abc\r")
+        self.assertEquals(decoder.newlines, ('\n', '\r\n'))
+        decoder.decode(b"abc")
+        self.assertEquals(decoder.newlines, ('\r', '\n', '\r\n'))
+        decoder.decode(b"abc\r")
+        decoder.reset()
+        self.assertEquals(decoder.decode(b"abc"), "abc")
+        self.assertEquals(decoder.newlines, None)
 
 # XXX Tests for open()
 

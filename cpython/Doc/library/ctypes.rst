@@ -69,7 +69,7 @@ the library by creating an instance of CDLL by calling the constructor::
    <CDLL 'libc.so.6', handle ... at ...>
    >>>
 
-.. % XXX Add section for Mac OS X.
+.. XXX Add section for Mac OS X.
 
 
 .. _ctypes-accessing-functions-from-loaded-dlls:
@@ -197,11 +197,11 @@ argument values::
 There are, however, enough ways to crash Python with ``ctypes``, so you should
 be careful anyway.
 
-``None``, integers, longs, byte strings and unicode strings are the only native
+``None``, integers, byte strings and unicode strings are the only native
 Python objects that can directly be used as parameters in these function calls.
 ``None`` is passed as a C ``NULL`` pointer, byte strings and unicode strings are
 passed as pointer to the memory block that contains their data (``char *`` or
-``wchar_t *``).  Python integers and Python longs are passed as the platforms
+``wchar_t *``).  Python integers are passed as the platforms
 default C ``int`` type, their value is masked to fit into the C type.
 
 Before we move on calling functions with other parameter types, we have to learn
@@ -222,25 +222,25 @@ Fundamental data types
    +----------------------+--------------------------------+----------------------------+
    | :class:`c_wchar`     | ``wchar_t``                    | 1-character unicode string |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_byte`      | ``char``                       | int/long                   |
+   | :class:`c_byte`      | ``char``                       | int                        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_ubyte`     | ``unsigned char``              | int/long                   |
+   | :class:`c_ubyte`     | ``unsigned char``              | int                        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_short`     | ``short``                      | int/long                   |
+   | :class:`c_short`     | ``short``                      | int                        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_ushort`    | ``unsigned short``             | int/long                   |
+   | :class:`c_ushort`    | ``unsigned short``             | int                        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_int`       | ``int``                        | int/long                   |
+   | :class:`c_int`       | ``int``                        | int                        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_uint`      | ``unsigned int``               | int/long                   |
+   | :class:`c_uint`      | ``unsigned int``               | int                        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_long`      | ``long``                       | int/long                   |
+   | :class:`c_long`      | ``long``                       | int                        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_ulong`     | ``unsigned long``              | int/long                   |
+   | :class:`c_ulong`     | ``unsigned long``              | int                        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_longlong`  | ``__int64`` or ``long long``   | int/long                   |
+   | :class:`c_longlong`  | ``__int64`` or ``long long``   | int                        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_ulonglong` | ``unsigned __int64`` or        | int/long                   |
+   | :class:`c_ulonglong` | ``unsigned __int64`` or        | int                        |
    |                      | ``unsigned long long``         |                            |
    +----------------------+--------------------------------+----------------------------+
    | :class:`c_float`     | ``float``                      | float                      |
@@ -253,7 +253,7 @@ Fundamental data types
    +----------------------+--------------------------------+----------------------------+
    | :class:`c_wchar_p`   | ``wchar_t *`` (NUL terminated) | unicode or ``None``        |
    +----------------------+--------------------------------+----------------------------+
-   | :class:`c_void_p`    | ``void *``                     | int/long or ``None``       |
+   | :class:`c_void_p`    | ``void *``                     | int or ``None``            |
    +----------------------+--------------------------------+----------------------------+
 
 
@@ -584,8 +584,8 @@ Nested structures can also be initialized in the constructor in several ways::
    >>> r = RECT(POINT(1, 2), POINT(3, 4))
    >>> r = RECT((1, 2), (3, 4))
 
-Fields descriptors can be retrieved from the *class*, they are useful for
-debugging because they can provide useful information::
+Field :term:`descriptor`\s can be retrieved from the *class*, they are useful
+for debugging because they can provide useful information::
 
    >>> print(POINT.x)
    <Field type=c_long, ofs=0, size=4>
@@ -1195,10 +1195,10 @@ Another example that may behave different from what one would expect is this::
    >>>
 
 Why is it printing ``False``?  ctypes instances are objects containing a memory
-block plus some descriptors accessing the contents of the memory.  Storing a
-Python object in the memory block does not store the object itself, instead the
-``contents`` of the object is stored. Accessing the contents again constructs a
-new Python each time!
+block plus some :term:`descriptor`\s accessing the contents of the memory.
+Storing a Python object in the memory block does not store the object itself,
+instead the ``contents`` of the object is stored.  Accessing the contents again
+constructs a new Python object each time!
 
 
 .. _ctypes-variable-sized-data-types:
@@ -1255,10 +1255,6 @@ Enumeration types are not implemented. You can do it easily yourself, using
 :class:`c_int` as the base class.
 
 ``long double`` is not implemented.
-
-.. % Local Variables:
-.. % compile-command: "make.bat"
-.. % End:
 
 
 .. _ctypes-ctypes-reference:
@@ -1366,8 +1362,8 @@ way is to instantiate one of the following classes:
    :class:`WinDLL` and :class:`OleDLL` use the standard calling convention on this
    platform.
 
-The Python GIL is released before calling any function exported by these
-libraries, and reacquired afterwards.
+The Python :term:`global interpreter lock` is released before calling any
+function exported by these libraries, and reacquired afterwards.
 
 
 .. class:: PyDLL(name, mode=DEFAULT_MODE, handle=None)
@@ -1948,7 +1944,7 @@ Data types
    in case the memory block contains pointers.
 
 Common methods of ctypes data types, these are all class methods (to be exact,
-they are methods of the metaclass):
+they are methods of the :term:`metaclass`):
 
 
 .. method:: _CData.from_address(address)
@@ -2012,6 +2008,10 @@ Fundamental data types
    is mentioned here because it contains the common attributes of the fundamental
    ctypes data types.  ``_SimpleCData`` is a subclass of ``_CData``, so it inherits
    their methods and attributes.
+
+   .. versionchanged:: 2.6
+      ctypes data types that are not and do not contain pointers can
+      now be pickled.
 
 Instances have a single attribute:
 
@@ -2263,7 +2263,7 @@ other data types containing pointer type fields.
 
 Concrete structure and union types must be created by subclassing one of these
 types, and at least define a :attr:`_fields_` class variable. ``ctypes`` will
-create descriptors which allow reading and writing the fields by direct
+create :term:`descriptor`\s which allow reading and writing the fields by direct
 attribute accesses.  These are the
 
 

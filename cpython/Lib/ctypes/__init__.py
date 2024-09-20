@@ -21,19 +21,12 @@ if _os.name in ("nt", "ce"):
 
 DEFAULT_MODE = RTLD_LOCAL
 if _os.name == "posix" and _sys.platform == "darwin":
-    import gestalt
-
-    # gestalt.gestalt("sysv") returns the version number of the
-    # currently active system file as BCD.
-    # On OS X 10.4.6 -> 0x1046
-    # On OS X 10.2.8 -> 0x1028
-    # See also http://www.rgaros.nl/gestalt/
-    #
     # On OS X 10.3, we use RTLD_GLOBAL as default mode
     # because RTLD_LOCAL does not work at least on some
-    # libraries.
+    # libraries.  OS X 10.3 is Darwin 7, so we check for
+    # that.
 
-    if gestalt.gestalt("sysv") < 0x1040:
+    if int(_os.uname()[2].split('.')[0]) < 8:
         DEFAULT_MODE = RTLD_GLOBAL
 
 from _ctypes import FUNCFLAG_CDECL as _FUNCFLAG_CDECL, \
@@ -52,11 +45,11 @@ STDAPICALLTYPE
 """
 
 def create_string_buffer(init, size=None):
-    """create_string_buffer(aString) -> character array
+    """create_string_buffer(aBytes) -> character array
     create_string_buffer(anInteger) -> character array
     create_string_buffer(aString, anInteger) -> character array
     """
-    if isinstance(init, str):
+    if isinstance(init, (str, bytes)):
         if size is None:
             size = len(init)+1
         buftype = c_char * size
@@ -189,7 +182,7 @@ class c_double(_SimpleCData):
 _check_size(c_double)
 
 class c_longdouble(_SimpleCData):
-    _type_ = "D"
+    _type_ = "g"
 if sizeof(c_longdouble) == sizeof(c_double):
     c_longdouble = c_double
 
@@ -355,8 +348,8 @@ class CDLL(object):
     def __repr__(self):
         return "<%s '%s', handle %x at %x>" % \
                (self.__class__.__name__, self._name,
-                (self._handle & (_sys.maxint*2 + 1)),
-                id(self) & (_sys.maxint*2 + 1))
+                (self._handle & (_sys.maxsize*2 + 1)),
+                id(self) & (_sys.maxsize*2 + 1))
 
     def __getattr__(self, name):
         if name.startswith('__') and name.endswith('__'):

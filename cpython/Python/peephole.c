@@ -342,7 +342,7 @@ PyCode_Optimize(PyObject *code, PyObject* consts, PyObject *names,
 	if (codestr == NULL)
 		goto exitUnchanged;
 	codestr = (unsigned char *)memcpy(codestr, 
-                                        PyString_AS_STRING(code), codelen);
+					  PyString_AS_STRING(code), codelen);
 
 	/* Verify that RETURN_VALUE terminates the codestring.	This allows
 	   the various transformation patterns to look ahead several
@@ -407,7 +407,7 @@ PyCode_Optimize(PyObject *code, PyObject* consts, PyObject *names,
 			case LOAD_NAME:
 			case LOAD_GLOBAL:
 				j = GETARG(codestr, i);
-				name = PyString_AsString(PyTuple_GET_ITEM(names, j));
+				name = PyUnicode_AsString(PyTuple_GET_ITEM(names, j));
 				h = load_global(codestr, i, name, consts);
 				if (h < 0)
 					goto exitUnchanged;

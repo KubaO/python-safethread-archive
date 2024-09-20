@@ -153,7 +153,7 @@ class UncompressedZipImportTestCase(ImportHooksBaseTestCase):
 
     def testBadMagic(self):
         # make pyc magic word invalid, forcing loading from .py
-        badmagic_pyc = bytes(test_pyc)
+        badmagic_pyc = bytearray(test_pyc)
         badmagic_pyc[0] ^= 0x04  # flip an arbitrary bit
         files = {TESTMOD + ".py": (NOW, test_src),
                  TESTMOD + pyc_ext: (NOW, badmagic_pyc)}
@@ -161,7 +161,7 @@ class UncompressedZipImportTestCase(ImportHooksBaseTestCase):
 
     def testBadMagic2(self):
         # make pyc magic word invalid, causing an ImportError
-        badmagic_pyc = bytes(test_pyc)
+        badmagic_pyc = bytearray(test_pyc)
         badmagic_pyc[0] ^= 0x04  # flip an arbitrary bit
         files = {TESTMOD + pyc_ext: (NOW, badmagic_pyc)}
         try:
@@ -172,7 +172,7 @@ class UncompressedZipImportTestCase(ImportHooksBaseTestCase):
             self.fail("expected ImportError; import from bad pyc")
 
     def testBadMTime(self):
-        badtime_pyc = bytes(test_pyc)
+        badtime_pyc = bytearray(test_pyc)
         badtime_pyc[7] ^= 0x02  # flip the second bit -- not the first as that one
                                 # isn't stored in the .py's mtime in the zip archive.
         files = {TESTMOD + ".py": (NOW, test_src),
@@ -220,6 +220,11 @@ class UncompressedZipImportTestCase(ImportHooksBaseTestCase):
             mod = __import__(module_path_to_dotted_name(mod_name))
             self.assertEquals(zi.get_source(TESTPACK), None)
             self.assertEquals(zi.get_source(mod_name), None)
+
+            # test prefix and archivepath members
+            zi2 = zipimport.zipimporter(TEMP_ZIP + os.sep + TESTPACK)
+            self.assertEquals(zi2.archive, TEMP_ZIP)
+            self.assertEquals(zi2.prefix, TESTPACK + os.sep)
         finally:
             z.close()
             os.remove(TEMP_ZIP)

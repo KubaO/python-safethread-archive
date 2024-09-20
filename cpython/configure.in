@@ -50,10 +50,6 @@ AC_DEFINE(_NETBSD_SOURCE, 1, [Define on NetBSD to activate all library features]
 # them.
 AC_DEFINE(__BSD_VISIBLE, 1, [Define on FreeBSD to activate all library features])
 
-# OpenBSD undoes our definition of __BSD_VISIBLE if _XOPEN_SOURCE is
-# also defined. This can be overridden by defining _BSD_SOURCE
-AC_DEFINE(_BSD_SOURCE, 1, [Define on OpenBSD to activate all library features])
-
 # The later defininition of _XOPEN_SOURCE and _POSIX_C_SOURCE disables
 # u_int on Irix 5.3. Defining _BSD_TYPES brings it back.
 AC_DEFINE(_BSD_TYPES, 1, [Define on Irix to enable u_int])
@@ -65,7 +61,7 @@ AC_SUBST(CONFIG_ARGS)
 CONFIG_ARGS="$ac_configure_args"
 
 AC_ARG_ENABLE(universalsdk,
-	AC_HELP_STRING(--enable-universalsdk@<:@SDKDIR@:>@, Build agains Mac OS X 10.4u SDK (ppc/i386)),
+	AC_HELP_STRING(--enable-universalsdk@<:@=SDKDIR@:>@, Build against Mac OS X 10.4u SDK (ppc/i386)),
 [
 	case $enableval in
 	yes)
@@ -206,7 +202,12 @@ case $ac_sys_system/$ac_sys_release in
   # even though select is a POSIX function. Reported by J. Ribbens.
   # Reconfirmed for OpenBSD 3.3 by Zachary Hamm, for 3.4 by Jason Ish.
   OpenBSD/2.* | OpenBSD/3.@<:@0123456789@:>@ | OpenBSD/4.@<:@0@:>@) 
-    define_xopen_source=no;;
+    define_xopen_source=no
+    # OpenBSD undoes our definition of __BSD_VISIBLE if _XOPEN_SOURCE is
+    # also defined. This can be overridden by defining _BSD_SOURCE
+    # As this has a different meaning on Linux, only define it on OpenBSD
+    AC_DEFINE(_BSD_SOURCE, 1, [Define on OpenBSD to activate all library features])
+    ;;
   # Defining _XOPEN_SOURCE on NetBSD version prior to the introduction of
   # _NETBSD_SOURCE disables certain features (eg. setgroups). Reported by
   # Marc Recht
@@ -732,6 +733,10 @@ then
         if test "$CC" != 'g++' ; then
 	    STRICT_PROTO="-Wstrict-prototypes"
 	fi
+        # For gcc 4.x we need to use -fwrapv so lets check if its supported
+        if "$CC" -v --help 2>/dev/null |grep -- -fwrapv > /dev/null; then
+           WRAP="-fwrapv"
+        fi
 	case $ac_cv_prog_cc_g in
 	yes)
 	    if test "$Py_DEBUG" = 'true' ; then
@@ -739,7 +744,7 @@ then
 		# debug builds.
 		OPT="-g -Wall $STRICT_PROTO"
 	    else
-		OPT="-g -O3 -Wall $STRICT_PROTO"
+		OPT="-g $WRAP -O3 -Wall $STRICT_PROTO"
 	    fi
 	    ;;
 	*)
@@ -1077,7 +1082,7 @@ sys/param.h sys/poll.h sys/select.h sys/socket.h sys/statvfs.h sys/stat.h \
 sys/time.h \
 sys/times.h sys/types.h sys/un.h sys/utsname.h sys/wait.h pty.h libutil.h \
 sys/resource.h netpacket/packet.h sysexits.h bluetooth.h \
-bluetooth/bluetooth.h)
+bluetooth/bluetooth.h linux/tipc.h)
 AC_HEADER_DIRENT
 AC_HEADER_MAJOR
 
@@ -1172,7 +1177,7 @@ AC_TYPE_PID_T
 AC_TYPE_SIGNAL
 AC_TYPE_SIZE_T
 AC_TYPE_UID_T
-AC_CHECK_TYPE(ssize_t, 
+AC_CHECK_TYPE(ssize_t,
   AC_DEFINE(HAVE_SSIZE_T, 1, Define if your compiler provides ssize_t),,)
 
 # Sizes of various common basic types
@@ -1185,6 +1190,7 @@ AC_CHECK_SIZEOF(float, 4)
 AC_CHECK_SIZEOF(double, 8)
 AC_CHECK_SIZEOF(fpos_t, 4)
 AC_CHECK_SIZEOF(size_t, 4)
+AC_CHECK_SIZEOF(pid_t, 4)
 
 AC_MSG_CHECKING(for long long support)
 have_long_long=no
@@ -1196,6 +1202,18 @@ AC_MSG_RESULT($have_long_long)
 if test "$have_long_long" = yes ; then
 AC_CHECK_SIZEOF(long long, 8)
 fi
+
+AC_MSG_CHECKING(for long double support)
+have_long_double=no
+AC_TRY_COMPILE([], [long double x; x = (long double)0;], [
+  AC_DEFINE(HAVE_LONG_DOUBLE, 1, [Define this if you have the type long double.]) 
+  have_long_double=yes
+])
+AC_MSG_RESULT($have_long_double)
+if test "$have_long_double" = yes ; then
+AC_CHECK_SIZEOF(long double, 16)
+fi
+
 
 AC_MSG_CHECKING(for _Bool support)
 have_c99_bool=no
@@ -1712,12 +1730,19 @@ LIBS="$withval $LIBS"
 [AC_MSG_RESULT(no)])
 
 # Check for use of the system libffi library
+AC_CHECK_HEADER(ffi.h)
 AC_MSG_CHECKING(for --with-system-ffi)
 AC_ARG_WITH(system_ffi,
             AC_HELP_STRING(--with-system-ffi, build _ctypes module using an installed ffi library))
 
-if test -z "$with_system_ffi"
-then with_system_ffi="no"
+if test -z "$with_system_ffi" && test "$ac_cv_header_ffi_h" = yes; then
+	case "$ac_sys_system/`uname -m`" in
+	Linux/alpha*)  with_system_ffi="yes"; CONFIG_ARGS="$CONFIG_ARGS --with-system-ffi";;
+	Linux/arm*)  with_system_ffi="yes"; CONFIG_ARGS="$CONFIG_ARGS --with-system-ffi";;
+	Linux/ppc*)  with_system_ffi="yes"; CONFIG_ARGS="$CONFIG_ARGS --with-system-ffi";;
+	Linux/s390*)  with_system_ffi="yes"; CONFIG_ARGS="$CONFIG_ARGS --with-system-ffi";;
+	*) with_system_ffi="no"
+	esac
 fi
 AC_MSG_RESULT($with_system_ffi)
 
@@ -1939,6 +1964,9 @@ if test "$posix_threads" = "yes"; then
                        Defined for Solaris 2.6 bug in pthread header.)
 		       ;;
       SunOS/5.8) AC_DEFINE(HAVE_BROKEN_POSIX_SEMAPHORES, 1,
+		       Define if the Posix semaphores do not work on your system)
+		       ;;
+      AIX/5) AC_DEFINE(HAVE_BROKEN_POSIX_SEMAPHORES, 1,
 		       Define if the Posix semaphores do not work on your system)
 		       ;;
       esac
@@ -2255,11 +2283,11 @@ fi
 AC_MSG_RESULT(MACHDEP_OBJS)
 
 # checks for library functions
-AC_CHECK_FUNCS(alarm bind_textdomain_codeset chflags chown clock confstr \
- ctermid execv fork fpathconf ftime ftruncate \
+AC_CHECK_FUNCS(alarm bind_textdomain_codeset chown clock confstr \
+ ctermid execv fchmod fchown fork fpathconf ftime ftruncate \
  gai_strerror getgroups getlogin getloadavg getpeername getpgid getpid \
  getpriority getpwent getspnam getspent getsid getwd \
- kill killpg lchflags lchown lstat mkfifo mknod mktime \
+ kill killpg lchmod lchown lstat mkfifo mknod mktime \
  mremap nice pathconf pause plock poll pthread_init \
  putenv readlink realpath \
  select setegid seteuid setgid \
@@ -2350,6 +2378,38 @@ dnl On some systems (e.g. Solaris 9), hstrerror and inet_aton are in -lresolv
 dnl On others, they are in the C library, so we to take no action
 AC_CHECK_LIB(c, inet_aton, [$ac_cv_prog_TRUE],
   AC_CHECK_LIB(resolv, inet_aton)
+)
+
+# On Tru64, chflags seems to be present, but calling it will
+# exit Python
+AC_MSG_CHECKING(for chflags)
+AC_TRY_RUN([
+#include <sys/stat.h>
+#include <unistd.h>
+int main(int argc, char*argv[])
+{
+  if(chflags(argv[0], 0) != 0)
+    return 1;
+  return 0;
+}
+],AC_DEFINE(HAVE_CHFLAGS, 1, Define to 1 if you have the `chflags' function.)
+  AC_MSG_RESULT(yes),
+  AC_MSG_RESULT(no)
+)
+
+AC_MSG_CHECKING(for lchflags)
+AC_TRY_RUN([
+#include <sys/stat.h>
+#include <unistd.h>
+int main(int argc, char*argv[])
+{
+  if(lchflags(argv[0], 0) != 0)
+    return 1;
+  return 0;
+}
+],AC_DEFINE(HAVE_LCHFLAGS, 1, Define to 1 if you have the `lchflags' function.)
+  AC_MSG_RESULT(yes),
+  AC_MSG_RESULT(no)
 )
 
 dnl Check if system zlib has *Copy() functions
@@ -2889,10 +2949,15 @@ else AC_MSG_ERROR([proper usage is --with-libc=STRING])
 fi],
 [AC_MSG_RESULT(default LIBC="$LIBC")])
 
-# check for hypot() in math library
+# ************************************
+# * Check for mathematical functions *
+# ************************************
 LIBS_SAVE=$LIBS
 LIBS="$LIBS $LIBM"
 AC_REPLACE_FUNCS(hypot)
+
+AC_CHECK_FUNCS(acosh asinh atanh copysign expm1 finite isinf isnan log1p)
+
 LIBS=$LIBS_SAVE
 
 # check for wchar.h
@@ -2941,72 +3006,55 @@ then
   ac_cv_wchar_t_signed=yes)])
   AC_MSG_RESULT($ac_cv_wchar_t_signed)
 fi
-  
-AC_MSG_CHECKING(what type to use for unicode)
-dnl quadrigraphs "@<:@" and "@:>@" produce "[" and "]" in the output
-AC_ARG_ENABLE(unicode, 
-              AC_HELP_STRING(--enable-unicode@<:@=ucs@<:@24@:>@@:>@, Enable Unicode strings (default is yes)),
-              [],
-              [enable_unicode=yes])
 
-if test $enable_unicode = yes
-then
-  # Without any arguments, Py_UNICODE defaults to two-byte mode
-  case "$have_ucs4_tcl" in
-  yes) enable_unicode="ucs4"
-       ;;
-  *)   enable_unicode="ucs2"
-       ;;
-  esac
+AC_MSG_CHECKING(what type to use for str)
+AC_ARG_WITH(wide-unicode, 
+            AC_HELP_STRING(--with-wide-unicode, Use 4-byte Unicode characters (default is 2 bytes)),
+[
+if test "$withval" != no
+then unicode_size="4"
+else unicode_size="2"
 fi
+],
+[
+case "$have_ucs4_tcl" in
+  yes) unicode_size="4" ;;
+  *)   unicode_size="2" ;;
+esac
+])
 
 AH_TEMPLATE(Py_UNICODE_SIZE,
   [Define as the size of the unicode type.])
-case "$enable_unicode" in
-ucs2) unicode_size="2"
-      AC_DEFINE(Py_UNICODE_SIZE,2)
-      ;;
-ucs4) unicode_size="4"
-      AC_DEFINE(Py_UNICODE_SIZE,4)
-      ;;
+case "$unicode_size" in
+  4) AC_DEFINE(Py_UNICODE_SIZE, 4) ;;
+  *) AC_DEFINE(Py_UNICODE_SIZE, 2) ;;
 esac
 
 AH_TEMPLATE(PY_UNICODE_TYPE,
   [Define as the integral type used for Unicode representation.])
 
-AC_SUBST(UNICODE_OBJS)
-if test "$enable_unicode" = "no"
-then
-  UNICODE_OBJS=""
-  AC_MSG_RESULT(not used)
-else
-  UNICODE_OBJS="Objects/unicodeobject.o Objects/unicodectype.o"
-  AC_DEFINE(Py_USING_UNICODE, 1,
-  [Define if you want to have a Unicode type.])
-
-  # wchar_t is only usable if it maps to an unsigned type
-  if test "$unicode_size" = "$ac_cv_sizeof_wchar_t" \
+# wchar_t is only usable if it maps to an unsigned type
+if test "$unicode_size" = "$ac_cv_sizeof_wchar_t" \
           -a "$ac_cv_wchar_t_signed" = "no"
-  then
-    PY_UNICODE_TYPE="wchar_t"
-    AC_DEFINE(HAVE_USABLE_WCHAR_T, 1,
-    [Define if you have a useable wchar_t type defined in wchar.h; useable
-     means wchar_t must be an unsigned type with at least 16 bits. (see
-     Include/unicodeobject.h).])
-    AC_DEFINE(PY_UNICODE_TYPE,wchar_t)
-  elif test "$ac_cv_sizeof_short" = "$unicode_size"
-  then
-       PY_UNICODE_TYPE="unsigned short"
-       AC_DEFINE(PY_UNICODE_TYPE,unsigned short)
-  elif test "$ac_cv_sizeof_long" = "$unicode_size"
-  then
-       PY_UNICODE_TYPE="unsigned long"
-       AC_DEFINE(PY_UNICODE_TYPE,unsigned long)
-  else
-       PY_UNICODE_TYPE="no type found"
-  fi
-  AC_MSG_RESULT($PY_UNICODE_TYPE)
+then
+  PY_UNICODE_TYPE="wchar_t"
+  AC_DEFINE(HAVE_USABLE_WCHAR_T, 1,
+  [Define if you have a useable wchar_t type defined in wchar.h; useable
+   means wchar_t must be an unsigned type with at least 16 bits. (see
+   Include/unicodeobject.h).])
+  AC_DEFINE(PY_UNICODE_TYPE,wchar_t)
+elif test "$ac_cv_sizeof_short" = "$unicode_size"
+then
+     PY_UNICODE_TYPE="unsigned short"
+     AC_DEFINE(PY_UNICODE_TYPE,unsigned short)
+elif test "$ac_cv_sizeof_long" = "$unicode_size"
+then
+     PY_UNICODE_TYPE="unsigned long"
+     AC_DEFINE(PY_UNICODE_TYPE,unsigned long)
+else
+     PY_UNICODE_TYPE="no type found"
 fi
+AC_MSG_RESULT($PY_UNICODE_TYPE)
 
 # check for endianness
 AC_C_BIGENDIAN
@@ -3374,9 +3422,9 @@ AC_TRY_RUN([#include <stdio.h>
 #include <stddef.h>
 #include <string.h>
 
-int main()
-{
-    char buffer[256];
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
 
 #ifdef HAVE_SSIZE_T
 typedef ssize_t Py_ssize_t;
@@ -3385,6 +3433,10 @@ typedef long Py_ssize_t;
 #else
 typedef int Py_ssize_t;
 #endif
+
+int main()
+{
+    char buffer[256];
 
     if(sprintf(buffer, "%zd", (size_t)123) < 0)
        	return 1;

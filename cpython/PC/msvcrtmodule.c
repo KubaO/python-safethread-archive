@@ -74,7 +74,7 @@ msvcrt_setmode(PyObject *self, PyObject *args)
 	if (flags == -1)
 		return PyErr_SetFromErrno(PyExc_IOError);
 
-	return PyInt_FromLong(flags);
+	return PyLong_FromLong(flags);
 }
 
 // Convert an OS file handle to a C runtime file descriptor.
@@ -92,7 +92,7 @@ msvcrt_open_osfhandle(PyObject *self, PyObject *args)
 	if (fd == -1)
 		return PyErr_SetFromErrno(PyExc_IOError);
 
-	return PyInt_FromLong(fd);
+	return PyLong_FromLong(fd);
 }
 
 // Convert a C runtime file descriptor to an OS file handle.
@@ -126,7 +126,7 @@ msvcrt_kbhit(PyObject *self, PyObject *args)
 		return NULL;
 
 	ok = _kbhit();
-	return PyInt_FromLong(ok);
+	return PyLong_FromLong(ok);
 }
 
 static PyObject *
@@ -145,6 +145,24 @@ msvcrt_getch(PyObject *self, PyObject *args)
 	return PyString_FromStringAndSize(s, 1);
 }
 
+#if _MSC_VER >= 1300
+static PyObject *
+msvcrt_getwch(PyObject *self, PyObject *args)
+{
+	Py_UNICODE ch;
+	Py_UNICODE u[1];
+
+	if (!PyArg_ParseTuple(args, ":getwch"))
+		return NULL;
+
+	Py_BEGIN_ALLOW_THREADS
+	ch = _getwch();
+	Py_END_ALLOW_THREADS
+	u[0] = ch;
+	return PyUnicode_FromUnicode(u, 1);
+}
+#endif
+
 static PyObject *
 msvcrt_getche(PyObject *self, PyObject *args)
 {
@@ -161,6 +179,24 @@ msvcrt_getche(PyObject *self, PyObject *args)
 	return PyString_FromStringAndSize(s, 1);
 }
 
+#if _MSC_VER >= 1300
+static PyObject *
+msvcrt_getwche(PyObject *self, PyObject *args)
+{
+	Py_UNICODE ch;
+	Py_UNICODE s[1];
+
+	if (!PyArg_ParseTuple(args, ":getwche"))
+		return NULL;
+
+	Py_BEGIN_ALLOW_THREADS
+	ch = _getwche();
+	Py_END_ALLOW_THREADS
+	s[0] = ch;
+	return PyUnicode_FromUnicode(s, 1);
+}
+#endif
+
 static PyObject *
 msvcrt_putch(PyObject *self, PyObject *args)
 {
@@ -173,6 +209,28 @@ msvcrt_putch(PyObject *self, PyObject *args)
 	Py_INCREF(Py_None);
 	return Py_None;
 }
+
+
+#if _MSC_VER >= 1300
+static PyObject *
+msvcrt_putwch(PyObject *self, PyObject *args)
+{
+	Py_UNICODE *ch;
+	int size;
+
+	if (!PyArg_ParseTuple(args, "u#:putwch", &ch, &size))
+		return NULL;
+
+	if (size == 0) {
+		PyErr_SetString(PyExc_ValueError,
+			"Expected unicode string of length 1");
+		return NULL;
+	}
+	_putwch(*ch);
+	Py_RETURN_NONE;
+
+}
+#endif
 
 static PyObject *
 msvcrt_ungetch(PyObject *self, PyObject *args)
@@ -188,11 +246,26 @@ msvcrt_ungetch(PyObject *self, PyObject *args)
 	return Py_None;
 }
 
+#if _MSC_VER >= 1300
+static PyObject *
+msvcrt_ungetwch(PyObject *self, PyObject *args)
+{
+	Py_UNICODE ch;
+
+	if (!PyArg_ParseTuple(args, "u:ungetwch", &ch))
+		return NULL;
+
+	if (_ungetch(ch) == EOF)
+		return PyErr_SetFromErrno(PyExc_IOError);
+	Py_INCREF(Py_None);
+	return Py_None;
+}
+#endif
 
 static void
 insertint(PyObject *d, char *name, int value)
 {
-	PyObject *v = PyInt_FromLong((long) value);
+	PyObject *v = PyLong_FromLong((long) value);
 	if (v == NULL) {
 		/* Don't bother reporting this error */
 		PyErr_Clear();
@@ -214,7 +287,7 @@ msvcrt_setreportfile(PyObject *self, PyObject *args)
 	if (!PyArg_ParseTuple(args, "ii", &type, &file))
 		return NULL;
 	res = _CrtSetReportFile(type, (_HFILE)file);
-	return PyInt_FromLong((long)res);
+	return PyLong_FromLong((long)res);
 	Py_INCREF(Py_None);
 	return Py_None;
 }
@@ -275,6 +348,12 @@ static struct PyMethodDef msvcrt_functions[] = {
 	{"CrtSetReportFile",	msvcrt_setreportfile, METH_VARARGS},
 	{"CrtSetReportMode",	msvcrt_setreportmode, METH_VARARGS},
 	{"set_error_mode",	msvcrt_seterrormode, METH_VARARGS},
+#endif
+#if _MSC_VER >= 1300
+	{"getwch",		msvcrt_getwch, METH_VARARGS},
+	{"getwche",		msvcrt_getwche, METH_VARARGS},
+	{"putwch",		msvcrt_putwch, METH_VARARGS},
+	{"ungetwch",		msvcrt_ungetwch, METH_VARARGS},
 #endif
 	{NULL,			NULL}
 };

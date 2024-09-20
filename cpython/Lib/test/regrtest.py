@@ -140,7 +140,7 @@ import traceback
 # putting them in test_grammar.py has no effect:
 warnings.filterwarnings("ignore", "hex/oct constants", FutureWarning,
                         ".*test.test_grammar$")
-if sys.maxint > 0x7fffffff:
+if sys.maxsize > 0x7fffffff:
     # Also suppress them in <string>, because for 64-bit platforms,
     # that's where test_grammar.py hides them.
     warnings.filterwarnings("ignore", "hex/oct constants", FutureWarning,
@@ -278,6 +278,9 @@ def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
                 huntrleaks[1] = int(huntrleaks[1])
             if len(huntrleaks) == 2 or not huntrleaks[2]:
                 huntrleaks[2:] = ["reflog.txt"]
+            # Avoid false positives due to the character cache in
+            # stringobject.c filling slowly with random data
+            warm_char_cache()
         elif o in ('-M', '--memlimit'):
             test_support.set_memlimit(a)
         elif o in ('-u', '--use'):
@@ -357,9 +360,9 @@ def main(tests=None, testdir=None, verbose=0, quiet=False, generate=False,
 
     # Strip .py extensions.
     if args:
-        args = map(removepy, args)
+        args = list(map(removepy, args))
     if tests:
-        tests = map(removepy, tests)
+        tests = list(map(removepy, tests))
 
     stdtests = STDTESTS[:]
     nottests = NOTTESTS.copy()
@@ -585,10 +588,9 @@ def runtest_inner(test, generate, verbose, quiet,
                 abstest = 'test.' + test
             the_package = __import__(abstest, globals(), locals(), [])
             the_module = getattr(the_package, test)
-            # Most tests run to completion simply as a side-effect of
-            # being imported.  For the benefit of tests that can't run
-            # that way (like test_threaded_import), explicitly invoke
-            # their test_main() function (if it exists).
+            # Old tests run to completion simply as a side-effect of
+            # being imported.  For tests based on unittest or doctest,
+            # explicitly invoke their test_main() function (if it exists).
             indirect_test = getattr(the_module, "test_main", None)
             if indirect_test is not None:
                 indirect_test()
@@ -687,6 +689,7 @@ def cleanup_test_droppings(testname, verbose):
 def dash_R(the_module, test, indirect_test, huntrleaks):
     # This code is hackish and inelegant, but it seems to do the job.
     import copy_reg, _abcoll
+    from abc import _Abstract
 
     if not hasattr(sys, 'gettotalrefcount'):
         raise Exception("Tracking reference leaks requires a debug build "
@@ -696,9 +699,12 @@ def dash_R(the_module, test, indirect_test, huntrleaks):
     fs = warnings.filters[:]
     ps = copy_reg.dispatch_table.copy()
     pic = sys.path_importer_cache.copy()
-    abcs = {obj: obj._abc_registry.copy()
-            for abc in [getattr(_abcoll, a) for a in _abcoll.__all__]
-            for obj in abc.__subclasses__() + [abc]}
+    abcs = {}
+    for abc in [getattr(_abcoll, a) for a in _abcoll.__all__]:
+        if not issubclass(abc, _Abstract):
+            continue
+        for obj in abc.__subclasses__() + [abc]:
+            abcs[obj] = obj._abc_registry.copy()
 
     if indirect_test:
         def run_the_test():
@@ -735,7 +741,9 @@ def dash_R_cleanup(fs, ps, pic, abcs):
     import _strptime, linecache, dircache
     import urlparse, urllib, urllib2, mimetypes, doctest
     import struct, filecmp, _abcoll
+    from abc import _Abstract
     from distutils.dir_util import _path_created
+    from weakref import WeakSet
 
     # Restore some original values.
     warnings.filters[:] = fs
@@ -744,10 +752,15 @@ def dash_R_cleanup(fs, ps, pic, abcs):
     sys.path_importer_cache.clear()
     sys.path_importer_cache.update(pic)
 
+    # clear type cache
+    sys._clear_type_cache()
+
     # Clear ABC registries, restoring previously saved ABC registries.
     for abc in [getattr(_abcoll, a) for a in _abcoll.__all__]:
+        if not issubclass(abc, _Abstract):
+            continue
         for obj in abc.__subclasses__() + [abc]:
-            obj._abc_registry = abcs.get(obj, {}).copy()
+            obj._abc_registry = abcs.get(obj, WeakSet()).copy()
             obj._abc_cache.clear()
             obj._abc_negative_cache.clear()
 
@@ -761,12 +774,17 @@ def dash_R_cleanup(fs, ps, pic, abcs):
     dircache.reset()
     linecache.clearcache()
     mimetypes._default_mime_types()
-    struct._cache.clear()
     filecmp._cache.clear()
+    struct._clearcache()
     doctest.master = None
 
     # Collect cyclic trash.
     gc.collect()
+
+def warm_char_cache():
+    s = bytes(range(256))
+    for i in range(256):
+        s[i:i+1]
 
 def reportdiff(expected, output):
     import difflib
@@ -849,9 +867,6 @@ def printlist(x, width=70, indent=4):
 #     test_pep277
 #         The _ExpectedSkips constructor adds this to the set of expected
 #         skips if not os.path.supports_unicode_filenames.
-#     test_socket_ssl
-#         Controlled by test_socket_ssl.skip_expected.  Requires the network
-#         resource, and a socket module with ssl support.
 #     test_timeout
 #         Controlled by test_timeout.skip_expected.  Requires the network
 #         resource and a socket module.
@@ -885,6 +900,7 @@ _expectations = {
         test_pwd
         test_resource
         test_signal
+        test_syslog
         test_threadsignals
         test_wait3
         test_wait4
@@ -1055,7 +1071,6 @@ _expectations = {
         test_ossaudiodev
         test_pep277
         test_pty
-        test_socket_ssl
         test_socketserver
         test_tcl
         test_timeout
@@ -1104,6 +1119,7 @@ _expectations = {
 _expectations['freebsd5'] = _expectations['freebsd4']
 _expectations['freebsd6'] = _expectations['freebsd4']
 _expectations['freebsd7'] = _expectations['freebsd4']
+_expectations['freebsd8'] = _expectations['freebsd4']
 
 class _ExpectedSkips:
     def __init__(self):
@@ -1115,17 +1131,22 @@ class _ExpectedSkips:
             s = _expectations[sys.platform]
             self.expected = set(s.split())
 
+            # These are broken tests, for now skipped on every platform.
+            # XXX Fix these!
+            self.expected.add('test_cProfile')
+
             # expected to be skipped on every platform, even Linux
             if not os.path.supports_unicode_filenames:
                 self.expected.add('test_pep277')
 
-            try:
-                from test import test_socket_ssl
-            except ImportError:
-                pass
-            else:
-                if test_socket_ssl.skip_expected:
-                    self.expected.add('test_socket_ssl')
+            # doctest, profile and cProfile tests fail when the codec for the
+            # fs encoding isn't built in because PyUnicode_Decode() adds two
+            # calls into Python.
+            encs = ("utf-8", "latin-1", "ascii", "mbcs", "utf-16", "utf-32")
+            if sys.getfilesystemencoding().lower() not in encs:
+                self.expected.add('test_profile')
+                self.expected.add('test_cProfile')
+                self.expected.add('test_doctest')
 
             if test_timeout.skip_expected:
                 self.expected.add('test_timeout')

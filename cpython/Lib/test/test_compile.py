@@ -7,10 +7,10 @@ class TestSpecifics(unittest.TestCase):
     def test_debug_assignment(self):
         # catch assignments to __debug__
         self.assertRaises(SyntaxError, compile, '__debug__ = 1', '?', 'single')
-        import __builtin__
-        prev = __builtin__.__debug__
-        setattr(__builtin__, '__debug__', 'sure')
-        setattr(__builtin__, '__debug__', prev)
+        import builtins
+        prev = builtins.__debug__
+        setattr(builtins, '__debug__', 'sure')
+        setattr(builtins, '__debug__', prev)
 
     def test_argument_handling(self):
         # detect duplicate positional and keyword arguments
@@ -157,7 +157,7 @@ if 1:
         s256 = "".join(["\n"] * 256 + ["spam"])
         co = compile(s256, 'fn', 'exec')
         self.assertEqual(co.co_firstlineno, 257)
-        self.assertEqual(co.co_lnotab, '')
+        self.assertEqual(co.co_lnotab, bytes())
 
     def test_literals_with_leading_zeroes(self):
         for arg in ["077787", "0xj", "0x.", "0e",  "090000000000000",
@@ -194,24 +194,24 @@ if 1:
 
     def test_unary_minus(self):
         # Verify treatment of unary minus on negative numbers SF bug #660455
-        if sys.maxint == 2147483647:
+        if sys.maxsize == 2147483647:
             # 32-bit machine
             all_one_bits = '0xffffffff'
             self.assertEqual(eval(all_one_bits), 4294967295)
             self.assertEqual(eval("-" + all_one_bits), -4294967295)
-        elif sys.maxint == 9223372036854775807:
+        elif sys.maxsize == 9223372036854775807:
             # 64-bit machine
             all_one_bits = '0xffffffffffffffff'
             self.assertEqual(eval(all_one_bits), 18446744073709551615)
             self.assertEqual(eval("-" + all_one_bits), -18446744073709551615)
         else:
             self.fail("How many bits *does* this machine have???")
-        # Verify treatment of contant folding on -(sys.maxint+1)
+        # Verify treatment of contant folding on -(sys.maxsize+1)
         # i.e. -2147483648 on 32 bit platforms.  Should return int, not long.
-        self.assertTrue(isinstance(eval("%s" % (-sys.maxint - 1)), int))
-        self.assertTrue(isinstance(eval("%s" % (-sys.maxint - 2)), int))
+        self.assertTrue(isinstance(eval("%s" % (-sys.maxsize - 1)), int))
+        self.assertTrue(isinstance(eval("%s" % (-sys.maxsize - 2)), int))
 
-    if sys.maxint == 9223372036854775807:
+    if sys.maxsize == 9223372036854775807:
         def test_32_63_bit_values(self):
             a = +4294967296  # 1 << 32
             b = -4294967296  # 1 << 32

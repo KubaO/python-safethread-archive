@@ -135,6 +135,8 @@ tb_displayline(PyObject *f, char *filename, int lineno, char *name)
 	FILE *xfp;
 	char linebuf[2000];
 	int i;
+	char namebuf[MAXPATHLEN+1];
+
 	if (filename == NULL || name == NULL)
 		return -1;
 	/* This is needed by Emacs' compile command */
@@ -153,7 +155,6 @@ tb_displayline(PyObject *f, char *filename, int lineno, char *name)
 			Py_ssize_t _npath = PyList_Size(path);
 			int npath = Py_SAFE_DOWNCAST(_npath, Py_ssize_t, int);
 			size_t taillen = strlen(tail);
-			char namebuf[MAXPATHLEN+1];
 			for (i = 0; i < npath; i++) {
 				PyObject *v = PyList_GetItem(path, i);
 				if (v == NULL) {
@@ -229,10 +230,10 @@ tb_printinternal(PyTracebackObject *tb, PyObject *f, int limit)
 	while (tb != NULL && err == 0) {
 		if (depth <= limit) {
 			err = tb_displayline(f,
-			    PyString_AsString(
+			    PyUnicode_AsString(
 				    tb->tb_frame->f_code->co_filename),
 			    tb->tb_lineno,
-			    PyString_AsString(tb->tb_frame->f_code->co_name));
+			    PyUnicode_AsString(tb->tb_frame->f_code->co_name));
 		}
 		depth--;
 		tb = tb->tb_next;
@@ -242,12 +243,15 @@ tb_printinternal(PyTracebackObject *tb, PyObject *f, int limit)
 	return err;
 }
 
+#define PyTraceBack_LIMIT 1000
+
 int
 PyTraceBack_Print(PyObject *v, PyObject *f)
 {
 	int err;
 	PyObject *limitv;
-	int limit = 1000;
+	int limit = PyTraceBack_LIMIT;
+
 	if (v == NULL)
 		return 0;
 	if (!PyTraceBack_Check(v)) {
@@ -255,10 +259,26 @@ PyTraceBack_Print(PyObject *v, PyObject *f)
 		return -1;
 	}
 	limitv = PySys_GetObject("tracebacklimit");
-	if (limitv && PyInt_CheckExact(limitv)) {
-		limit = PyInt_AsLong(limitv);
-		if (limit <= 0)
-			return 0;
+	if (limitv) {
+		PyObject *exc_type, *exc_value, *exc_tb;
+
+		PyErr_Fetch(&exc_type, &exc_value, &exc_tb);
+		limit = PyLong_AsLong(limitv);
+		if (limit == -1 && PyErr_Occurred()) {
+			if (PyErr_ExceptionMatches(PyExc_OverflowError)) {
+				limit = PyTraceBack_LIMIT;
+			}
+			else {
+				Py_XDECREF(exc_type);
+				Py_XDECREF(exc_value);
+				Py_XDECREF(exc_tb);
+				return 0;
+			}
+		}
+		else if (limit <= 0) {
+			limit = PyTraceBack_LIMIT;
+		}
+		PyErr_Restore(exc_type, exc_value, exc_tb);
 	}
 	err = PyFile_WriteString("Traceback (most recent call last):\n", f);
 	if (!err)

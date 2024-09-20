@@ -1,11 +1,11 @@
 import ConfigParser
 import io
 import unittest
-import UserDict
+import collections
 
 from test import test_support
 
-class SortedDict(UserDict.UserDict):
+class SortedDict(collections.UserDict):
     def items(self):
         return sorted(self.data.items())
 
@@ -435,6 +435,14 @@ class SafeConfigParserTestCase(ConfigParserTestCase):
         self.assertRaises(TypeError, cf.set, "sect", "option2", 1)
         self.assertRaises(TypeError, cf.set, "sect", "option2", 1.0)
         self.assertRaises(TypeError, cf.set, "sect", "option2", object())
+
+    def test_add_section_default_1(self):
+        cf = self.newconfig()
+        self.assertRaises(ValueError, cf.add_section, "default")
+
+    def test_add_section_default_2(self):
+        cf = self.newconfig()
+        self.assertRaises(ValueError, cf.add_section, "DEFAULT")
 
 class SortedTestCase(RawConfigParserTestCase):
     def newconfig(self, defaults=None):

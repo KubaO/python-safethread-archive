@@ -165,7 +165,7 @@ error on to the interpreter but wants to handle it completely by itself
 Every failing :cfunc:`malloc` call must be turned into an exception --- the
 direct caller of :cfunc:`malloc` (or :cfunc:`realloc`) must call
 :cfunc:`PyErr_NoMemory` and return a failure indicator itself.  All the
-object-creating functions (for example, :cfunc:`PyInt_FromLong`) already do
+object-creating functions (for example, :cfunc:`PyLong_FromLong`) already do
 this, so this note is only relevant to those who call :cfunc:`malloc` directly.
 
 Also note that, with the important exception of :cfunc:`PyArg_ParseTuple` and
@@ -306,7 +306,7 @@ function.
 The method table must be passed to the interpreter in the module's
 initialization function.  The initialization function must be named
 :cfunc:`initname`, where *name* is the name of the module, and should be the
-only non-\ :keyword:`static` item defined in the module file::
+only non-\ ``static`` item defined in the module file::
 
    PyMODINIT_FUNC
    initspam(void)
@@ -466,10 +466,10 @@ Later, when it is time to call the function, you call the C function
 :cfunc:`PyEval_CallObject`.  This function has two arguments, both pointers to
 arbitrary Python objects: the Python function, and the argument list.  The
 argument list must always be a tuple object, whose length is the number of
-arguments.  To call the Python function with no arguments, pass an empty tuple;
-to call it with one argument, pass a singleton tuple. :cfunc:`Py_BuildValue`
-returns a tuple when its format string consists of zero or more format codes
-between parentheses.  For example::
+arguments.  To call the Python function with no arguments, pass in NULL, or 
+an empty tuple; to call it with one argument, pass a singleton tuple.
+:cfunc:`Py_BuildValue` returns a tuple when its format string consists of zero
+or more format codes between parentheses.  For example::
 
    int arg;
    PyObject *arglist;
@@ -527,9 +527,22 @@ event code, you might use the following code::
    Py_DECREF(result);
 
 Note the placement of ``Py_DECREF(arglist)`` immediately after the call, before
-the error check!  Also note that strictly spoken this code is not complete:
+the error check!  Also note that strictly speaking this code is not complete:
 :cfunc:`Py_BuildValue` may run out of memory, and this should be checked.
 
+You may also call a function with keyword arguments by using 
+:cfunc:`PyEval_CallObjectWithKeywords`.  As in the above example, we use
+:cfunc:`Py_BuildValue` to construct the dictionary. ::
+
+   PyObject *dict;
+   ...
+   dict = Py_BuildValue("{s:i}", "name", val);
+   result = PyEval_CallObjectWithKeywords(my_callback, NULL, dict);
+   Py_DECREF(dict);
+   if (result == NULL)
+       return NULL; /* Pass error back */
+   /* Here maybe use the result */
+   Py_DECREF(result);
 
 .. _parsetuple:
 
@@ -647,11 +660,7 @@ it returns false and raises an appropriate exception.
 .. index:: single: Philbrick, Geoff
 
 Here is an example module which uses keywords, based on an example by Geoff
-Philbrick (philbrick@hks.com):
-
-.. % 
-
-::
+Philbrick (philbrick@hks.com)::
 
    #include "Python.h"
 
@@ -749,8 +758,8 @@ Reference Counts
 
 In languages like C or C++, the programmer is responsible for dynamic allocation
 and deallocation of memory on the heap.  In C, this is done using the functions
-:cfunc:`malloc` and :cfunc:`free`.  In C++, the operators :keyword:`new` and
-:keyword:`delete` are used with essentially the same meaning and we'll restrict
+:cfunc:`malloc` and :cfunc:`free`.  In C++, the operators ``new`` and
+``delete`` are used with essentially the same meaning and we'll restrict
 the following discussion to the C case.
 
 Every block of memory allocated with :cfunc:`malloc` should eventually be
@@ -817,10 +826,9 @@ to run the detector (the :func:`collect` function), as well as configuration
 interfaces and the ability to disable the detector at runtime.  The cycle
 detector is considered an optional component; though it is included by default,
 it can be disabled at build time using the :option:`--without-cycle-gc` option
-to the :program:`configure` script on Unix platforms (including Mac OS X) or by
-removing the definition of ``WITH_CYCLE_GC`` in the :file:`pyconfig.h` header on
-other platforms.  If the cycle detector is disabled in this way, the :mod:`gc`
-module will not be available.
+to the :program:`configure` script on Unix platforms (including Mac OS X).  If
+the cycle detector is disabled in this way, the :mod:`gc` module will not be
+available.
 
 
 .. _refcountsinpython:
@@ -876,10 +884,10 @@ reference or not.
 
 Most functions that return a reference to an object pass on ownership with the
 reference.  In particular, all functions whose function it is to create a new
-object, such as :cfunc:`PyInt_FromLong` and :cfunc:`Py_BuildValue`, pass
+object, such as :cfunc:`PyLong_FromLong` and :cfunc:`Py_BuildValue`, pass
 ownership to the receiver.  Even if the object is not actually new, you still
 receive ownership of a new reference to that object.  For instance,
-:cfunc:`PyInt_FromLong` maintains a cache of popular values and can return a
+:cfunc:`PyLong_FromLong` maintains a cache of popular values and can return a
 reference to a cached item.
 
 Many functions that extract objects from other objects also transfer ownership
@@ -929,7 +937,7 @@ an unrelated object while borrowing a reference to a list item.  For instance::
    {
        PyObject *item = PyList_GetItem(list, 0);
 
-       PyList_SetItem(list, 1, PyInt_FromLong(0L));
+       PyList_SetItem(list, 1, PyLong_FromLong(0L));
        PyObject_Print(item, stdout, 0); /* BUG! */
    }
 
@@ -961,7 +969,7 @@ increment the reference count.  The correct version of the function reads::
        PyObject *item = PyList_GetItem(list, 0);
 
        Py_INCREF(item);
-       PyList_SetItem(list, 1, PyInt_FromLong(0L));
+       PyList_SetItem(list, 1, PyLong_FromLong(0L));
        PyObject_Print(item, stdout, 0);
        Py_DECREF(item);
    }
@@ -1023,11 +1031,10 @@ that it is always a tuple. [#]_
 
 It is a severe error to ever let a *NULL* pointer "escape" to the Python user.
 
-.. % Frank Stajano:
-.. % A pedagogically buggy example, along the lines of the previous listing,
-.. % would be helpful here -- showing in more concrete terms what sort of
-.. % actions could cause the problem. I can't very well imagine it from the
-.. % description.
+.. Frank Stajano:
+   A pedagogically buggy example, along the lines of the previous listing, would
+   be helpful here -- showing in more concrete terms what sort of actions could
+   cause the problem. I can't very well imagine it from the description.
 
 
 .. _cplusplus:
@@ -1063,7 +1070,7 @@ lists, this new collection type should have a set of C functions for direct
 manipulation from other extension modules.
 
 At first sight this seems easy: just write the functions (without declaring them
-:keyword:`static`, of course), provide an appropriate header file, and document
+``static``, of course), provide an appropriate header file, and document
 the C API. And in fact this would work if all extension modules were always
 linked statically with the Python interpreter. When modules are used as shared
 libraries, however, the symbols defined in one module may not be visible to
@@ -1076,7 +1083,7 @@ the module whose functions one wishes to call might not have been loaded yet!
 
 Portability therefore requires not to make any assumptions about symbol
 visibility. This means that all symbols in extension modules should be declared
-:keyword:`static`, except for the module's initialization function, in order to
+``static``, except for the module's initialization function, in order to
 avoid name clashes with other extension modules (as discussed in section
 :ref:`methodtable`). And it means that symbols that *should* be accessible from
 other extension modules must be exported in a different way.
@@ -1111,7 +1118,7 @@ reality (such as adding "spam" to every command). This function
 :cfunc:`PySpam_System` is also exported to other extension modules.
 
 The function :cfunc:`PySpam_System` is a plain C function, declared
-:keyword:`static` like everything else::
+``static`` like everything else::
 
    static int
    PySpam_System(const char *command)
@@ -1167,7 +1174,7 @@ function must take care of initializing the C API pointer array::
            PyModule_AddObject(m, "_C_API", c_api_object);
    }
 
-Note that ``PySpam_API`` is declared :keyword:`static`; otherwise the pointer
+Note that ``PySpam_API`` is declared ``static``; otherwise the pointer
 array would disappear when :func:`initspam` terminates!
 
 The bulk of the work is in the header file :file:`spammodule.h`, which looks

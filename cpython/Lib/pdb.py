@@ -198,7 +198,15 @@ class Pdb(bdb.Bdb, cmd.Cmd):
         globals = self.curframe.f_globals
         try:
             code = compile(line + '\n', '<stdin>', 'single')
-            exec(code, globals, locals)
+            save_stdout = sys.stdout
+            save_stdin = sys.stdin
+            try:
+                sys.stdin = self.stdin
+                sys.stdout = self.stdout
+                exec(code, globals, locals)
+            finally:
+                sys.stdout = save_stdout
+                sys.stdin = save_stdin
         except:
             t, v = sys.exc_info()[:2]
             if type(t) == type(''):
@@ -345,8 +353,8 @@ class Pdb(bdb.Bdb, cmd.Cmd):
                 except:
                     func = arg
                 try:
-                    if hasattr(func, 'im_func'):
-                        func = func.im_func
+                    if hasattr(func, '__func__'):
+                        func = func.__func__
                     code = func.__code__
                     #use co_name to identify the bkpt (function names
                     #could be aliased, but co_name is invariant)
@@ -656,7 +664,7 @@ class Pdb(bdb.Bdb, cmd.Cmd):
         sys.settrace(None)
         globals = self.curframe.f_globals
         locals = self.curframe.f_locals
-        p = Pdb()
+        p = Pdb(self.completekey, self.stdin, self.stdout)
         p.prompt = "(%s) " % self.prompt.strip()
         print("ENTERING RECURSIVE DEBUGGER", file=self.stdout)
         sys.call_tracing(p.run, (arg, globals, locals))
@@ -789,7 +797,7 @@ class Pdb(bdb.Bdb, cmd.Cmd):
             print('Function', code.co_name, file=self.stdout)
             return
         # Is it an instance method?
-        try: code = value.im_func.__code__
+        try: code = value.__func__.__code__
         except: pass
         if code:
             print('Method', code.co_name, file=self.stdout)
@@ -909,12 +917,7 @@ the .py suffix may be omitted.""", file=self.stdout)
 With a space separated list of breakpoint numbers, clear
 those breakpoints.  Without argument, clear all breaks (but
 first ask confirmation).  With a filename:lineno argument,
-clear all breaks at that line in that file.
-
-Note that the argument is different from previous versions of
-the debugger (in python distributions 1.5.1 and before) where
-a linenumber was used instead of either filename:lineno or
-breakpoint numbers.""", file=self.stdout)
+clear all breaks at that line in that file.""", file=self.stdout)
 
     def help_tbreak(self):
         print("""tbreak  same arguments as break, but breakpoint is

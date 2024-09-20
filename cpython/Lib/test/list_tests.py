@@ -5,8 +5,16 @@ Tests common to list and UserList.UserList
 import sys
 import os
 
-import unittest
 from test import test_support, seq_tests
+
+def CmpToKey(mycmp):
+    'Convert a cmp= function into a key= function'
+    class K(object):
+        def __init__(self, obj):
+            self.obj = obj
+        def __lt__(self, other):
+            return mycmp(self.obj, other.obj) == -1
+    return K
 
 class CommonTest(seq_tests.CommonTest):
 
@@ -388,8 +396,8 @@ class CommonTest(seq_tests.CommonTest):
         self.assertEqual(a.index(0, -3), 3)
         self.assertEqual(a.index(0, 3, 4), 3)
         self.assertEqual(a.index(0, -3, -2), 3)
-        self.assertEqual(a.index(0, -4*sys.maxint, 4*sys.maxint), 2)
-        self.assertRaises(ValueError, a.index, 0, 4*sys.maxint,-4*sys.maxint)
+        self.assertEqual(a.index(0, -4*sys.maxsize, 4*sys.maxsize), 2)
+        self.assertRaises(ValueError, a.index, 0, 4*sys.maxsize,-4*sys.maxsize)
         self.assertRaises(ValueError, a.index, 2, 0, -10)
         a.remove(0)
         self.assertRaises(ValueError, a.index, 2, 0, 4)
@@ -430,23 +438,21 @@ class CommonTest(seq_tests.CommonTest):
 
         def revcmp(a, b):
             return cmp(b, a)
-        u.sort(revcmp)
+        u.sort(key=CmpToKey(revcmp))
         self.assertEqual(u, self.type2test([2,1,0,-1,-2]))
 
         # The following dumps core in unpatched Python 1.5:
         def myComparison(x,y):
             return cmp(x%3, y%7)
         z = self.type2test(range(12))
-        z.sort(myComparison)
+        z.sort(key=CmpToKey(myComparison))
 
         self.assertRaises(TypeError, z.sort, 2)
 
         def selfmodifyingComparison(x,y):
             z.append(1)
             return cmp(x, y)
-        self.assertRaises(ValueError, z.sort, selfmodifyingComparison)
-
-        self.assertRaises(TypeError, z.sort, lambda x, y: 's')
+        self.assertRaises(ValueError, z.sort, key=CmpToKey(selfmodifyingComparison))
 
         self.assertRaises(TypeError, z.sort, 42, 42, 42, 42)
 
@@ -521,7 +527,5 @@ class CommonTest(seq_tests.CommonTest):
         # Bug #1242657
         class F(object):
             def __iter__(self):
-                yield 23
-            def __len__(self):
                 raise KeyboardInterrupt
         self.assertRaises(KeyboardInterrupt, list, F())

@@ -4,7 +4,6 @@ See http://www.zope.org/Members/fdrake/DateTimeWiki/TestCases
 """
 
 import os
-import sys
 import pickle
 import unittest
 
@@ -851,29 +850,29 @@ class TestDate(HarmlessMixedComparison, unittest.TestCase):
 
     def test_format(self):
         dt = self.theclass(2007, 9, 10)
-        self.assertEqual(format(dt, ''), str(dt))
+        self.assertEqual(dt.__format__(''), str(dt))
 
         # check that a derived class's __str__() gets called
         class A(self.theclass):
             def __str__(self):
                 return 'A'
         a = A(2007, 9, 10)
-        self.assertEqual(format(a, ''), 'A')
+        self.assertEqual(a.__format__(''), 'A')
 
         # check that a derived class's strftime gets called
         class B(self.theclass):
             def strftime(self, format_spec):
                 return 'B'
         b = B(2007, 9, 10)
-        self.assertEqual(format(b, ''), str(dt))
+        self.assertEqual(b.__format__(''), str(dt))
 
         for fmt in ["m:%m d:%d y:%y",
                     "m:%m d:%d y:%y H:%H M:%M S:%S",
                     "%z %Z",
                     ]:
-            self.assertEqual(format(dt, fmt), dt.strftime(fmt))
-            self.assertEqual(format(a, fmt), dt.strftime(fmt))
-            self.assertEqual(format(b, fmt), 'B')
+            self.assertEqual(dt.__format__(fmt), dt.strftime(fmt))
+            self.assertEqual(a.__format__(fmt), dt.strftime(fmt))
+            self.assertEqual(b.__format__(fmt), 'B')
 
     def test_resolution_info(self):
         self.assert_(isinstance(self.theclass.min, self.theclass))
@@ -1093,7 +1092,7 @@ class TestDate(HarmlessMixedComparison, unittest.TestCase):
             self.assertEqual(orig, derived)
 
     def test_backdoor_resistance(self):
-        # For fast unpickling, the constructor accepts a pickle string.
+        # For fast unpickling, the constructor accepts a pickle byte string.
         # This is a low-overhead backdoor.  A user can (by intent or
         # mistake) pass a string directly, which (if it's the right length)
         # will get treated like a pickle, and bypass the normal sanity
@@ -1101,17 +1100,17 @@ class TestDate(HarmlessMixedComparison, unittest.TestCase):
         # The constructor doesn't want to burn the time to validate all
         # fields, but does check the month field.  This stops, e.g.,
         # datetime.datetime('1995-03-25') from yielding an insane object.
-        base = '1995-03-25'
+        base = b'1995-03-25'
         if not issubclass(self.theclass, datetime):
             base = base[:4]
-        for month_byte in '9', chr(0), chr(13), '\xff':
+        for month_byte in b'9', b'\0', b'\r', b'\xff':
             self.assertRaises(TypeError, self.theclass,
                                          base[:2] + month_byte + base[3:])
         for ord_byte in range(1, 13):
             # This shouldn't blow up because of the month byte alone.  If
             # the implementation changes to do more-careful checking, it may
             # blow up because other fields are insane.
-            self.theclass(bytes(base[:2] + chr(ord_byte) + base[3:], "ascii"))
+            self.theclass(base[:2] + bytes([ord_byte]) + base[3:])
 
 #############################################################################
 # datetime tests
@@ -1178,31 +1177,29 @@ class TestDateTime(TestDate):
 
     def test_format(self):
         dt = self.theclass(2007, 9, 10, 4, 5, 1, 123)
-        self.assertEqual(format(dt, ''), str(dt))
+        self.assertEqual(dt.__format__(''), str(dt))
 
         # check that a derived class's __str__() gets called
         class A(self.theclass):
             def __str__(self):
                 return 'A'
         a = A(2007, 9, 10, 4, 5, 1, 123)
-        self.assertEqual(format(a, ''), 'A')
+        self.assertEqual(a.__format__(''), 'A')
 
         # check that a derived class's strftime gets called
         class B(self.theclass):
             def strftime(self, format_spec):
                 return 'B'
         b = B(2007, 9, 10, 4, 5, 1, 123)
-        self.assertEqual(format(b, ''), str(dt))
+        self.assertEqual(b.__format__(''), str(dt))
 
         for fmt in ["m:%m d:%d y:%y",
                     "m:%m d:%d y:%y H:%H M:%M S:%S",
                     "%z %Z",
                     ]:
-            self.assertEqual(format(dt, fmt), dt.strftime(fmt))
-            self.assertEqual(format(a, fmt), dt.strftime(fmt))
-            self.assertEqual(format(b, fmt), 'B')
-
-
+            self.assertEqual(dt.__format__(fmt), dt.strftime(fmt))
+            self.assertEqual(a.__format__(fmt), dt.strftime(fmt))
+            self.assertEqual(b.__format__(fmt), 'B')
 
     def test_more_ctime(self):
         # Test fields that TestDate doesn't touch.
@@ -1837,27 +1834,27 @@ class TestTime(HarmlessMixedComparison, unittest.TestCase):
 
     def test_format(self):
         t = self.theclass(1, 2, 3, 4)
-        self.assertEqual(format(t, ''), str(t))
+        self.assertEqual(t.__format__(''), str(t))
 
         # check that a derived class's __str__() gets called
         class A(self.theclass):
             def __str__(self):
                 return 'A'
         a = A(1, 2, 3, 4)
-        self.assertEqual(format(a, ''), 'A')
+        self.assertEqual(a.__format__(''), 'A')
 
         # check that a derived class's strftime gets called
         class B(self.theclass):
             def strftime(self, format_spec):
                 return 'B'
         b = B(1, 2, 3, 4)
-        self.assertEqual(format(b, ''), str(t))
+        self.assertEqual(b.__format__(''), str(t))
 
         for fmt in ['%H %M %S',
                     ]:
-            self.assertEqual(format(t, fmt), t.strftime(fmt))
-            self.assertEqual(format(a, fmt), t.strftime(fmt))
-            self.assertEqual(format(b, fmt), 'B')
+            self.assertEqual(t.__format__(fmt), t.strftime(fmt))
+            self.assertEqual(a.__format__(fmt), t.strftime(fmt))
+            self.assertEqual(b.__format__(fmt), 'B')
 
     def test_str(self):
         self.assertEqual(str(self.theclass(1, 2, 3, 4)), "01:02:03.000004")

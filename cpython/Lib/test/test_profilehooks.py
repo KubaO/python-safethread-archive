@@ -4,6 +4,22 @@ import unittest
 
 from test import test_support
 
+class TestGetProfile(unittest.TestCase):
+    def setUp(self):
+        sys.setprofile(None)
+
+    def tearDown(self):
+        sys.setprofile(None)
+
+    def test_empty(self):
+        assert sys.getprofile() == None
+
+    def test_setget(self):
+        def fn(*args):
+            pass
+
+        sys.setprofile(fn)
+        assert sys.getprofile() == fn
 
 class HookWatcher:
     def __init__(self):
@@ -31,7 +47,7 @@ class HookWatcher:
 
     def get_events(self):
         """Remove calls to add_event()."""
-        disallowed = [ident(self.add_event.im_func), ident(ident)]
+        disallowed = [ident(self.add_event.__func__), ident(ident)]
         self.frames = None
 
         return [item for item in self.events if item[2] not in disallowed]
@@ -359,6 +375,7 @@ def show_events(callable):
 
 def test_main():
     test_support.run_unittest(
+        TestGetProfile,
         ProfileHookTestCase,
         ProfileSimulatorTestCase
     )

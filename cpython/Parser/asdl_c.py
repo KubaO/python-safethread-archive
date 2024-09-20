@@ -4,7 +4,7 @@
 # TO DO
 # handle fields that have a type but no name
 
-import os, sys, traceback
+import os, sys
 
 import asdl
 
@@ -415,7 +415,7 @@ static PyTypeObject* make_type(char *type, PyTypeObject* base, char**fields, int
         }
         PyTuple_SET_ITEM(fnames, i, field);
     }
-    result = PyObject_CallFunction((PyObject*)&PyType_Type, "s(O){sOss}",
+    result = PyObject_CallFunction((PyObject*)&PyType_Type, "U(O){sOss}",
                     type, base, "_fields", fnames, "__module__", "_ast");
     Py_DECREF(fnames);
     return (PyTypeObject*)result;
@@ -469,7 +469,7 @@ static PyObject* ast2obj_object(void *o)
 
 static PyObject* ast2obj_int(long b)
 {
-    return PyInt_FromLong(b);
+    return PyLong_FromLong(b);
 }
 """, 0, reflow=False)
 
@@ -741,7 +741,7 @@ def main(srcfile):
         sys.exit(1)
     if INC_DIR:
         p = "%s/%s-ast.h" % (INC_DIR, mod.name)
-        f = open(p, "wb")
+        f = open(p, "w")
         f.write(auto_gen_msg)
         f.write('#include "asdl.h"\n\n')
         c = ChainOfVisitors(TypeDefVisitor(f),
@@ -754,7 +754,7 @@ def main(srcfile):
 
     if SRC_DIR:
         p = os.path.join(SRC_DIR, str(mod.name) + "-ast.c")
-        f = open(p, "wb")
+        f = open(p, "w")
         f.write(auto_gen_msg)
         f.write(c_file_msg % parse_version(mod))
         f.write('#include "Python.h"\n')

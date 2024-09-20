@@ -17,7 +17,7 @@ PrintError(char *msg, ...)
 	va_start(marker, msg);
 	vsnprintf(buf, sizeof(buf), msg, marker);
 	va_end(marker);
-	if (f)
+	if (f != NULL && f != Py_None)
 		PyFile_WriteString(buf, f);
 	PyErr_Print();
 }
@@ -34,9 +34,9 @@ void _AddTraceback(char *funcname, char *filename, int lineno)
 	PyCodeObject *py_code = 0;
 	PyFrameObject *py_frame = 0;
     
-	py_srcfile = PyString_FromString(filename);
+	py_srcfile = PyUnicode_DecodeFSDefault(filename);
 	if (!py_srcfile) goto bad;
-	py_funcname = PyString_FromString(funcname);
+	py_funcname = PyUnicode_FromString(funcname);
 	if (!py_funcname) goto bad;
 	py_globals = PyDict_New();
 	if (!py_globals) goto bad;
@@ -197,7 +197,7 @@ static void _CallPythonObject(void *mem,
 	}
 
 #define CHECK(what, x) \
-if (x == NULL) _AddTraceback(what, __FILE__, __LINE__ - 1), PyErr_Print()
+if (x == NULL) _AddTraceback(what, "_ctypes/callbacks.c", __LINE__ - 1), PyErr_Print()
 
 	result = PyObject_CallObject(callable, arglist);
 	CHECK("'calling callback function'", result);
@@ -365,9 +365,9 @@ long Call_GetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
 	static PyObject *context;
 
 	if (context == NULL)
-		context = PyString_FromString("_ctypes.DllGetClassObject");
+		context = PyUnicode_InternFromString("_ctypes.DllGetClassObject");
 
-	mod = PyImport_ImportModule("ctypes");
+	mod = PyImport_ImportModuleNoBlock("ctypes");
 	if (!mod) {
 		PyErr_WriteUnraisable(context ? context : Py_None);
 		/* There has been a warning before about this already */
@@ -408,7 +408,7 @@ long Call_GetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
 		return E_FAIL;
 	}
 
-	retval = PyInt_AsLong(result);
+	retval = PyLong_AsLong(result);
 	if (PyErr_Occurred()) {
 		PyErr_WriteUnraisable(context ? context : Py_None);
 		retval = E_FAIL;
@@ -444,9 +444,9 @@ long Call_CanUnloadNow(void)
 	static PyObject *context;
 
 	if (context == NULL)
-		context = PyString_FromString("_ctypes.DllCanUnloadNow");
+		context = PyUnicode_InternFromString("_ctypes.DllCanUnloadNow");
 
-	mod = PyImport_ImportModule("ctypes");
+	mod = PyImport_ImportModuleNoBlock("ctypes");
 	if (!mod) {
 /*		OutputDebugString("Could not import ctypes"); */
 		/* We assume that this error can only occur when shutting
@@ -469,7 +469,7 @@ long Call_CanUnloadNow(void)
 		return E_FAIL;
 	}
 
-	retval = PyInt_AsLong(result);
+	retval = PyLong_AsLong(result);
 	if (PyErr_Occurred()) {
 		PyErr_WriteUnraisable(context ? context : Py_None);
 		retval = E_FAIL;

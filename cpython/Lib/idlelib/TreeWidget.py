@@ -15,7 +15,6 @@
 # - optimize tree redraw after expand of subnode
 
 import os
-import sys
 from Tkinter import *
 import imp
 
@@ -398,7 +397,7 @@ class FileTreeItem(TreeItem):
             names = os.listdir(self.path)
         except os.error:
             return []
-        names.sort(lambda a, b: cmp(os.path.normcase(a), os.path.normcase(b)))
+        names.sort(key = os.path.normcase)
         sublist = []
         for name in names:
             item = FileTreeItem(os.path.join(self.path, name))

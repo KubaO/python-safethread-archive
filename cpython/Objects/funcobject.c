@@ -227,10 +227,10 @@ PyFunction_SetAnnotations(PyObject *op, PyObject *annotations)
 static PyMemberDef func_memberlist[] = {
         {"__closure__",   T_OBJECT,     OFF(func_closure),
 	 RESTRICTED|READONLY},
-        {"__doc__",       T_OBJECT,     OFF(func_doc), WRITE_RESTRICTED},
+        {"__doc__",       T_OBJECT,     OFF(func_doc), PY_WRITE_RESTRICTED},
         {"__globals__",   T_OBJECT,     OFF(func_globals),
 	 RESTRICTED|READONLY},
-        {"__module__",    T_OBJECT,     OFF(func_module), WRITE_RESTRICTED},
+        {"__module__",    T_OBJECT,     OFF(func_module), PY_WRITE_RESTRICTED},
         {NULL}  /* Sentinel */
 };
 
@@ -643,9 +643,11 @@ function_call(PyObject *func, PyObject *arg, PyObject *kw)
 static PyObject *
 func_descr_get(PyObject *func, PyObject *obj, PyObject *type)
 {
-	if (obj == Py_None)
-		obj = NULL;
-	return PyMethod_New(func, obj, type);
+	if (obj == Py_None || obj == NULL) {
+		Py_INCREF(func);
+		return func;
+	}
+	return PyMethod_New(func, obj);
 }
 
 PyTypeObject PyFunction_Type = {
@@ -719,7 +721,7 @@ cm_dealloc(classmethod *cm)
 {
 	_PyObject_GC_UNTRACK((PyObject *)cm);
 	Py_XDECREF(cm->cm_callable);
-	Py_Type(cm)->tp_free((PyObject *)cm);
+	Py_TYPE(cm)->tp_free((PyObject *)cm);
 }
 
 static int
@@ -748,9 +750,8 @@ cm_descr_get(PyObject *self, PyObject *obj, PyObject *type)
 		return NULL;
 	}
 	if (type == NULL)
-		type = (PyObject *)(Py_Type(obj));
- 	return PyMethod_New(cm->cm_callable,
-			    type, (PyObject *)(Py_Type(type)));
+		type = (PyObject *)(Py_TYPE(obj));
+ 	return PyMethod_New(cm->cm_callable, type);
 }
 
 static int
@@ -876,7 +877,7 @@ sm_dealloc(staticmethod *sm)
 {
 	_PyObject_GC_UNTRACK((PyObject *)sm);
 	Py_XDECREF(sm->sm_callable);
-	Py_Type(sm)->tp_free((PyObject *)sm);
+	Py_TYPE(sm)->tp_free((PyObject *)sm);
 }
 
 static int

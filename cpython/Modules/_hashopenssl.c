@@ -108,7 +108,7 @@ EVP_digest(EVPobject *self, PyObject *unused)
     digest_size = EVP_MD_CTX_size(&temp_ctx);
     EVP_DigestFinal(&temp_ctx, digest, NULL);
 
-    retval = PyBytes_FromStringAndSize((const char *)digest, digest_size);
+    retval = PyString_FromStringAndSize((const char *)digest, digest_size);
     EVP_MD_CTX_cleanup(&temp_ctx);
     return retval;
 }
@@ -203,13 +203,13 @@ static PyMethodDef EVP_methods[] = {
 static PyObject *
 EVP_get_block_size(EVPobject *self, void *closure)
 {
-    return PyInt_FromLong(EVP_MD_CTX_block_size(&((EVPobject *)self)->ctx));
+    return PyLong_FromLong(EVP_MD_CTX_block_size(&((EVPobject *)self)->ctx));
 }
 
 static PyObject *
 EVP_get_digest_size(EVPobject *self, void *closure)
 {
-    return PyInt_FromLong(EVP_MD_CTX_size(&((EVPobject *)self)->ctx));
+    return PyLong_FromLong(EVP_MD_CTX_size(&((EVPobject *)self)->ctx));
 }
 
 static PyMemberDef EVP_members[] = {
@@ -510,7 +510,7 @@ init_hashlib(void)
      * but having some be unsupported.  Only init appropriate
      * constants. */
 
-    Py_Type(&EVPtype) = &PyType_Type;
+    Py_TYPE(&EVPtype) = &PyType_Type;
     if (PyType_Ready(&EVPtype) < 0)
         return;
 

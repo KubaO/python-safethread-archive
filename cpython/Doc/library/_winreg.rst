@@ -131,6 +131,16 @@ This module offers the following functions:
    +-------+--------------------------------------------+
 
 
+.. function:: ExpandEnvironmentStrings(unicode)
+
+   Expands environment strings %NAME% in unicode string like const:`REG_EXPAND_SZ`::
+
+      >>> ExpandEnvironmentStrings(u"%windir%")
+      u"C:\\Windows"
+
+   .. versionadded:: 2.6
+
+
 .. function:: FlushKey(key)
 
    Writes all the attributes of a key to the registry.
@@ -219,7 +229,7 @@ This module offers the following functions:
    | ``1`` | An integer giving the number of values this |
    |       | key has.                                    |
    +-------+---------------------------------------------+
-   | ``2`` | A long integer giving when the key was last |
+   | ``2`` | An integer giving when the key was last     |
    |       | modified (if available) as 100's of         |
    |       | nanoseconds since Jan 1, 1600.              |
    +-------+---------------------------------------------+
@@ -408,11 +418,24 @@ handle, and also disconnect the Windows handle from the handle object.
 
    Detaches the Windows handle from the handle object.
 
-   The result is an integer (or long on 64 bit Windows) that holds the value of the
-   handle before it is detached.  If the handle is already detached or closed, this
-   will return zero.
+   The result is an integer that holds the value of the handle before it is
+   detached.  If the handle is already detached or closed, this will return
+   zero.
 
    After calling this function, the handle is effectively invalidated, but the
    handle is not closed.  You would call this function when  you need the
    underlying Win32 handle to exist beyond the lifetime  of the handle object.
+
+.. method:: PyHKEY.__enter__()
+            PyHKEY.__exit__(\*exc_info)
+
+   The HKEY object implements :meth:`__enter__` and :meth:`__exit__` and thus
+   supports the context protocol for the :keyword:`with` statement::
+
+      with OpenKey(HKEY_LOCAL_MACHINE, "foo") as key:
+          # ... work with key ...
+
+   will automatically close *key* when control leaves the :keyword:`with` block.
+
+   .. versionadded:: 2.6
 

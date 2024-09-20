@@ -205,7 +205,7 @@ events in the input document:
    information to the application to expand prefixes in those contexts itself, if
    necessary.
 
-   .. % XXX This is not really the default, is it? MvL
+   .. XXX This is not really the default, is it? MvL
 
    Note that :meth:`startPrefixMapping` and :meth:`endPrefixMapping` events are not
    guaranteed to be properly nested relative to each-other: all
@@ -281,8 +281,8 @@ events in the input document:
    must come from the same external entity so that the Locator provides useful
    information.
 
-   *content* may be a Unicode string or a byte string; the ``expat`` reader module
-   produces always Unicode strings.
+   *content* may be a string or bytes instance; the ``expat`` reader module
+   always produces strings.
 
    .. note::
 

@@ -101,7 +101,7 @@ alone XML-RPC servers.
    Registers the XML-RPC multicall function system.multicall.
 
 
-.. attribute:: SimpleXMLRPCServer.rpc_paths
+.. attribute:: SimpleXMLRPCRequestHandler.rpc_paths
 
    An attribute value that must be a tuple listing valid path portions of the URL
    for receiving XML-RPC requests.  Requests posted to other paths will result in a
@@ -109,12 +109,22 @@ alone XML-RPC servers.
    considered valid. The default value is ``('/', '/RPC2')``.
 
 
-Example::
+.. _simplexmlrpcserver-example:
+
+SimpleXMLRPCServer Example
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+Server code::
 
    from SimpleXMLRPCServer import SimpleXMLRPCServer
+   from SimpleXMLRPCServer import SimpleXMLRPCRequestHandler
+
+   # Restrict to a particular path.
+   class RequestHandler(SimpleXMLRPCRequestHandler):
+       rpc_paths = ('/RPC2',)
 
    # Create server
-   server = SimpleXMLRPCServer(("localhost", 8000))
+   server = SimpleXMLRPCServer(("localhost", 8000),
+                               requestHandler=RequestHandler)
    server.register_introspection_functions()
 
    # Register pow() function; this will use the value of 
@@ -137,7 +147,7 @@ Example::
    # Run the server's main loop
    server.serve_forever()
 
-The following client code will call the methods made available by  the preceding
+The following client code will call the methods made available by the preceding
 server::
 
    import xmlrpclib
@@ -145,7 +155,7 @@ server::
    s = xmlrpclib.ServerProxy('http://localhost:8000')
    print(s.pow(2,3))  # Returns 2**3 = 8
    print(s.add(2,3))  # Returns 5
-   print(s.div(5,2))  # Returns 5//2 = 2
+   print(s.mul(5,2))  # Returns 5*2 = 10
 
    # Print list of available methods
    print(s.system.listMethods())

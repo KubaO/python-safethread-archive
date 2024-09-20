@@ -316,7 +316,7 @@ SHA1_copy(SHA1object *self, PyObject *unused)
 {
     SHA1object *newobj;
 
-    if (Py_Type(self) == &SHA1type) {
+    if (Py_TYPE(self) == &SHA1type) {
         if ( (newobj = newSHA1object())==NULL)
             return NULL;
     } else {
@@ -339,7 +339,7 @@ SHA1_digest(SHA1object *self, PyObject *unused)
 
     temp = self->hash_state;
     sha1_done(&temp, digest);
-    return PyBytes_FromStringAndSize((const char *)digest, SHA1_DIGESTSIZE);
+    return PyString_FromStringAndSize((const char *)digest, SHA1_DIGESTSIZE);
 }
 
 PyDoc_STRVAR(SHA1_hexdigest__doc__,
@@ -410,7 +410,7 @@ static PyMethodDef SHA1_methods[] = {
 static PyObject *
 SHA1_get_block_size(PyObject *self, void *closure)
 {
-    return PyInt_FromLong(SHA1_BLOCKSIZE);
+    return PyLong_FromLong(SHA1_BLOCKSIZE);
 }
 
 static PyObject *
@@ -422,7 +422,7 @@ SHA1_get_name(PyObject *self, void *closure)
 static PyObject *
 sha1_get_digest_size(PyObject *self, void *closure)
 {
-    return PyInt_FromLong(SHA1_DIGESTSIZE);
+    return PyLong_FromLong(SHA1_DIGESTSIZE);
 }
 
 
@@ -528,7 +528,7 @@ init_sha1(void)
 {
     PyObject *m;
 
-    Py_Type(&SHA1type) = &PyType_Type;
+    Py_TYPE(&SHA1type) = &PyType_Type;
     if (PyType_Ready(&SHA1type) < 0)
         return;
     m = Py_InitModule("_sha1", SHA1_functions);

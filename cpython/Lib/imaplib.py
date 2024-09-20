@@ -1145,9 +1145,10 @@ else:
             """
             self.host = host
             self.port = port
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.connect((host, port))
-            self.sslobj = ssl.wrap_socket(self.sock, self.keyfile, self.certfile)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((host, port))
+            self.sock = ssl.wrap_socket(sock, self.keyfile, self.certfile)
+            self.file = self.sock.makefile('rb')
 
 
         def read(self, size):
@@ -1156,11 +1157,11 @@ else:
             chunks = []
             read = 0
             while read < size:
-                data = self.sslobj.read(size-read)
+                data = self.sslobj.read(min(size-read, 16384))
                 read += len(data)
                 chunks.append(data)
 
-            return ''.join(chunks)
+            return b''.join(chunks)
 
 
         def readline(self):
@@ -1169,7 +1170,7 @@ else:
             while 1:
                 char = self.sslobj.read(1)
                 line.append(char)
-                if char == "\n": return ''.join(line)
+                if char == b"\n": return b''.join(line)
 
 
         def send(self, data):
@@ -1201,7 +1202,7 @@ else:
 
             ssl = ssl.wrap_socket(<instance>.socket)
             """
-            return self.sslobj
+            return self.sock
 
     __all__.append("IMAP4_SSL")
 

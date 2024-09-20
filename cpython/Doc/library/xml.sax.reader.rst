@@ -307,7 +307,7 @@ InputSource Objects
 .. method:: InputSource.setCharacterStream(charfile)
 
    Set the character stream for this input source. (The stream must be a Python 1.6
-   Unicode-wrapped file-like that performs conversion to Unicode strings.)
+   Unicode-wrapped file-like that performs conversion to strings.)
 
    If there is a character stream specified, the SAX parser will ignore any byte
    stream and will not attempt to open a URI connection to the system identifier.
@@ -348,8 +348,8 @@ are also provided:
 
    Return the value of attribute *name*.
 
-.. % getValueByQName, getNameByQName, getQNameByName, getQNames available
-.. % here already, but documented only for derived class.
+.. getValueByQName, getNameByQName, getQNameByName, getQNames available
+.. here already, but documented only for derived class.
 
 
 .. _attributes-ns-objects:

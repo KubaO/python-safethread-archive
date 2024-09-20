@@ -4,48 +4,50 @@ import sys, io
 
 class SysModuleTest(unittest.TestCase):
 
+    def setUp(self):
+        self.orig_stdout = sys.stdout
+        self.orig_stderr = sys.stderr
+        self.orig_displayhook = sys.displayhook
+
+    def tearDown(self):
+        sys.stdout = self.orig_stdout
+        sys.stderr = self.orig_stderr
+        sys.displayhook = self.orig_displayhook
+
     def test_original_displayhook(self):
-        import __builtin__
-        savestdout = sys.stdout
+        import builtins
         out = io.StringIO()
         sys.stdout = out
 
         dh = sys.__displayhook__
 
         self.assertRaises(TypeError, dh)
-        if hasattr(__builtin__, "_"):
-            del __builtin__._
+        if hasattr(builtins, "_"):
+            del builtins._
 
         dh(None)
         self.assertEqual(out.getvalue(), "")
-        self.assert_(not hasattr(__builtin__, "_"))
+        self.assert_(not hasattr(builtins, "_"))
         dh(42)
         self.assertEqual(out.getvalue(), "42\n")
-        self.assertEqual(__builtin__._, 42)
+        self.assertEqual(builtins._, 42)
 
         del sys.stdout
         self.assertRaises(RuntimeError, dh, 42)
 
-        sys.stdout = savestdout
-
     def test_lost_displayhook(self):
-        olddisplayhook = sys.displayhook
         del sys.displayhook
         code = compile("42", "<string>", "single")
         self.assertRaises(RuntimeError, eval, code)
-        sys.displayhook = olddisplayhook
 
     def test_custom_displayhook(self):
-        olddisplayhook = sys.displayhook
         def baddisplayhook(obj):
             raise ValueError
         sys.displayhook = baddisplayhook
         code = compile("42", "<string>", "single")
         self.assertRaises(ValueError, eval, code)
-        sys.displayhook = olddisplayhook
 
     def test_original_excepthook(self):
-        savestderr = sys.stderr
         err = io.StringIO()
         sys.stderr = err
 
@@ -57,7 +59,6 @@ class SysModuleTest(unittest.TestCase):
         except ValueError as exc:
             eh(*sys.exc_info())
 
-        sys.stderr = savestderr
         self.assert_(err.getvalue().endswith("ValueError: 42\n"))
 
     # FIXME: testing the code for a lost or replaced excepthook in
@@ -126,7 +127,7 @@ class SysModuleTest(unittest.TestCase):
     def test_getdefaultencoding(self):
         self.assertRaises(TypeError, sys.getdefaultencoding, 42)
         # can't check more than the type, as the user might have changed it
-        self.assert_(isinstance(sys.getdefaultencoding(), basestring))
+        self.assert_(isinstance(sys.getdefaultencoding(), str))
 
     # testing sys.settrace() is done in test_trace.py
     # testing sys.setprofile() is done in test_profile.py
@@ -182,7 +183,7 @@ class SysModuleTest(unittest.TestCase):
         self.assertRaises(TypeError, sys._getframe, 42, 42)
         self.assertRaises(ValueError, sys._getframe, 2000000000)
         self.assert_(
-            SysModuleTest.test_getframe.im_func.__code__ \
+            SysModuleTest.test_getframe.__code__ \
             is sys._getframe().f_code
         )
 
@@ -275,15 +276,17 @@ class SysModuleTest(unittest.TestCase):
         self.assert_(isinstance(sys.argv, list))
         self.assert_(sys.byteorder in ("little", "big"))
         self.assert_(isinstance(sys.builtin_module_names, tuple))
-        self.assert_(isinstance(sys.copyright, basestring))
-        self.assert_(isinstance(sys.exec_prefix, basestring))
-        self.assert_(isinstance(sys.executable, basestring))
+        self.assert_(isinstance(sys.copyright, str))
+        self.assert_(isinstance(sys.exec_prefix, str))
+        self.assert_(isinstance(sys.executable, str))
+        self.assertEqual(len(sys.float_info), 11)
+        self.assertEqual(sys.float_info.radix, 2)
         self.assert_(isinstance(sys.hexversion, int))
-        self.assert_(isinstance(sys.maxint, int))
+        self.assert_(isinstance(sys.maxsize, int))
         self.assert_(isinstance(sys.maxunicode, int))
-        self.assert_(isinstance(sys.platform, basestring))
-        self.assert_(isinstance(sys.prefix, basestring))
-        self.assert_(isinstance(sys.version, basestring))
+        self.assert_(isinstance(sys.platform, str))
+        self.assert_(isinstance(sys.prefix, str))
+        self.assert_(isinstance(sys.version, str))
         vi = sys.version_info
         self.assert_(isinstance(vi, tuple))
         self.assertEqual(len(vi), 5)
@@ -300,7 +303,7 @@ class SysModuleTest(unittest.TestCase):
 
     def test_intern(self):
         self.assertRaises(TypeError, sys.intern)
-        s = str8("never interned before")
+        s = "never interned before"
         self.assert_(sys.intern(s) is s)
         s2 = s.swapcase().swapcase()
         self.assert_(sys.intern(s2) is s)
@@ -310,29 +313,40 @@ class SysModuleTest(unittest.TestCase):
         # We don't want them in the interned dict and if they aren't
         # actually interned, we don't want to create the appearance
         # that they are by allowing intern() to succeeed.
-        class S(str8):
+        class S(str):
             def __hash__(self):
                 return 123
 
         self.assertRaises(TypeError, sys.intern, S("abc"))
 
-        s = "never interned as unicode before"
-        self.assert_(sys.intern(s) is s)
-        s2 = s.swapcase().swapcase()
-        self.assert_(sys.intern(s2) is s)
 
-        class U(str):
-            def __hash__(self):
-                return 123
+    def test_sys_flags(self):
+        self.failUnless(sys.flags)
+        attrs = ("debug", "division_warning",
+                 "inspect", "interactive", "optimize", "dont_write_bytecode",
+                 "no_site", "ignore_environment", "tabcheck", "verbose")
+        for attr in attrs:
+            self.assert_(hasattr(sys.flags, attr), attr)
+            self.assertEqual(type(getattr(sys.flags, attr)), int, attr)
+        self.assert_(repr(sys.flags))
 
-        self.assertRaises(TypeError, sys.intern, U("abc"))
+    def test_clear_type_cache(self):
+        sys._clear_type_cache()
 
-        # It's still safe to pass these strings to routines that
-        # call intern internally, e.g. PyObject_SetAttr().
-        s = U("abc")
-        setattr(s, s, s)
-        self.assertEqual(getattr(s, s), s)
-
+    def test_compact_freelists(self):
+        sys._compact_freelists()
+        r = sys._compact_freelists()
+        ## freed blocks shouldn't change
+        #self.assertEqual(r[0][2], 0)
+        ## fill freelists
+        #ints = list(range(10000))
+        #floats = [float(i) for i in ints]
+        #del ints
+        #del floats
+        ## should free more than 100 blocks
+        #r = sys._compact_freelists()
+        #self.assert_(r[0][1] > 100, r[0][1])
+        #self.assert_(r[0][2] > 100, r[0][2])
 
 def test_main():
     test.test_support.run_unittest(SysModuleTest)

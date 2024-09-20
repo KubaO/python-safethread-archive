@@ -8,9 +8,6 @@ import warnings
 import sys
 from test import test_support
 
-warnings.filterwarnings("ignore", "tempnam", RuntimeWarning, __name__)
-warnings.filterwarnings("ignore", "tmpnam", RuntimeWarning, __name__)
-
 # Tests creating TESTFN
 class FileTests(unittest.TestCase):
     def setUp(self):
@@ -23,76 +20,11 @@ class FileTests(unittest.TestCase):
         os.close(f)
         self.assert_(os.access(test_support.TESTFN, os.W_OK))
 
-
-class TemporaryFileTests(unittest.TestCase):
-    def setUp(self):
-        self.files = []
-        os.mkdir(test_support.TESTFN)
-
-    def tearDown(self):
-        for name in self.files:
-            os.unlink(name)
-        os.rmdir(test_support.TESTFN)
-
-    def check_tempfile(self, name):
-        # make sure it doesn't already exist:
-        self.failIf(os.path.exists(name),
-                    "file already exists for temporary file")
-        # make sure we can create the file
-        open(name, "w")
-        self.files.append(name)
-
-    def test_tempnam(self):
-        if not hasattr(os, "tempnam"):
-            return
-        warnings.filterwarnings("ignore", "tempnam", RuntimeWarning,
-                                r"test_os$")
-        self.check_tempfile(os.tempnam())
-
-        name = os.tempnam(test_support.TESTFN)
-        self.check_tempfile(name)
-
-        name = os.tempnam(test_support.TESTFN, "pfx")
-        self.assertEqual(os.path.basename(name)[:3], "pfx")
-        self.check_tempfile(name)
-
-    def test_tmpfile(self):
-        if not hasattr(os, "tmpfile"):
-            return
-        fp = os.tmpfile()
-        fp.write(b"foobar")
-        fp.seek(0)
-        s = fp.read()
-        fp.close()
-        self.assertEquals(s, b"foobar")
-
-    def test_tmpnam(self):
-        import sys
-        if not hasattr(os, "tmpnam"):
-            return
-        warnings.filterwarnings("ignore", "tmpnam", RuntimeWarning,
-                                r"test_os$")
-        name = os.tmpnam()
-        if sys.platform in ("win32",):
-            # The Windows tmpnam() seems useless.  From the MS docs:
-            #
-            #     The character string that tmpnam creates consists of
-            #     the path prefix, defined by the entry P_tmpdir in the
-            #     file STDIO.H, followed by a sequence consisting of the
-            #     digit characters '0' through '9'; the numerical value
-            #     of this string is in the range 1 - 65,535.  Changing the
-            #     definitions of L_tmpnam or P_tmpdir in STDIO.H does not
-            #     change the operation of tmpnam.
-            #
-            # The really bizarre part is that, at least under MSVC6,
-            # P_tmpdir is "\\".  That is, the path returned refers to
-            # the root of the current drive.  That's a terrible place to
-            # put temp files, and, depending on privileges, the user
-            # may not even be able to open a file in the root directory.
-            self.failIf(os.path.exists(name),
-                        "file already exists for temporary file")
-        else:
-            self.check_tempfile(name)
+    def test_closerange(self):
+        f = os.open(test_support.TESTFN, os.O_CREAT|os.O_RDWR)
+        # close a fd that is open, and one that isn't
+        os.closerange(f, f+2)
+        self.assertRaises(OSError, os.write, f, "a")
 
 # Test attributes on return values from os.*stat* family.
 class StatAttributeTests(unittest.TestCase):
@@ -264,24 +196,39 @@ from test import mapping_tests
 class EnvironTests(mapping_tests.BasicTestMappingProtocol):
     """check that os.environ object conform to mapping protocol"""
     type2test = None
-    def _reference(self):
-        return {"KEY1":"VALUE1", "KEY2":"VALUE2", "KEY3":"VALUE3"}
-    def _empty_mapping(self):
-        os.environ.clear()
-        return os.environ
+
     def setUp(self):
         self.__save = dict(os.environ)
-        os.environ.clear()
+        for key, value in self._reference().items():
+            os.environ[key] = value
+
     def tearDown(self):
         os.environ.clear()
         os.environ.update(self.__save)
 
+    def _reference(self):
+        return {"KEY1":"VALUE1", "KEY2":"VALUE2", "KEY3":"VALUE3"}
+
+    def _empty_mapping(self):
+        os.environ.clear()
+        return os.environ
+
     # Bug 1110478
     def test_update2(self):
+        os.environ.clear()
         if os.path.exists("/bin/sh"):
             os.environ.update(HELLO="World")
             value = os.popen("/bin/sh -c 'echo $HELLO'").read().strip()
             self.assertEquals(value, "World")
+
+    def test_os_popen_iter(self):
+        if os.path.exists("/bin/sh"):
+            popen = os.popen("/bin/sh -c 'echo \"line1\nline2\nline3\"'")
+            it = iter(popen)
+            self.assertEquals(next(it), "line1\n")
+            self.assertEquals(next(it), "line2\n")
+            self.assertEquals(next(it), "line3\n")
+            self.assertRaises(StopIteration, next, it)
 
     # Verify environ keys and values from the OS are of the
     # correct str type.
@@ -289,6 +236,10 @@ class EnvironTests(mapping_tests.BasicTestMappingProtocol):
         for key, val in os.environ.items():
             self.assertEquals(type(key), str)
             self.assertEquals(type(val), str)
+
+    def test_items(self):
+        for key, value in self._reference().items():
+            self.assertEqual(os.environ.get(key), value)
 
 class WalkTests(unittest.TestCase):
     """Tests for os.walk()."""
@@ -483,7 +434,6 @@ if sys.platform != 'win32':
 def test_main():
     test_support.run_unittest(
         FileTests,
-        TemporaryFileTests,
         StatAttributeTests,
         EnvironTests,
         WalkTests,
