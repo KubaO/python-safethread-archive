@@ -69,13 +69,14 @@ PyAPI_FUNC(void) PyErr_Restore(PyObject *, PyObject *, PyObject *);
 #ifdef Py_DEBUG
 #define _PyErr_OCCURRED() PyErr_Occurred()
 #else
-#define _PyErr_OCCURRED() (_PyThreadState_Current->curexc_type)
+#define _PyErr_OCCURRED() (PyState_Get()->curexc_type)
 #endif
 
 /* Error testing and normalization */
 PyAPI_FUNC(int) PyErr_GivenExceptionMatches(PyObject *, PyObject *);
 PyAPI_FUNC(int) PyErr_ExceptionMatches(PyObject *);
 PyAPI_FUNC(void) PyErr_NormalizeException(PyObject**, PyObject**, PyObject**);
+PyAPI_FUNC(PyObject *) PyErr_SimplifyException(PyObject *, PyObject *, PyObject *);
 
 /* Traceback manipulation (PEP 3134) */
 PyAPI_FUNC(int) PyException_SetTraceback(PyObject *, PyObject *);
@@ -116,6 +117,7 @@ PyAPI_DATA(PyObject *) PyExc_LookupError;
 
 PyAPI_DATA(PyObject *) PyExc_AssertionError;
 PyAPI_DATA(PyObject *) PyExc_AttributeError;
+PyAPI_DATA(PyObject *) PyExc_Cancelled;
 PyAPI_DATA(PyObject *) PyExc_EOFError;
 PyAPI_DATA(PyObject *) PyExc_FloatingPointError;
 PyAPI_DATA(PyObject *) PyExc_EnvironmentError;
@@ -126,9 +128,13 @@ PyAPI_DATA(PyObject *) PyExc_IndexError;
 PyAPI_DATA(PyObject *) PyExc_KeyError;
 PyAPI_DATA(PyObject *) PyExc_KeyboardInterrupt;
 PyAPI_DATA(PyObject *) PyExc_MemoryError;
+PyAPI_DATA(PyObject *) PyExc_MultipleError;
 PyAPI_DATA(PyObject *) PyExc_NameError;
 PyAPI_DATA(PyObject *) PyExc_OverflowError;
 PyAPI_DATA(PyObject *) PyExc_RuntimeError;
+PyAPI_DATA(PyObject *) PyExc_DeadlockError;
+PyAPI_DATA(PyObject *) PyExc_HardDeadlockError;
+PyAPI_DATA(PyObject *) PyExc_SoftDeadlockError;
 PyAPI_DATA(PyObject *) PyExc_NotImplementedError;
 PyAPI_DATA(PyObject *) PyExc_SyntaxError;
 PyAPI_DATA(PyObject *) PyExc_IndentationError;
@@ -224,10 +230,6 @@ PyAPI_FUNC(int) PyErr_WarnEx(PyObject *category, const char *msg,
 PyAPI_FUNC(int) PyErr_WarnExplicit(PyObject *, const char *,
 				   const char *, int,
 				   const char *, PyObject *);
-
-/* In sigcheck.c or signalmodule.c */
-PyAPI_FUNC(int) PyErr_CheckSignals(void);
-PyAPI_FUNC(void) PyErr_SetInterrupt(void);
 
 /* In signalmodule.c */
 int PySignal_SetWakeupFd(int fd);

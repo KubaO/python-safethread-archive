@@ -81,7 +81,7 @@ PyCode_New(int argcount, int kwonlyargcount,
 			continue;
 		PyUnicode_InternInPlace(&PyTuple_GET_ITEM(consts, i));
 	}
-	co = PyObject_NEW(PyCodeObject, &PyCode_Type);
+	co = PyObject_New(&PyCode_Type);
 	if (co != NULL) {
 		co->co_argcount = argcount;
 		co->co_kwonlyargcount = kwonlyargcount;
@@ -283,8 +283,8 @@ code_dealloc(PyCodeObject *co)
 	Py_XDECREF(co->co_name);
 	Py_XDECREF(co->co_lnotab);
         if (co->co_zombieframe != NULL)
-                PyObject_GC_Del(co->co_zombieframe);
-	PyObject_DEL(co);
+                PyObject_Del(co->co_zombieframe);
+	PyObject_Del(co);
 }
 
 static PyObject *
@@ -427,7 +427,6 @@ PyTypeObject PyCode_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	code_new,			/* tp_new */
 };
 

@@ -231,7 +231,7 @@ newrfobject(void)
 {
 	rfobject *self;
 	
-	self = PyObject_NEW(rfobject, &Rftype);
+	self = PyObject_New(&Rftype);
 	if (self == NULL)
 		return NULL;
 	self->isclosed = 1;
@@ -243,7 +243,7 @@ static void
 rf_dealloc(rfobject *self)
 {
 	do_close(self);
-	PyObject_DEL(self);
+	PyObject_Del(self);
 }
 
 static PyObject *

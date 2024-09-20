@@ -21,7 +21,7 @@ PyCObject_FromVoidPtr(void *cobj, void (*destr)(void *))
 {
     PyCObject *self;
 
-    self = PyObject_NEW(PyCObject, &PyCObject_Type);
+    self = PyObject_New(&PyCObject_Type);
     if (self == NULL)
         return NULL;
     self->cobject=cobj;
@@ -43,7 +43,7 @@ PyCObject_FromVoidPtrAndDesc(void *cobj, void *desc,
                         " description");
         return NULL;
     }
-    self = PyObject_NEW(PyCObject, &PyCObject_Type);
+    self = PyObject_New(&PyCObject_Type);
     if (self == NULL)
         return NULL;
     self->cobject = cobj;
@@ -122,7 +122,7 @@ PyCObject_dealloc(PyCObject *self)
         else
             (self->destructor)(self->cobject);
     }
-    PyObject_DEL(self);
+    PyObject_Del(self);
 }
 
 

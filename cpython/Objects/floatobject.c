@@ -5,6 +5,7 @@
    for any kind of float exception without losing portability. */
 
 #include "Python.h"
+#include "pythread.h"
 #include "structseq.h"
 
 #include "formatter_unicode.h"
@@ -26,38 +27,51 @@ extern double pow(double, double);
 extern int finite(double);
 #endif
 
+#ifdef WITH_GIL
+#define USE_FLOAT_FREELIST
+#endif
+
+#ifdef USE_FLOAT_FREELIST
 /* Special free list -- see comments for same code in intobject.c. */
 #define BLOCK_SIZE	1000	/* 1K less typical malloc overhead */
 #define BHEAD_SIZE	8	/* Enough for a 64-bit pointer */
 #define N_FLOATOBJECTS	((BLOCK_SIZE - BHEAD_SIZE) / sizeof(PyFloatObject))
 
-struct _floatblock {
+typedef struct _floatblock {
 	struct _floatblock *next;
 	PyFloatObject objects[N_FLOATOBJECTS];
-};
-
-typedef struct _floatblock PyFloatBlock;
+} PyFloatBlock;
 
 static PyFloatBlock *block_list = NULL;
 static PyFloatObject *free_list = NULL;
 
 static PyFloatObject *
-fill_free_list(void)
+add_float_block(void)
 {
-	PyFloatObject *p, *q;
+	PyFloatBlock *block;
+	int i;
+
 	/* XXX Float blocks escape the object heap. Use PyObject_MALLOC ??? */
-	p = (PyFloatObject *) PyMem_MALLOC(sizeof(PyFloatBlock));
-	if (p == NULL)
-		return (PyFloatObject *) PyErr_NoMemory();
-	((PyFloatBlock *)p)->next = block_list;
-	block_list = (PyFloatBlock *)p;
-	p = &((PyFloatBlock *)p)->objects[0];
-	q = p + N_FLOATOBJECTS;
-	while (--q > p)
-		Py_TYPE(q) = (struct _typeobject *)(q-1);
-	Py_TYPE(q) = NULL;
-	return p + N_FLOATOBJECTS - 1;
+	block = PyMem_MALLOC(sizeof(PyFloatBlock));
+	if (block == NULL)
+		return NULL;
+
+	block->next = block_list;
+	block_list = block;
+
+	for (i = 0; i < N_FLOATOBJECTS; i++) {
+		PyObject *op = (PyObject *)&block->objects[i];
+		PyObject dummy = PyObject_HEAD_INIT_NOCOMMA(&PyFloat_Type);
+		*op = dummy;
+		if ((i + 1) < N_FLOATOBJECTS)
+			Py_TYPE(op) = (struct _typeobject *)(&block->objects[i + 1]);
+		else
+			Py_TYPE(op) = NULL;
+	}
+
+	return &block->objects[0];
 }
+#endif
 
 double
 PyFloat_GetMax(void)
@@ -148,14 +162,25 @@ PyObject *
 PyFloat_FromDouble(double fval)
 {
 	register PyFloatObject *op;
+	static unsigned int count;
+	count++;
+#ifdef USE_FLOAT_FREELIST
 	if (free_list == NULL) {
-		if ((free_list = fill_free_list()) == NULL)
+		if ((free_list = add_float_block()) == NULL) {
+			PyErr_NoMemory();
 			return NULL;
+		}
 	}
 	/* Inline PyObject_New */
 	op = free_list;
 	free_list = (PyFloatObject *)Py_TYPE(op);
 	PyObject_INIT(op, &PyFloat_Type);
+#else
+	op = PyObject_New(&PyFloat_Type);
+	//printf("New float %p\n", op);
+	if (op == NULL)
+		return NULL;
+#endif
 	op->ob_fval = fval;
 	return (PyObject *) op;
 }
@@ -269,12 +294,15 @@ PyFloat_FromString(PyObject *v)
 static void
 float_dealloc(PyFloatObject *op)
 {
+#ifdef USE_FLOAT_FREELIST
 	if (PyFloat_CheckExact(op)) {
 		Py_TYPE(op) = (struct _typeobject *)free_list;
 		free_list = op;
 	}
 	else
-		Py_TYPE(op)->tp_free((PyObject *)op);
+#endif
+		PyObject_Del(op);
+	//printf("Deleted float %p\n", op);
 }
 
 double
@@ -1201,7 +1229,8 @@ float_subtype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	if (tmp == NULL)
 		return NULL;
 	assert(PyFloat_CheckExact(tmp));
-	newobj = type->tp_alloc(type, 0);
+	newobj = PyObject_New(type);
+	//printf("New float subtype_new %p\n", newobj);
 	if (newobj == NULL) {
 		Py_DECREF(tmp);
 		return NULL;
@@ -1464,7 +1493,8 @@ PyTypeObject PyFloat_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
+		Py_TPFLAGS_SHAREABLE,		/* tp_flags */
 	float_doc,				/* tp_doc */
  	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -1481,7 +1511,6 @@ PyTypeObject PyFloat_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	float_new,				/* tp_new */
 };
 
@@ -1546,6 +1575,7 @@ _PyFloat_Init(void)
 void
 PyFloat_CompactFreeList(size_t *pbc, size_t *pbf, size_t *bsum)
 {
+#ifdef USE_FLOAT_FREELIST
 	PyFloatObject *p;
 	PyFloatBlock *list, *next;
 	unsigned i;
@@ -1562,7 +1592,7 @@ PyFloat_CompactFreeList(size_t *pbc, size_t *pbf, size_t *bsum)
 		for (i = 0, p = &list->objects[0];
 		     i < N_FLOATOBJECTS;
 		     i++, p++) {
-			if (PyFloat_CheckExact(p) && Py_REFCNT(p) != 0)
+			if (PyFloat_CheckExact(p) && !Py_RefcntMatches(p, 1))
 				frem++;
 		}
 		next = list->next;
@@ -1573,7 +1603,7 @@ PyFloat_CompactFreeList(size_t *pbc, size_t *pbf, size_t *bsum)
 			     i < N_FLOATOBJECTS;
 			     i++, p++) {
 				if (!PyFloat_CheckExact(p) ||
-				    Py_REFCNT(p) == 0) {
+				    Py_RefcntMatches(p, 1)) {
 					Py_TYPE(p) = (struct _typeobject *)
 						free_list;
 					free_list = p;
@@ -1590,11 +1620,13 @@ PyFloat_CompactFreeList(size_t *pbc, size_t *pbf, size_t *bsum)
 	*pbc = bc;
 	*pbf = bf;
 	*bsum = fsum;
+#endif
 }
 
 void
 PyFloat_Fini(void)
 {
+#ifdef USE_FLOAT_FREELIST
 	PyFloatObject *p;
 	PyFloatBlock *list;
 	unsigned i;
@@ -1624,7 +1656,7 @@ PyFloat_Fini(void)
 			     i < N_FLOATOBJECTS;
 			     i++, p++) {
 				if (PyFloat_CheckExact(p) &&
-				    Py_REFCNT(p) != 0) {
+				    !Py_RefcntMatches(p, 1)) {
 					char buf[100];
 					format_float(buf, sizeof(buf), p, PREC_STR);
 					/* XXX(twouters) cast refcount to
@@ -1633,12 +1665,13 @@ PyFloat_Fini(void)
 					 */
 					fprintf(stderr,
 			     "#   <float at %p, refcnt=%ld, val=%s>\n",
-						p, (long)Py_REFCNT(p), buf);
+						p, (long)Py_RefcntSnoop(p), buf);
 				}
 			}
 			list = list->next;
 		}
 	}
+#endif
 }
 
 /*----------------------------------------------------------------------------

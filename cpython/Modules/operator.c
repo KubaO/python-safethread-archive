@@ -67,6 +67,7 @@ used for special class methods; variants without leading and trailing\n\
 
 spami(isNumberType     , PyNumber_Check)
 spami(truth            , PyObject_IsTrue)
+spami(isShareable      , PyObject_IsShareable)
 spam2(op_add           , PyNumber_Add)
 spam2(op_sub           , PyNumber_Subtract)
 spam2(op_mul           , PyNumber_Multiply)
@@ -164,12 +165,12 @@ is_not(PyObject *s, PyObject *a)
 #undef spam2
 #undef spam1o
 #undef spam1o
-#define spam1(OP,DOC) {#OP, OP, METH_VARARGS, PyDoc_STR(DOC)},
-#define spam2(OP,ALTOP,DOC) {#OP, op_##OP, METH_VARARGS, PyDoc_STR(DOC)}, \
-			   {#ALTOP, op_##OP, METH_VARARGS, PyDoc_STR(DOC)}, 
-#define spam1o(OP,DOC) {#OP, OP, METH_O, PyDoc_STR(DOC)},
-#define spam2o(OP,ALTOP,DOC) {#OP, op_##OP, METH_O, PyDoc_STR(DOC)}, \
-			   {#ALTOP, op_##OP, METH_O, PyDoc_STR(DOC)}, 
+#define spam1(OP,DOC) {#OP, OP, METH_VARARGS|METH_SHARED, PyDoc_STR(DOC)},
+#define spam2(OP,ALTOP,DOC) {#OP, op_##OP, METH_VARARGS|METH_SHARED, PyDoc_STR(DOC)}, \
+			   {#ALTOP, op_##OP, METH_VARARGS|METH_SHARED, PyDoc_STR(DOC)}, 
+#define spam1o(OP,DOC) {#OP, OP, METH_O|METH_SHARED, PyDoc_STR(DOC)},
+#define spam2o(OP,ALTOP,DOC) {#OP, op_##OP, METH_O|METH_SHARED, PyDoc_STR(DOC)}, \
+			   {#ALTOP, op_##OP, METH_O|METH_SHARED, PyDoc_STR(DOC)}, 
 
 static struct PyMethodDef operator_methods[] = {
 
@@ -179,6 +180,8 @@ spam1o(isSequenceType,
  "isSequenceType(a) -- Return True if a has a sequence type, False otherwise.")
 spam1o(truth,
  "truth(a) -- Return True if a is true, False otherwise.")
+spam1o(isShareable,
+ "isShareable(a) -- Return True if a is shareable, False otherwise.")
 spam2(contains,__contains__,
  "contains(a, b) -- Same as b in a (note reversed operands).")
 spam1(indexOf,
@@ -274,7 +277,7 @@ itemgetter_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		item = args;
 
 	/* create itemgetterobject structure */
-	ig = PyObject_GC_New(itemgetterobject, &itemgetter_type);
+	ig = PyObject_New(&itemgetter_type);
 	if (ig == NULL) 
 		return NULL;	
 	
@@ -282,16 +285,14 @@ itemgetter_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	ig->item = item;
 	ig->nitems = nitems;
 
-	PyObject_GC_Track(ig);
 	return (PyObject *)ig;
 }
 
 static void
 itemgetter_dealloc(itemgetterobject *ig)
 {
-	PyObject_GC_UnTrack(ig);
 	Py_XDECREF(ig->item);
-	PyObject_GC_Del(ig);
+	PyObject_Del(ig);
 }
 
 static int
@@ -360,7 +361,8 @@ static PyTypeObject itemgetter_type = {
 	PyObject_GenericGetAttr,	/* tp_getattro */
 	0,				/* tp_setattro */
 	0,				/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,	/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
+		Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	itemgetter_doc,			/* tp_doc */
 	(traverseproc)itemgetter_traverse,	/* tp_traverse */
 	0,				/* tp_clear */
@@ -377,9 +379,7 @@ static PyTypeObject itemgetter_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	itemgetter_new,			/* tp_new */
-	0,				/* tp_free */
 };
 
 
@@ -411,7 +411,7 @@ attrgetter_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		attr = args;
 
 	/* create attrgetterobject structure */
-	ag = PyObject_GC_New(attrgetterobject, &attrgetter_type);
+	ag = PyObject_New(&attrgetter_type);
 	if (ag == NULL) 
 		return NULL;	
 	
@@ -419,16 +419,14 @@ attrgetter_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	ag->attr = attr;
 	ag->nattrs = nattrs;
 
-	PyObject_GC_Track(ag);
 	return (PyObject *)ag;
 }
 
 static void
 attrgetter_dealloc(attrgetterobject *ag)
 {
-	PyObject_GC_UnTrack(ag);
 	Py_XDECREF(ag->attr);
-	PyObject_GC_Del(ag);
+	PyObject_Del(ag);
 }
 
 static int
@@ -534,7 +532,8 @@ static PyTypeObject attrgetter_type = {
 	PyObject_GenericGetAttr,	/* tp_getattro */
 	0,				/* tp_setattro */
 	0,				/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,	/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
+		Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	attrgetter_doc,			/* tp_doc */
 	(traverseproc)attrgetter_traverse,	/* tp_traverse */
 	0,				/* tp_clear */
@@ -551,9 +550,7 @@ static PyTypeObject attrgetter_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	attrgetter_new,			/* tp_new */
-	0,				/* tp_free */
 };
 
 
@@ -581,7 +578,7 @@ methodcaller_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 
 	/* create methodcallerobject structure */
-	mc = PyObject_GC_New(methodcallerobject, &methodcaller_type);
+	mc = PyObject_New(&methodcaller_type);
 	if (mc == NULL) 
 		return NULL;	
 
@@ -599,18 +596,16 @@ methodcaller_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	Py_XINCREF(kwds);
 	mc->kwds = kwds;
 
-	PyObject_GC_Track(mc);
 	return (PyObject *)mc;
 }
 
 static void
 methodcaller_dealloc(methodcallerobject *mc)
 {
-	PyObject_GC_UnTrack(mc);
 	Py_XDECREF(mc->name);
 	Py_XDECREF(mc->args);
 	Py_XDECREF(mc->kwds);
-	PyObject_GC_Del(mc);
+	PyObject_Del(mc);
 }
 
 static int
@@ -665,7 +660,8 @@ static PyTypeObject methodcaller_type = {
 	PyObject_GenericGetAttr,	/* tp_getattro */
 	0,				/* tp_setattro */
 	0,				/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
+		Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	methodcaller_doc,			/* tp_doc */
 	(traverseproc)methodcaller_traverse,	/* tp_traverse */
 	0,				/* tp_clear */
@@ -682,9 +678,7 @@ static PyTypeObject methodcaller_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	methodcaller_new,		/* tp_new */
-	0,				/* tp_free */
 };
 
 
@@ -696,8 +690,8 @@ initoperator(void)
 	PyObject *m;
         
 	/* Create the module and add the functions */
-        m = Py_InitModule4("operator", operator_methods, operator_doc,
-		       (PyObject*)NULL, PYTHON_API_VERSION);
+        m = Py_InitModule5("operator", operator_methods, operator_doc,
+		       (PyObject*)NULL, PYTHON_API_VERSION, 1);
 	if (m == NULL)
 		return;
 

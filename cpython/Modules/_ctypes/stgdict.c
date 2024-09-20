@@ -115,9 +115,7 @@ PyTypeObject StgDict_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	(initproc)StgDict_init,			/* tp_init */
-	0,					/* tp_alloc */
 	0,					/* tp_new */
-	0,					/* tp_free */
 };
 
 /* May return NULL, but does not set an exception! */

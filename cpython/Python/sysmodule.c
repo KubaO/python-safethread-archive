@@ -19,6 +19,7 @@ Data members:
 #include "code.h"
 #include "frameobject.h"
 #include "eval.h"
+#include "monitorobject.h"
 
 #include "osdefs.h"
 
@@ -42,38 +43,46 @@ extern const char *PyWin_DLLVersionString;
 #include <langinfo.h>
 #endif
 
+#ifdef HAVE_DLOPEN
+#ifdef HAVE_DLFCN_H
+#include <dlfcn.h>
+#endif
+#ifndef RTLD_LAZY
+#define RTLD_LAZY 1
+#endif
+#endif
+
+
+static PyObject *_PySys_Dict;
+
 PyObject *
 PySys_GetObject(const char *name)
 {
-	PyThreadState *tstate = PyThreadState_GET();
-	PyObject *sd = tstate->interp->sysdict;
-	if (sd == NULL)
-		return NULL;
-	return PyDict_GetItemString(sd, name);
+	return PyDict_GetItemString(_PySys_Dict, name);
 }
 
 int
 PySys_SetObject(const char *name, PyObject *v)
 {
-	PyThreadState *tstate = PyThreadState_GET();
-	PyObject *sd = tstate->interp->sysdict;
 	if (v == NULL) {
-		if (PyDict_GetItemString(sd, name) == NULL)
+		if (PyDict_GetItemString(_PySys_Dict, name) == NULL)
 			return 0;
 		else
-			return PyDict_DelItemString(sd, name);
+			return PyDict_DelItemString(_PySys_Dict, name);
 	}
 	else
-		return PyDict_SetItemString(sd, name, v);
+		return PyDict_SetItemString(_PySys_Dict, name, v);
 }
 
 static PyObject *
 sys_displayhook(PyObject *self, PyObject *o)
 {
 	PyObject *outf;
-	PyInterpreterState *interp = PyThreadState_GET()->interp;
-	PyObject *modules = interp->modules;
-	PyObject *builtins = PyDict_GetItemString(modules, "builtins");
+	PyObject *modules = PyImport_GetModuleDict();
+	PyObject *builtins;
+
+	if (PyDict_GetItemStringEx(modules, "builtins", &builtins) < 0)
+		return NULL;
 
 	if (builtins == NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "lost builtins module");
@@ -84,24 +93,32 @@ sys_displayhook(PyObject *self, PyObject *o)
 	/* After printing, also assign to '_' */
 	/* Before, set '_' to None to avoid recursion */
 	if (o == Py_None) {
+		Py_DECREF(builtins);
 		Py_INCREF(Py_None);
 		return Py_None;
 	}
 	if (PyObject_SetAttrString(builtins, "_", Py_None) != 0)
-		return NULL;
+		goto failed;
 	outf = PySys_GetObject("stdout");
 	if (outf == NULL || outf == Py_None) {
 		PyErr_SetString(PyExc_RuntimeError, "lost sys.stdout");
-		return NULL;
+		goto failed;
 	}
 	if (PyFile_WriteObject(o, outf, 0) != 0)
-		return NULL;
+		goto failed;
 	if (PyFile_WriteString("\n", outf) != 0)
-		return NULL;
-	if (PyObject_SetAttrString(builtins, "_", o) != 0)
-		return NULL;
+		goto failed;
+	/* XXX FIXME this'll fail if o isn't shareable */
+#warning XXX FIXME displayhook
+	//if (PyObject_SetAttrString(builtins, "_", o) != 0)
+	//	goto failed;
+	Py_DECREF(builtins);
 	Py_INCREF(Py_None);
 	return Py_None;
+
+failed:
+	Py_DECREF(builtins);
+	return NULL;
 }
 
 PyDoc_STRVAR(displayhook_doc,
@@ -130,14 +147,14 @@ PyDoc_STRVAR(excepthook_doc,
 static PyObject *
 sys_exc_info(PyObject *self, PyObject *noargs)
 {
-	PyThreadState *tstate;
-	tstate = PyThreadState_GET();
+	PyState *pystate;
+	pystate = PyState_Get();
 	return Py_BuildValue(
 		"(OOO)",
-		tstate->exc_type != NULL ? tstate->exc_type : Py_None,
-		tstate->exc_value != NULL ? tstate->exc_value : Py_None,
-		tstate->exc_traceback != NULL ?
-			tstate->exc_traceback : Py_None);
+		pystate->exc_type != NULL ? pystate->exc_type : Py_None,
+		pystate->exc_value != NULL ? pystate->exc_value : Py_None,
+		pystate->exc_traceback != NULL ?
+			pystate->exc_traceback : Py_None);
 }
 
 PyDoc_STRVAR(exc_info_doc,
@@ -271,7 +288,7 @@ trace_init(void)
 
 
 static PyObject *
-call_trampoline(PyThreadState *tstate, PyObject* callback,
+call_trampoline(PyState *pystate, PyObject* callback,
 		PyFrameObject *frame, int what, PyObject *arg)
 {
 	PyObject *args = PyTuple_New(3);
@@ -306,12 +323,12 @@ static int
 profile_trampoline(PyObject *self, PyFrameObject *frame,
 		   int what, PyObject *arg)
 {
-	PyThreadState *tstate = frame->f_tstate;
+	PyState *pystate = frame->f_pystate;
 	PyObject *result;
 
 	if (arg == NULL)
 		arg = Py_None;
-	result = call_trampoline(tstate, self, frame, what, arg);
+	result = call_trampoline(pystate, self, frame, what, arg);
 	if (result == NULL) {
 		PyEval_SetProfile(NULL, NULL);
 		return -1;
@@ -324,7 +341,7 @@ static int
 trace_trampoline(PyObject *self, PyFrameObject *frame,
 		 int what, PyObject *arg)
 {
-	PyThreadState *tstate = frame->f_tstate;
+	PyState *pystate = frame->f_pystate;
 	PyObject *callback;
 	PyObject *result;
 
@@ -334,7 +351,7 @@ trace_trampoline(PyObject *self, PyFrameObject *frame,
 		callback = frame->f_trace;
 	if (callback == NULL)
 		return 0;
-	result = call_trampoline(tstate, callback, frame, what, arg);
+	result = call_trampoline(pystate, callback, frame, what, arg);
 	if (result == NULL) {
 		PyEval_SetTrace(NULL, NULL);
 		Py_XDECREF(frame->f_trace);
@@ -376,8 +393,8 @@ function call.  See the debugger chapter in the library manual."
 static PyObject *
 sys_gettrace(PyObject *self, PyObject *args)
 {
-	PyThreadState *tstate = PyThreadState_GET();
-	PyObject *temp = tstate->c_traceobj;
+	PyState *pystate = PyState_Get();
+	PyObject *temp = pystate->c_traceobj;
 
 	if (temp == NULL)
 		temp = Py_None;
@@ -415,8 +432,8 @@ and return.  See the profiler chapter in the library manual."
 static PyObject *
 sys_getprofile(PyObject *self, PyObject *args)
 {
-	PyThreadState *tstate = PyThreadState_GET();
-	PyObject *temp = tstate->c_profileobj;
+	PyState *pystate = PyState_Get();
+	PyObject *temp = pystate->c_profileobj;
 
 	if (temp == NULL)
 		temp = Py_None;
@@ -458,18 +475,20 @@ PyDoc_STRVAR(getcheckinterval_doc,
 );
 
 #ifdef WITH_TSC
+int _PySys_TSCDump;
+
 static PyObject *
 sys_settscdump(PyObject *self, PyObject *args)
 {
 	int bool;
-	PyThreadState *tstate = PyThreadState_Get();
+	PyState *pystate = PyState_Get();
 
 	if (!PyArg_ParseTuple(args, "i:settscdump", &bool))
 		return NULL;
 	if (bool)
-		tstate->interp->tscdump = 1;
+		_PySys_TSCDump = 1;
 	else
-		tstate->interp->tscdump = 0;
+		_PySys_TSCDump = 0;
 	Py_INCREF(Py_None);
 	return Py_None;
 
@@ -523,6 +542,40 @@ of the Python interpreter stack.  This limit prevents infinite\n\
 recursion from causing an overflow of the C stack and crashing Python."
 );
 
+static PyObject *
+sys_setdeadlockdelay(PyObject *self, PyObject *args)
+{
+    double new_delay;
+    if (!PyArg_ParseTuple(args, "d:setdeadlockdelay", &new_delay))
+        return NULL;
+    if (new_delay < 0.0) {
+        PyErr_SetString(PyExc_ValueError,
+            "deadlock delay must be positive or zero");
+        return NULL;
+    }
+    PyMonitorSpace_SetDeadlockDelay(new_delay);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+PyDoc_STRVAR(setdeadlockdelay_doc,
+"setdeadlockdelay(n)\n\
+\n\
+Set the delay before checking for deadlocks to n seconds.  Higher\n\
+values may reduce contention, improving performance.");
+
+static PyObject *
+sys_getdeadlockdelay(PyObject *self)
+{
+    return PyFloat_FromDouble(PyMonitorSpace_GetDeadlockDelay());
+}
+
+PyDoc_STRVAR(getdeadlockdelay_doc,
+"getdeadlockdelay()\n\
+\n\
+Return the current value of the deadlock delay.  Higher values may\n\
+reduce contention, improving performance.");
+
 #ifdef MS_WINDOWS
 PyDoc_STRVAR(getwindowsversion_doc,
 "getwindowsversion()\n\
@@ -552,16 +605,22 @@ sys_getwindowsversion(PyObject *self)
 #endif /* MS_WINDOWS */
 
 #ifdef HAVE_DLOPEN
+#ifdef RTLD_NOW
+int _PySys_DLOpenFlags = RTLD_NOW;
+#else
+int _PySys_DLOpenFlags = RTLD_LAZY;
+#endif
+
 static PyObject *
 sys_setdlopenflags(PyObject *self, PyObject *args)
 {
 	int new_val;
-        PyThreadState *tstate = PyThreadState_GET();
+        PyState *pystate = PyState_Get();
 	if (!PyArg_ParseTuple(args, "i:setdlopenflags", &new_val))
 		return NULL;
-        if (!tstate)
+        if (!pystate)
 		return NULL;
-        tstate->interp->dlopenflags = new_val;
+        _PySys_DLOpenFlags = new_val;
 	Py_INCREF(Py_None);
 	return Py_None;
 }
@@ -579,10 +638,10 @@ sys.setdlopenflags(dl.RTLD_NOW|dl.RTLD_GLOBAL)"
 static PyObject *
 sys_getdlopenflags(PyObject *self, PyObject *args)
 {
-        PyThreadState *tstate = PyThreadState_GET();
-        if (!tstate)
+        PyState *pystate = PyState_Get();
+        if (!pystate)
 		return NULL;
-        return PyLong_FromLong(tstate->interp->dlopenflags);
+        return PyLong_FromLong(_PySys_DLOpenFlags);
 }
 
 PyDoc_STRVAR(getdlopenflags_doc,
@@ -612,7 +671,7 @@ sys_mdebug(PyObject *self, PyObject *args)
 static PyObject *
 sys_getrefcount(PyObject *self, PyObject *arg)
 {
-	return PyLong_FromSsize_t(arg->ob_refcnt);
+	return PyLong_FromSsize_t(Py_RefcntSnoop(arg));
 }
 
 #ifdef Py_REF_DEBUG
@@ -656,7 +715,7 @@ purposes only."
 static PyObject *
 sys_getframe(PyObject *self, PyObject *args)
 {
-	PyFrameObject *f = PyThreadState_GET()->frame;
+	PyFrameObject *f = PyState_Get()->frame;
 	int depth = -1;
 
 	if (!PyArg_ParseTuple(args, "|i:_getframe", &depth))
@@ -673,21 +732,6 @@ sys_getframe(PyObject *self, PyObject *args)
 	}
 	Py_INCREF(f);
 	return (PyObject*)f;
-}
-
-PyDoc_STRVAR(current_frames_doc,
-"_current_frames() -> dictionary\n\
-\n\
-Return a dictionary mapping each current thread T's thread id to T's\n\
-current stack frame.\n\
-\n\
-This function should be used for specialized purposes only."
-);
-
-static PyObject *
-sys_current_frames(PyObject *self, PyObject *noargs)
-{
-	return _PyThread_CurrentFrames();
 }
 
 PyDoc_STRVAR(call_tracing_doc,
@@ -728,6 +772,33 @@ a 11-tuple where the entries in the tuple are counts of:\n\
 8. generator calls\n\
 9. All other calls\n\
 10. Number of stack pops performed by call_function()"
+);
+
+static PyObject *
+sys_runfinalizers(PyObject *self, PyObject *queue)
+{
+    PyObject *core, *res;
+
+    while (1) {
+        core = PyObject_CallMethod(queue, "pop", "");
+        if (core == NULL)
+            return NULL;
+        if (core == Py_None)
+            return Py_None;  /* Just steal the reference that was core */
+        res = PyObject_CallMethod(core, "__finalize__", "");
+        Py_DECREF(core);
+        if (res == NULL)
+            return NULL;
+        Py_DECREF(res);
+    }
+}
+
+PyDoc_STRVAR(runfinalizers_doc,
+"_runfinalizers(queue)\n\
+\n\
+Run all __finalize__ methods of objects returned by queue.pop(),\n\
+blocking if none are available.  Returns if an exception is thrown or\n\
+if queue.pop() produces None."
 );
 
 #ifdef __cplusplus
@@ -783,8 +854,6 @@ static PyMethodDef sys_methods[] = {
 	 sys_clear_type_cache__doc__},
 	{"_compact_freelists",	sys_compact_freelists,	  METH_NOARGS,
 	 sys_compact_freelists__doc__},
-	{"_current_frames", sys_current_frames, METH_NOARGS,
-	 current_frames_doc},
 	{"displayhook",	sys_displayhook, METH_O, displayhook_doc},
 	{"exc_info",	sys_exc_info, METH_NOARGS, exc_info_doc},
 	{"excepthook",	sys_excepthook, METH_VARARGS, excepthook_doc},
@@ -798,6 +867,8 @@ static PyMethodDef sys_methods[] = {
 #ifdef COUNT_ALLOCS
 	{"getcounts",	(PyCFunction)sys_getcounts, METH_NOARGS},
 #endif
+	{"getdeadlockdelay", (PyCFunction)sys_getdeadlockdelay, METH_NOARGS,
+	 getdeadlockdelay_doc},
 #ifdef DYNAMIC_EXECUTION_PROFILE
 	{"getdxp",	_Py_GetDXProfile, METH_VARARGS},
 #endif
@@ -821,12 +892,15 @@ static PyMethodDef sys_methods[] = {
 #ifdef USE_MALLOPT
 	{"mdebug",	sys_mdebug, METH_VARARGS},
 #endif
+	{"_runfinalizers", sys_runfinalizers, METH_O | METH_SHARED, runfinalizers_doc},
 	{"setdefaultencoding", sys_setdefaultencoding, METH_VARARGS,
 	 setdefaultencoding_doc},
 	{"setcheckinterval",	sys_setcheckinterval, METH_VARARGS,
 	 setcheckinterval_doc},
 	{"getcheckinterval",	sys_getcheckinterval, METH_NOARGS,
 	 getcheckinterval_doc},
+	{"setdeadlockdelay", sys_setdeadlockdelay, METH_VARARGS,
+	 setdeadlockdelay_doc},
 #ifdef HAVE_DLOPEN
 	{"setdlopenflags", sys_setdlopenflags, METH_VARARGS,
 	 setdlopenflags_doc},
@@ -1152,20 +1226,23 @@ make_flags(void)
 	return seq;
 }
 
-PyObject *
+int
 _PySys_Init(void)
 {
-	PyObject *m, *v, *sysdict;
+	PyObject *m, *v;
 	char *s;
 
 	m = Py_InitModule3("sys", sys_methods, sys_doc);
 	if (m == NULL)
-		return NULL;
-	sysdict = PyModule_GetDict(m);
+		return 1;
+	_PySys_Dict = PyModule_GetDict(m);
+	if (_PySys_Dict == NULL)
+		Py_FatalError("_PySys_Init: can't retrieve dict");
+	Py_INCREF(_PySys_Dict);
 #define SET_SYS_FROM_STRING(key, value)			\
 	v = value;					\
 	if (v != NULL)					\
-		PyDict_SetItemString(sysdict, key, v);	\
+		PyDict_SetItemString(_PySys_Dict, key, v);	\
 	Py_XDECREF(v)
 
 	{
@@ -1182,10 +1259,10 @@ _PySys_Init(void)
 
         /* stdin/stdout/stderr are now set by pythonrun.c */
 
-	PyDict_SetItemString(sysdict, "__displayhook__",
-                             PyDict_GetItemString(sysdict, "displayhook"));
-	PyDict_SetItemString(sysdict, "__excepthook__",
-                             PyDict_GetItemString(sysdict, "excepthook"));
+	PyDict_SetItemString(_PySys_Dict, "__displayhook__",
+                             PyDict_GetItemString(_PySys_Dict, "displayhook"));
+	PyDict_SetItemString(_PySys_Dict, "__excepthook__",
+                             PyDict_GetItemString(_PySys_Dict, "excepthook"));
 	SET_SYS_FROM_STRING("version",
 			     PyUnicode_FromString(Py_GetVersion()));
 	SET_SYS_FROM_STRING("hexversion",
@@ -1263,7 +1340,7 @@ _PySys_Init(void)
 		Py_INCREF(warnoptions);
 	}
 	if (warnoptions != NULL) {
-		PyDict_SetItemString(sysdict, "warnoptions", warnoptions);
+		PyDict_SetItemString(_PySys_Dict, "warnoptions", warnoptions);
 	}
 
 	if (FlagsType.tp_name == 0)
@@ -1275,8 +1352,8 @@ _PySys_Init(void)
 
 #undef SET_SYS_FROM_STRING
 	if (PyErr_Occurred())
-		return NULL;
-	return m;
+		return 1;
+	return 0;
 }
 
 static PyObject *

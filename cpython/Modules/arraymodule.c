@@ -417,7 +417,7 @@ newarrayobject(PyTypeObject *type, Py_ssize_t size, struct arraydescr *descr)
 	if (nbytes / descr->itemsize != (size_t)size) {
 		return PyErr_NoMemory();
 	}
-	op = (arrayobject *) type->tp_alloc(type, 0);
+	op = PyObject_New(type);
 	if (op == NULL) {
 		return NULL;
 	}
@@ -484,11 +484,9 @@ ins1(arrayobject *self, Py_ssize_t where, PyObject *v)
 static void
 array_dealloc(arrayobject *op)
 {
-	if (op->weakreflist != NULL)
-		PyObject_ClearWeakRefs((PyObject *) op);
 	if (op->ob_item != NULL)
 		PyMem_DEL(op->ob_item);
-	Py_TYPE(op)->tp_free((PyObject *)op);
+	PyObject_Del(op);
 }
 
 static PyObject *
@@ -2056,9 +2054,7 @@ static PyTypeObject Arraytype = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	array_new,				/* tp_new */
-	PyObject_Del,				/* tp_free */
 };
 
 
@@ -2085,7 +2081,7 @@ array_iter(arrayobject *ao)
 		return NULL;
 	}
 
-	it = PyObject_GC_New(arrayiterobject, &PyArrayIter_Type);
+	it = PyObject_New(&PyArrayIter_Type);
 	if (it == NULL)
 		return NULL;
 
@@ -2093,7 +2089,6 @@ array_iter(arrayobject *ao)
 	it->ao = ao;
 	it->index = 0;
 	it->getitem = ao->ob_descr->getitem;
-	PyObject_GC_Track(it);
 	return (PyObject *)it;
 }
 
@@ -2109,9 +2104,8 @@ arrayiter_next(arrayiterobject *it)
 static void
 arrayiter_dealloc(arrayiterobject *it)
 {
-	PyObject_GC_UnTrack(it);
 	Py_XDECREF(it->ao);
-	PyObject_GC_Del(it);
+	PyObject_Del(it);
 }
 
 static int

@@ -202,7 +202,7 @@ with thekey across *all* threads.
 While some of these functions have error-return values, none set any
 Python exception.
 
-None of the functions does memory management on behalf of the void* values.
+None of the functions do memory management on behalf of the void* values.
 You need to allocate and deallocate them yourself.  If the void* values
 happen to be PyObject*, these functions don't do refcount operations on
 them either.
@@ -233,7 +233,7 @@ struct key {
 };
 
 static struct key *keyhead = NULL;
-static PyThread_type_lock keymutex = NULL;
+static PyThread_type_lock *keymutex = NULL;
 static int nkeys = 0;  /* PyThread_create_key() hands out nkeys+1 next */
 
 /* Internal helper.
@@ -265,7 +265,7 @@ find_key(int key, void *value)
 
 	if (!keymutex)
 		return NULL;
-	PyThread_acquire_lock(keymutex, 1);
+	PyThread_lock_acquire(keymutex);
 	for (p = keyhead; p != NULL; p = p->next) {
 		if (p->id == id && p->key == key)
 			goto Done;
@@ -283,7 +283,7 @@ find_key(int key, void *value)
 		keyhead = p;
 	}
  Done:
-	PyThread_release_lock(keymutex);
+	PyThread_lock_release(keymutex);
 	return p;
 }
 
@@ -298,7 +298,7 @@ PyThread_create_key(void)
 	 * threads simultaneously.
 	 */
 	if (keymutex == NULL)
-		keymutex = PyThread_allocate_lock();
+		keymutex = PyThread_lock_allocate();
 	return ++nkeys;
 }
 
@@ -308,7 +308,7 @@ PyThread_delete_key(int key)
 {
 	struct key *p, **q;
 
-	PyThread_acquire_lock(keymutex, 1);
+	PyThread_lock_acquire(keymutex);
 	q = &keyhead;
 	while ((p = *q) != NULL) {
 		if (p->key == key) {
@@ -319,7 +319,7 @@ PyThread_delete_key(int key)
 		else
 			q = &p->next;
 	}
-	PyThread_release_lock(keymutex);
+	PyThread_lock_release(keymutex);
 }
 
 /* Confusing:  If the current thread has an association for key,
@@ -362,7 +362,7 @@ PyThread_delete_key_value(int key)
 	long id = PyThread_get_thread_ident();
 	struct key *p, **q;
 
-	PyThread_acquire_lock(keymutex, 1);
+	PyThread_lock_acquire(keymutex);
 	q = &keyhead;
 	while ((p = *q) != NULL) {
 		if (p->key == key && p->id == id) {
@@ -374,7 +374,7 @@ PyThread_delete_key_value(int key)
 		else
 			q = &p->next;
 	}
-	PyThread_release_lock(keymutex);
+	PyThread_lock_release(keymutex);
 }
 
 #endif /* Py_HAVE_NATIVE_TLS */

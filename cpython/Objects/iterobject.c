@@ -17,22 +17,20 @@ PySeqIter_New(PyObject *seq)
 		PyErr_BadInternalCall();
 		return NULL;
 	}	
-	it = PyObject_GC_New(seqiterobject, &PySeqIter_Type);
+	it = PyObject_New(&PySeqIter_Type);
 	if (it == NULL)
 		return NULL;
 	it->it_index = 0;
 	Py_INCREF(seq);
 	it->it_seq = seq;
-	_PyObject_GC_TRACK(it);
 	return (PyObject *)it;
 }
 
 static void
 iter_dealloc(seqiterobject *it)
 {
-	_PyObject_GC_UNTRACK(it);
 	Py_XDECREF(it->it_seq);
-	PyObject_GC_Del(it);
+	PyObject_Del(it);
 }
 
 static int
@@ -138,23 +136,21 @@ PyObject *
 PyCallIter_New(PyObject *callable, PyObject *sentinel)
 {
 	calliterobject *it;
-	it = PyObject_GC_New(calliterobject, &PyCallIter_Type);
+	it = PyObject_New(&PyCallIter_Type);
 	if (it == NULL)
 		return NULL;
 	Py_INCREF(callable);
 	it->it_callable = callable;
 	Py_INCREF(sentinel);
 	it->it_sentinel = sentinel;
-	_PyObject_GC_TRACK(it);
 	return (PyObject *)it;
 }
 static void
 calliter_dealloc(calliterobject *it)
 {
-	_PyObject_GC_UNTRACK(it);
 	Py_XDECREF(it->it_callable);
 	Py_XDECREF(it->it_sentinel);
-	PyObject_GC_Del(it);
+	PyObject_Del(it);
 }
 
 static int

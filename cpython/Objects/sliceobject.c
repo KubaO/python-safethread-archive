@@ -22,6 +22,12 @@ ellipsis_repr(PyObject *op)
 	return PyUnicode_FromString("Ellipsis");
 }
 
+static int
+ellipsis_isshareable(PyObject *op)
+{
+	return 1;
+}
+
 static PyTypeObject PyEllipsis_Type = {
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
 	"ellipsis",			/* tp_name */
@@ -42,13 +48,41 @@ static PyTypeObject PyEllipsis_Type = {
 	PyObject_GenericGetAttr,	/* tp_getattro */
 	0,				/* tp_setattro */
 	0,				/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT,		/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_SHAREABLE,
+					/* tp_flags */
+	0,				/* tp_doc */
+	0,				/* tp_traverse */
+	0,				/* tp_clear */
+	0,				/* tp_richcompare */
+	0,				/* tp_weaklistoffset */
+	0,				/* tp_iter */
+	0,				/* tp_iternext */
+	0,				/* tp_methods */
+	0,				/* tp_members */
+	0,				/* tp_getset */
+	0,				/* tp_base */
+	0,				/* tp_dict */
+	0,				/* tp_descr_get */
+	0,				/* tp_descr_set */
+	0,				/* tp_dictoffset */
+	0,				/* tp_init */
+	0,				/* tp_new */
+	0,				/* tp_is_gc */
+	0,				/* tp_bases */
+	0,				/* tp_mro */
+	0,				/* tp_cache */
+	0,				/* tp_subclasses */
+	0,				/* tp_weaklist */
+	ellipsis_isshareable,		/* tp_isshareable */
 };
 
+/*
 PyObject _Py_EllipsisObject = {
 	_PyObject_EXTRA_INIT
-	1, &PyEllipsis_Type
+	1, {}, &PyEllipsis_Type
 };
+*/
+PyObject _Py_EllipsisObject = PyObject_HEAD_INIT_NOCOMMA(&PyEllipsis_Type);
 
 
 /* Slice object implementation
@@ -60,7 +94,7 @@ PyObject _Py_EllipsisObject = {
 PyObject *
 PySlice_New(PyObject *start, PyObject *stop, PyObject *step)
 {
-	PySliceObject *obj = PyObject_New(PySliceObject, &PySlice_Type);
+	PySliceObject *obj = PyObject_New(&PySlice_Type);
 
 	if (obj == NULL)
 		return NULL;
@@ -362,7 +396,7 @@ PyTypeObject PySlice_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT,			/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	slice_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -379,6 +413,5 @@ PyTypeObject PySlice_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	slice_new,				/* tp_new */
 };

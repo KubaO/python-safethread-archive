@@ -33,7 +33,7 @@ PySTEntry_New(struct symtable *st, identifier name, _Py_block_ty block,
 	k = PyLong_FromVoidPtr(key);
 	if (k == NULL)
 		goto fail;
-	ste = PyObject_New(PySTEntryObject, &PySTEntry_Type);
+	ste = PyObject_New(&PySTEntry_Type);
 	if (ste == NULL)
 		goto fail;
 	ste->ste_table = st;
@@ -156,7 +156,6 @@ PyTypeObject PySTEntry_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	0,					/* tp_new */
 };
 

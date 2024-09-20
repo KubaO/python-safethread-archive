@@ -134,7 +134,7 @@ void pysqlite_cursor_dealloc(pysqlite_Cursor* self)
     Py_XDECREF(self->row_factory);
     Py_XDECREF(self->next_row);
 
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    PyObject_Del(self);
 }
 
 PyObject* _pysqlite_get_converter(PyObject* key)
@@ -1094,9 +1094,7 @@ PyTypeObject pysqlite_CursorType = {
         0,                                              /* tp_descr_set */
         0,                                              /* tp_dictoffset */
         (initproc)pysqlite_cursor_init,                 /* tp_init */
-        0,                                              /* tp_alloc */
         0,                                              /* tp_new */
-        0                                               /* tp_free */
 };
 
 extern int pysqlite_cursor_setup_types(void)

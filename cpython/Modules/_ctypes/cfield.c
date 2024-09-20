@@ -13,9 +13,7 @@
 static PyObject *
 CField_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-	CFieldObject *obj;
-	obj = (CFieldObject *)type->tp_alloc(type, 0);
-	return (PyObject *)obj;
+	return PyObject_New(type);
 }
 
 /*
@@ -254,7 +252,7 @@ static void
 CField_dealloc(PyObject *self)
 {
 	CField_clear((CFieldObject *)self);
-	self->ob_type->tp_free((PyObject *)self);
+	PyObject_Del(self);
 }
 
 static PyObject *
@@ -315,9 +313,7 @@ PyTypeObject CField_Type = {
 	(descrsetfunc)CField_set,		/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	CField_new,				/* tp_new */
-	0,					/* tp_free */
 };
 
 

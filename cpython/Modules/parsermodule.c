@@ -255,7 +255,7 @@ parser_compare(PyST_Object *left, PyST_Object *right)
 static PyObject*
 parser_newstobject(node *st, int type)
 {
-    PyST_Object* o = PyObject_New(PyST_Object, &PyST_Type);
+    PyST_Object* o = PyObject_New(&PyST_Type);
 
     if (o != 0) {
         o->st_node = st;

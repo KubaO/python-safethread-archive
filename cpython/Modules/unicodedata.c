@@ -83,7 +83,7 @@ new_previous_version(const char*name, const change_record* (*getrecord)(Py_UCS4)
                      Py_UCS4 (*normalization)(Py_UCS4))
 {
 	PreviousDBVersion *self;
-	self = PyObject_New(PreviousDBVersion, &UCD_Type);
+	self = PyObject_New(&UCD_Type);
 	if (self == NULL)
 		return NULL;
 	self->name = name;
@@ -1134,7 +1134,7 @@ static PyTypeObject UCD_Type = {
 	sizeof(PreviousDBVersion),	/*tp_basicsize*/
 	0,			/*tp_itemsize*/
 	/* methods */
-	(destructor)PyObject_Del, /*tp_dealloc*/
+	(destructor)PyObject_Del,	/*tp_dealloc*/
 	0,			/*tp_print*/
 	0,                      /*tp_getattr*/
 	0,			/*tp_setattr*/
@@ -1166,9 +1166,7 @@ static PyTypeObject UCD_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         0,                      /*tp_init*/
-        0,                      /*tp_alloc*/
         0,                      /*tp_new*/
-        0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
 

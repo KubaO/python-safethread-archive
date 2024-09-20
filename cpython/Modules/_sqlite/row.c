@@ -30,7 +30,7 @@ void pysqlite_row_dealloc(pysqlite_Row* self)
     Py_XDECREF(self->data);
     Py_XDECREF(self->description);
 
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    PyObject_Del(self);
 }
 
 int pysqlite_row_init(pysqlite_Row* self, PyObject* args, PyObject* kwargs)
@@ -214,9 +214,7 @@ PyTypeObject pysqlite_RowType = {
         0,                                              /* tp_descr_set */
         0,                                              /* tp_dictoffset */
         (initproc)pysqlite_row_init,                    /* tp_init */
-        0,                                              /* tp_alloc */
         0,                                              /* tp_new */
-        0                                               /* tp_free */
 };
 
 extern int pysqlite_row_setup_types(void)

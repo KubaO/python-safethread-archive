@@ -283,7 +283,7 @@ newnavrrobject(NavReplyRecord *itself)
 {
 	navrrobject *self;
 	
-	self = PyObject_NEW(navrrobject, &Navrrtype);
+	self = PyObject_New(&Navrrtype);
 	if (self == NULL)
 		return NULL;
 	self->itself = *itself;
@@ -295,7 +295,7 @@ static void
 navrr_dealloc(navrrobject *self)
 {
 	NavDisposeReply(&self->itself);
-	PyObject_DEL(self);
+	PyObject_Del(self);
 }
 
 static PyObject *

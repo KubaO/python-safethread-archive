@@ -51,12 +51,15 @@ _PySet_Dummy(void)
 	INIT_NONZERO_SET_SLOTS(so);				\
     } while(0)
 
+#ifdef USE_SETS_FREELIST
 /* Reuse scheme to save calls to malloc, free, and memset */
 #ifndef PySet_MAXFREELIST
 #define PySet_MAXFREELIST 80
 #endif
 static PySetObject *free_list[PySet_MAXFREELIST];
 static int numfree = 0;
+static PyThread_type_lock *free_sets_lock;
+#endif
 
 
 /*
@@ -550,10 +553,6 @@ set_dealloc(PySetObject *so)
 {
 	register setentry *entry;
 	Py_ssize_t fill = so->fill;
-	PyObject_GC_UnTrack(so);
-	Py_TRASHCAN_SAFE_BEGIN(so)
-	if (so->weakreflist != NULL)
-		PyObject_ClearWeakRefs((PyObject *) so);
 
 	for (entry = so->table; fill > 0; entry++) {
 		if (entry->key) {
@@ -563,11 +562,18 @@ set_dealloc(PySetObject *so)
 	}
 	if (so->table != so->smalltable)
 		PyMem_DEL(so->table);
-	if (numfree < PySet_MAXFREELIST && PyAnySet_CheckExact(so))
+#ifdef USE_SETS_FREELIST
+	PyThread_lock_acquire(free_sets_lock);
+	if (numfree < PySet_MAXFREELIST && PyAnySet_CheckExact(so)) {
 		free_list[numfree++] = so;
-	else 
-		Py_TYPE(so)->tp_free(so);
-	Py_TRASHCAN_SAFE_END(so)
+		PyThread_lock_release(free_sets_lock);
+	} else {
+		PyThread_lock_release(free_sets_lock);
+#endif
+		PyObject_Del(so);
+#ifdef USE_SETS_FREELIST
+	}
+#endif
 }
 
 static PyObject *
@@ -890,7 +896,7 @@ PyTypeObject PySetIter_Type = {
 static PyObject *
 set_iter(PySetObject *so)
 {
-	setiterobject *si = PyObject_New(setiterobject, &PySetIter_Type);
+	setiterobject *si = PyObject_New(&PySetIter_Type);
 	if (si == NULL)
 		return NULL;
 	Py_INCREF(so);
@@ -977,22 +983,26 @@ make_new_set(PyTypeObject *type, PyObject *iterable)
 	}
 
 	/* create PySetObject structure */
+#ifdef USE_SETS_FREELIST
+	PyThread_lock_acquire(free_sets_lock);
 	if (numfree &&
 	    (type == &PySet_Type  ||  type == &PyFrozenSet_Type)) {
 		so = free_list[--numfree];
+		PyThread_lock_release(free_sets_lock);
 		assert (so != NULL && PyAnySet_CheckExact(so));
 		Py_TYPE(so) = type;
-		_Py_NewReference((PyObject *)so);
+		//_Py_NewReference((PyObject *)so);
 		EMPTY_TO_MINSIZE(so);
-		PyObject_GC_Track(so);
 	} else {
-		so = (PySetObject *)type->tp_alloc(type, 0);
+		PyThread_lock_release(free_sets_lock);
+#endif
+		so = PyObject_New(type);
 		if (so == NULL)
 			return NULL;
-		/* tp_alloc has already zeroed the structure */
-		assert(so->table == NULL && so->fill == 0 && so->used == 0);
 		INIT_NONZERO_SET_SLOTS(so);
+#ifdef USE_SETS_FREELIST
 	}
+#endif
 
 	so->lookup = set_lookkey_unicode;
 	so->weakreflist = NULL;
@@ -1043,17 +1053,34 @@ frozenset_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 }
 
 void
+_PySet_Init(void)
+{
+#ifdef USE_SETS_FREELIST
+	free_sets_lock = PyThread_lock_allocate();
+	if (!free_sets_lock)
+		Py_FatalError("unable to allocate lock");
+#endif
+}
+
+void
 PySet_Fini(void)
 {
+#ifdef USE_SETS_FREELIST
 	PySetObject *so;
 
 	while (numfree) {
 		numfree--;
 		so = free_list[numfree];
-		PyObject_GC_Del(so);
+		PyObject_Del(so);
 	}
+#endif
 	Py_CLEAR(dummy);
 	Py_CLEAR(emptyfrozenset);
+
+#ifdef USE_SETS_FREELIST
+	PyThread_lock_free(free_sets_lock);
+	free_sets_lock = NULL;
+#endif
 }
 
 static PyObject *
@@ -2000,7 +2027,8 @@ PyTypeObject PySet_Type = {
 	0,				/* tp_setattro */
 	0,				/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-		Py_TPFLAGS_BASETYPE,	/* tp_flags */
+		Py_TPFLAGS_BASETYPE | Py_TPFLAGS_SHAREABLE,
+					/* tp_flags */
 	set_doc,			/* tp_doc */
 	(traverseproc)set_traverse,	/* tp_traverse */
 	(inquiry)set_clear_internal,	/* tp_clear */
@@ -2017,9 +2045,7 @@ PyTypeObject PySet_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	(initproc)set_init,		/* tp_init */
-	PyType_GenericAlloc,		/* tp_alloc */
 	set_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 /* frozenset object ********************************************************/
@@ -2095,7 +2121,8 @@ PyTypeObject PyFrozenSet_Type = {
 	0,				/* tp_setattro */
 	0,				/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-		Py_TPFLAGS_BASETYPE,	/* tp_flags */
+		Py_TPFLAGS_BASETYPE | Py_TPFLAGS_SHAREABLE,
+					/* tp_flags */
 	frozenset_doc,			/* tp_doc */
 	(traverseproc)set_traverse,	/* tp_traverse */
 	(inquiry)set_clear_internal,	/* tp_clear */
@@ -2112,9 +2139,7 @@ PyTypeObject PyFrozenSet_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	PyType_GenericAlloc,		/* tp_alloc */
 	frozenset_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -2175,8 +2200,8 @@ PySet_Discard(PyObject *set, PyObject *key)
 int
 PySet_Add(PyObject *anyset, PyObject *key)
 {
-	if (!PySet_Check(anyset) && 
-	    (!PyFrozenSet_Check(anyset) || Py_REFCNT(anyset) != 1)) {
+	if (!PySet_Check(anyset) &&
+	    (!PyFrozenSet_Check(anyset) || !Py_RefcntMatches(anyset, 1))) {
 		PyErr_BadInternalCall();
 		return -1;
 	}

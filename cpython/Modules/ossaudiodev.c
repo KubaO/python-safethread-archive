@@ -133,7 +133,7 @@ newossobject(PyObject *arg)
         return NULL;
     }
     /* Create and initialize the object */
-    if ((self = PyObject_New(oss_audio_t, &OSSAudioType)) == NULL) {
+    if ((self = PyObject_New(&OSSAudioType)) == NULL) {
         close(fd);
         return NULL;
     }
@@ -181,7 +181,7 @@ newossmixerobject(PyObject *arg)
         return NULL;
     }
 
-    if ((self = PyObject_New(oss_mixer_t, &OSSMixerType)) == NULL) {
+    if ((self = PyObject_New(&OSSMixerType)) == NULL) {
         close(fd);
         return NULL;
     }

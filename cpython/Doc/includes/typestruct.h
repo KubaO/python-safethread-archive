@@ -63,9 +63,7 @@ typedef struct _typeobject {
     descrsetfunc tp_descr_set;
     long tp_dictoffset;
     initproc tp_init;
-    allocfunc tp_alloc;
     newfunc tp_new;
-    freefunc tp_free; /* Low-level free-memory routine */
     inquiry tp_is_gc; /* For PyObject_IS_GC */
     PyObject *tp_bases;
     PyObject *tp_mro; /* method resolution order */

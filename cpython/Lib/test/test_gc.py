@@ -299,6 +299,16 @@ class GCTests(unittest.TestCase):
                 v = {1: v, 2: Ouch()}
         gc.disable()
 
+    def test_trashcan_clear(self):
+        # Make sure that, if the trashcan is utilized during the
+        # clearing phase, it performs well
+        t = l = []
+        for i in range(100000):
+            t = (t,)
+        l.append(t)
+        del t, l
+        gc.collect()
+
     def test_boom(self):
         class Boom:
             def __getattr__(self, someattribute):

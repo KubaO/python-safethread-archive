@@ -78,8 +78,8 @@ typedef fpos_t Py_off_t;
 
 
 #ifdef WITH_THREAD
-#define ACQUIRE_LOCK(obj) PyThread_acquire_lock(obj->lock, 1)
-#define RELEASE_LOCK(obj) PyThread_release_lock(obj->lock)
+#define ACQUIRE_LOCK(obj) PyThread_lock_acquire(obj->lock)
+#define RELEASE_LOCK(obj) PyThread_lock_release(obj->lock)
 #else
 #define ACQUIRE_LOCK(obj)
 #define RELEASE_LOCK(obj)
@@ -107,7 +107,7 @@ typedef struct {
 	Py_off_t pos;
 	Py_off_t size;
 #ifdef WITH_THREAD
-	PyThread_type_lock lock;
+	PyThread_type_lock *lock;
 #endif
 } BZ2FileObject;
 
@@ -116,7 +116,7 @@ typedef struct {
 	bz_stream bzs;
 	int running;
 #ifdef WITH_THREAD
-	PyThread_type_lock lock;
+	PyThread_type_lock *lock;
 #endif
 } BZ2CompObject;
 
@@ -126,7 +126,7 @@ typedef struct {
 	int running;
 	PyObject *unused_data;
 #ifdef WITH_THREAD
-	PyThread_type_lock lock;
+	PyThread_type_lock *lock;
 #endif
 } BZ2DecompObject;
 
@@ -1184,7 +1184,7 @@ BZ2File_init(BZ2FileObject *self, PyObject *args, PyObject *kwargs)
 	 * instead of returning */
 
 #ifdef WITH_THREAD
-	self->lock = PyThread_allocate_lock();
+	self->lock = PyThread_lock_allocate();
 	if (!self->lock) {
 		PyErr_SetString(PyExc_MemoryError, "unable to allocate lock");
 		goto error;
@@ -1212,7 +1212,7 @@ error:
 	self->rawfp = NULL;
 #ifdef WITH_THREAD
 	if (self->lock) {
-		PyThread_free_lock(self->lock);
+		PyThread_lock_free(self->lock);
 		self->lock = NULL;
 	}
 #endif
@@ -1225,7 +1225,7 @@ BZ2File_dealloc(BZ2FileObject *self)
 	int bzerror;
 #ifdef WITH_THREAD
 	if (self->lock)
-		PyThread_free_lock(self->lock);
+		PyThread_lock_free(self->lock);
 #endif
 	switch (self->mode) {
 		case MODE_READ:
@@ -1240,7 +1240,7 @@ BZ2File_dealloc(BZ2FileObject *self)
 	Util_DropReadAhead(self);
 	if (self->rawfp != NULL)
 		fclose(self->rawfp);
-	Py_TYPE(self)->tp_free((PyObject *)self);
+	PyObject_Del(self);
 }
 
 /* This is a hacked version of Python's fileobject.c:file_getiter(). */
@@ -1329,9 +1329,7 @@ static PyTypeObject BZ2File_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         (initproc)BZ2File_init, /*tp_init*/
-        PyType_GenericAlloc,    /*tp_alloc*/
         PyType_GenericNew,      /*tp_new*/
-      	PyObject_Free,          /*tp_free*/
         0,                      /*tp_is_gc*/
 };
 
@@ -1517,7 +1515,7 @@ BZ2Comp_init(BZ2CompObject *self, PyObject *args, PyObject *kwargs)
 	}
 
 #ifdef WITH_THREAD
-	self->lock = PyThread_allocate_lock();
+	self->lock = PyThread_lock_allocate();
 	if (!self->lock) {
 		PyErr_SetString(PyExc_MemoryError, "unable to allocate lock");
 		goto error;
@@ -1537,7 +1535,7 @@ BZ2Comp_init(BZ2CompObject *self, PyObject *args, PyObject *kwargs)
 error:
 #ifdef WITH_THREAD
 	if (self->lock) {
-		PyThread_free_lock(self->lock);
+		PyThread_lock_free(self->lock);
 		self->lock = NULL;
 	}
 #endif
@@ -1549,10 +1547,10 @@ BZ2Comp_dealloc(BZ2CompObject *self)
 {
 #ifdef WITH_THREAD
 	if (self->lock)
-		PyThread_free_lock(self->lock);
+		PyThread_lock_free(self->lock);
 #endif
 	BZ2_bzCompressEnd(&self->bzs);
-	Py_TYPE(self)->tp_free((PyObject *)self);
+	PyObject_Del(self);
 }
 
 
@@ -1605,9 +1603,7 @@ static PyTypeObject BZ2Comp_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         (initproc)BZ2Comp_init, /*tp_init*/
-        PyType_GenericAlloc,    /*tp_alloc*/
         PyType_GenericNew,      /*tp_new*/
-      	PyObject_Free,          /*tp_free*/
         0,                      /*tp_is_gc*/
 };
 
@@ -1735,7 +1731,7 @@ BZ2Decomp_init(BZ2DecompObject *self, PyObject *args, PyObject *kwargs)
 		return -1;
 
 #ifdef WITH_THREAD
-	self->lock = PyThread_allocate_lock();
+	self->lock = PyThread_lock_allocate();
 	if (!self->lock) {
 		PyErr_SetString(PyExc_MemoryError, "unable to allocate lock");
 		goto error;
@@ -1760,7 +1756,7 @@ BZ2Decomp_init(BZ2DecompObject *self, PyObject *args, PyObject *kwargs)
 error:
 #ifdef WITH_THREAD
 	if (self->lock) {
-		PyThread_free_lock(self->lock);
+		PyThread_lock_free(self->lock);
 		self->lock = NULL;
 	}
 #endif
@@ -1773,11 +1769,11 @@ BZ2Decomp_dealloc(BZ2DecompObject *self)
 {
 #ifdef WITH_THREAD
 	if (self->lock)
-		PyThread_free_lock(self->lock);
+		PyThread_lock_free(self->lock);
 #endif
 	Py_XDECREF(self->unused_data);
 	BZ2_bzDecompressEnd(&self->bzs);
-	Py_TYPE(self)->tp_free((PyObject *)self);
+	PyObject_Del(self);
 }
 
 
@@ -1829,9 +1825,7 @@ static PyTypeObject BZ2Decomp_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         (initproc)BZ2Decomp_init, /*tp_init*/
-        PyType_GenericAlloc,    /*tp_alloc*/
         PyType_GenericNew,      /*tp_new*/
-      	PyObject_Free,          /*tp_free*/
         0,                      /*tp_is_gc*/
 };
 

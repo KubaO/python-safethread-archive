@@ -601,7 +601,7 @@ static pollObject *
 newPollObject(void)
 {
         pollObject *self;
-	self = PyObject_New(pollObject, &poll_Type);
+	self = PyObject_New(&poll_Type);
 	if (self == NULL)
 		return NULL;
 	/* ufd_uptodate is a Boolean, denoting whether the 
@@ -727,10 +727,13 @@ pyepoll_internal_close(pyEpoll_Object *self)
 	if (self->epfd >= 0) {
 		int epfd = self->epfd;
 		self->epfd = -1;
-		Py_BEGIN_ALLOW_THREADS
+#warning FIXME epoll should not suspend during dealloc
+		//Py_BEGIN_ALLOW_THREADS
+		PyState_MaybeSuspend(); /* XXX FIXME HACK */
 		if (close(epfd) < 0)
 			save_errno = errno;
-		Py_END_ALLOW_THREADS
+		//Py_END_ALLOW_THREADS
+		PyState_MaybeResume(); /* XXX FIXME HACK */
 	}
 	return save_errno;
 }
@@ -750,8 +753,8 @@ newPyEpoll_Object(PyTypeObject *type, int sizehint, SOCKET fd)
 		return NULL;
 	}
 
-	assert(type != NULL && type->tp_alloc != NULL);
-	self = (pyEpoll_Object *) type->tp_alloc(type, 0);
+	assert(type != NULL);
+	self = PyObject_New(type);
 	if (self == NULL)
 		return NULL;
 
@@ -790,7 +793,7 @@ static void
 pyepoll_dealloc(pyEpoll_Object *self)
 {
 	(void)pyepoll_internal_close(self);
-	Py_TYPE(self)->tp_free(self);
+	PyObject_Del(self);
 }
 
 static PyObject*
@@ -1115,9 +1118,7 @@ static PyTypeObject pyEpoll_Type = {
 	0,						/* tp_descr_set */
 	0,						/* tp_dictoffset */
 	0,						/* tp_init */
-	0,						/* tp_alloc */
 	pyepoll_new,					/* tp_new */
-	0,						/* tp_free */
 };
 
 #endif /* HAVE_EPOLL */
@@ -1328,9 +1329,7 @@ static PyTypeObject kqueue_event_Type = {
 	0,						/* tp_descr_set */
 	0,						/* tp_dictoffset */
 	(initproc)kqueue_event_init,			/* tp_init */
-	0,						/* tp_alloc */
 	0,						/* tp_new */
-	0,						/* tp_free */
 };
 
 static PyObject *
@@ -1359,8 +1358,8 @@ static PyObject *
 newKqueue_Object(PyTypeObject *type, SOCKET fd)
 {
 	kqueue_queue_Object *self;
-	assert(type != NULL && type->tp_alloc != NULL);
-	self = (kqueue_queue_Object *) type->tp_alloc(type, 0);
+	assert(type != NULL);
+	PyObject_New(type);
 	if (self == NULL) {
 		return NULL;
 	}
@@ -1399,7 +1398,7 @@ static void
 kqueue_queue_dealloc(kqueue_queue_Object *self)
 {
 	kqueue_queue_internal_close(self);
-	Py_TYPE(self)->tp_free(self);
+	PyObject_Del(self);
 }
 
 static PyObject*
@@ -1683,9 +1682,7 @@ static PyTypeObject kqueue_queue_Type = {
 	0,						/* tp_descr_set */
 	0,						/* tp_dictoffset */
 	0,						/* tp_init */
-	0,						/* tp_alloc */
 	kqueue_queue_new,				/* tp_new */
-	0,						/* tp_free */
 };
 
 #endif /* HAVE_KQUEUE */

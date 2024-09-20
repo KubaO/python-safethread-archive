@@ -727,6 +727,9 @@
 /* Define to 1 if you have the <thread.h> header file. */
 #undef HAVE_THREAD_H
 
+/* Define if your toolchain supports __thread storage class specifier. */
+#undef HAVE_THREAD_LOCAL_VARIABLE
+
 /* Define to 1 if you have the `timegm' function. */
 #undef HAVE_TIMEGM
 
@@ -956,6 +959,10 @@
    linker (dyld) instead of the old-style (NextStep) dynamic linker (rld).
    Dyld is necessary to support frameworks. */
 #undef WITH_DYLD
+
+/* Define if you want to build an interpreter with the GIL, for
+   single-threaded performance rather than multi-threaded */
+#undef WITH_GIL
 
 /* Define to 1 if libintl is needed for locale functions. */
 #undef WITH_LIBINTL

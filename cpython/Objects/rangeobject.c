@@ -54,6 +54,8 @@ range_new(PyTypeObject *type, PyObject *args, PyObject *kw)
     rangeobject *obj = NULL;
     PyObject *start = NULL, *stop = NULL, *step = NULL;
 
+    if (!(type->tp_flags & Py_TPFLAGS_READY))
+        Py_FatalError("range type (or subtype) isn't initialized");
     if (!_PyArg_NoKeywords("range()", kw))
         return NULL;
 
@@ -81,7 +83,7 @@ range_new(PyTypeObject *type, PyObject *args, PyObject *kw)
             goto Fail;
     }
 
-    obj = PyObject_New(rangeobject, &PyRange_Type);
+    obj = PyObject_New(&PyRange_Type);
     if (obj == NULL)
         goto Fail;
     obj->start = start;
@@ -292,7 +294,7 @@ PyTypeObject PyRange_Type = {
 	PyObject_GenericGetAttr,  /* tp_getattro */
 	0,			/* tp_setattro */
 	0,			/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT,	/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	range_doc,		/* tp_doc */
 	0,			/* tp_traverse */
 	0,			/* tp_clear */
@@ -309,7 +311,6 @@ PyTypeObject PyRange_Type = {
 	0,			/* tp_descr_set */
 	0,			/* tp_dictoffset */
 	0,			/* tp_init */
-	0,			/* tp_alloc */
 	range_new,		/* tp_new */
 };
 
@@ -405,7 +406,6 @@ PyTypeObject PyRangeIter_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	rangeiter_new,				/* tp_new */
 };
 
@@ -441,7 +441,7 @@ get_len_of_range(long lo, long hi, long step)
 static PyObject *
 int_range_iter(long start, long stop, long step)
 {
-    rangeiterobject *it = PyObject_New(rangeiterobject, &PyRangeIter_Type);
+    rangeiterobject *it = PyObject_New(&PyRangeIter_Type);
     if (it == NULL)
         return NULL;
     it->start = start;
@@ -576,7 +576,7 @@ range_iter(PyObject *seq)
        and try again with a long range. */
     PyErr_Clear();
 
-    it = PyObject_New(longrangeiterobject, &PyLongRangeIter_Type);
+    it = PyObject_New(&PyLongRangeIter_Type);
     if (it == NULL)
         return NULL;
 
@@ -642,7 +642,7 @@ range_reverse(PyObject *seq)
     }
     PyErr_Clear();
 
-    it = PyObject_New(longrangeiterobject, &PyLongRangeIter_Type);
+    it = PyObject_New(&PyLongRangeIter_Type);
     if (it == NULL)
         return NULL;
 
@@ -692,3 +692,195 @@ create_failure:
     PyObject_Del(it);
     return NULL;
 }
+
+
+/* DUMMY */
+PyTypeObject PyFakeRange_Type;
+
+typedef struct {
+	PyObject_HEAD
+	PyObject *start;
+	PyObject *stop;
+	PyObject *step;
+	long	x_index;
+	long	x_start;
+	long	x_step;
+	long	x_len;
+} fakerangeobject;
+
+static PyObject *
+fakerange_new(PyTypeObject *type, PyObject *args, PyObject *kw)
+{
+    fakerangeobject *obj = NULL;
+    PyObject *start = NULL, *stop = NULL, *step = NULL;
+
+    if (!_PyArg_NoKeywords("range()", kw))
+        return NULL;
+
+    if (PyTuple_Size(args) <= 1) {
+        if (!PyArg_UnpackTuple(args, "range", 1, 1, &stop))
+            goto Fail;
+        stop = PyNumber_Index(stop);
+        if (!stop)
+            goto Fail;
+        start = PyLong_FromLong(0);
+        step = PyLong_FromLong(1);
+        if (!start || !step)
+            goto Fail;
+    }
+    else {
+        if (!PyArg_UnpackTuple(args, "range", 2, 3,
+                               &start, &stop, &step))
+            goto Fail;
+
+        /* Convert borrowed refs to owned refs */
+        start = PyNumber_Index(start);
+        stop = PyNumber_Index(stop);
+        step = validate_step(step);
+        if (!start || !stop || !step)
+            goto Fail;
+    }
+
+    obj = PyObject_New(&PyFakeRange_Type);
+    if (obj == NULL)
+        goto Fail;
+    obj->start = start;
+    obj->stop = stop;
+    obj->step = step;
+    Py_INCREF(obj->start);
+    Py_INCREF(obj->stop);
+    Py_INCREF(obj->step);
+    obj->x_start = PyLong_AsLong(start);
+    //obj->x_stop = PyLong_AsLong(stop);
+    obj->x_step = PyLong_AsLong(step);
+    if (obj->x_step > 0)
+        obj->x_len = get_len_of_range(obj->x_start, PyLong_AsLong(stop), obj->x_step);
+    else
+        obj->x_len = get_len_of_range(PyLong_AsLong(stop), obj->x_start, -obj->x_step);
+    obj->x_index = 0;
+    return (PyObject *) obj;
+
+Fail:
+    //Py_XDECREF(start);
+    //Py_XDECREF(stop);
+    //Py_XDECREF(step);
+    return NULL;
+}
+
+static void
+fakerange_dealloc(rangeobject *r)
+{
+    printf("Fakerange dealloc\n");
+    Py_DECREF(r->start);
+    Py_DECREF(r->stop);
+    Py_DECREF(r->step);
+    r->start = NULL;
+    r->stop = NULL;
+    r->step = NULL;
+    PyObject_Del(r);
+}
+
+static PyObject *
+fakerange_iter(PyObject *seq)
+{
+    Py_INCREF(seq);
+    return seq;
+}
+
+#include <pthread.h>
+AO_t rocky;
+AO_t bullwinkle[16];
+AO_t bob;
+
+static PyObject *
+fakerange_next(fakerangeobject *r)
+{
+#if 1
+    int i;
+    bullwinkle[0] = 0;
+    for (i = 0; i < 1000; i++) {
+        //AO_fetch_and_add1(&rocky);
+        //AO_fetch_and_sub1(&rocky);
+        //(void)AO_load_full(&bob);
+        //(void)AO_load_full(&bob);
+        //printf("%p %p\n", &rocky, &bob);
+        //static pthread_mutex_t rocky = PTHREAD_MUTEX_INITIALIZER;
+        //pthread_mutex_lock(&rocky);
+        //pthread_mutex_unlock(&rocky);
+        //static AO_t rocky;
+        //while (1) {
+        //    AO_t prev = AO_load_full(&rocky);
+        //    if (AO_compare_and_swap(&rocky, prev, prev + 1))
+        //        break;
+        //}
+        //while (1) {
+        //    AO_t prev = AO_load_full(&rocky);
+        //    if (AO_compare_and_swap(&rocky, prev, prev - 1))
+        //        break;
+        //}
+    }
+    if (r->x_index < r->x_len) {
+        r->x_index++;
+        //Py_INCREF(Py_None);
+        //return Py_None;
+        //free(malloc(sizeof(PyVarObject)+4));
+        Py_INCREF(r->start);
+        return r->start;
+    }
+    return NULL;
+#elif 0
+    if (r->x_index < r->x_len) {
+        PyObject *foo;
+        r->x_index++;
+        foo = PyLong_FromLong(100000);
+        //printf("Foo: %p\n", foo);
+        return foo;
+    }
+    return NULL;
+#else
+    if (r->x_index < r->x_len)
+        return PyLong_FromLong(r->x_start + (r->x_index++) * r->x_step);
+    return NULL;
+#endif
+}
+
+PyTypeObject PyFakeRange_Type = {
+	PyVarObject_HEAD_INIT(&PyType_Type, 0)
+	"fakerange",		/* Name of this type */
+	sizeof(fakerangeobject),	/* Basic object size */
+	0,			/* Item size for varobject */
+	(destructor)fakerange_dealloc, /* tp_dealloc */
+	0,			/* tp_print */
+	0,			/* tp_getattr */
+	0,			/* tp_setattr */
+	0,			/* tp_compare */
+	(reprfunc)range_repr,	/* tp_repr */
+	0,			/* tp_as_number */
+	&range_as_sequence,	/* tp_as_sequence */
+	0,			/* tp_as_mapping */
+	0,			/* tp_hash */
+	0,			/* tp_call */
+	0,			/* tp_str */
+	PyObject_GenericGetAttr,  /* tp_getattro */
+	0,			/* tp_setattro */
+	0,			/* tp_as_buffer */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_SHAREABLE,	/* tp_flags */
+	range_doc,		/* tp_doc */
+	0,			/* tp_traverse */
+	0,			/* tp_clear */
+	0,			/* tp_richcompare */
+	0,			/* tp_weaklistoffset */
+	fakerange_iter,		/* tp_iter */
+	(iternextfunc)fakerange_next,		/* tp_iternext */
+	range_methods,		/* tp_methods */
+	0,			/* tp_members */
+	0,			/* tp_getset */
+	0,			/* tp_base */
+	0,			/* tp_dict */
+	0,			/* tp_descr_get */
+	0,			/* tp_descr_set */
+	0,			/* tp_dictoffset */
+	0,			/* tp_init */
+	fakerange_new,		/* tp_new */
+};
+

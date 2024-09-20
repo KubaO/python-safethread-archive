@@ -82,11 +82,9 @@ PyString_FromStringAndSize(const char *str, Py_ssize_t size)
 		return (PyObject *)op;
 	}
 
-	/* Inline PyObject_NewVar */
-	op = (PyStringObject *)PyObject_MALLOC(sizeof(PyStringObject) + size);
+	op = PyObject_NewVar(&PyString_Type, size);
 	if (op == NULL)
-		return PyErr_NoMemory();
-	PyObject_INIT_VAR(op, &PyString_Type, size);
+		return NULL;
 	op->ob_shash = -1;
 	if (str != NULL)
 		Py_MEMCPY(op->ob_sval, str, size);
@@ -130,11 +128,9 @@ PyString_FromString(const char *str)
 		return (PyObject *)op;
 	}
 
-	/* Inline PyObject_NewVar */
-	op = (PyStringObject *)PyObject_MALLOC(sizeof(PyStringObject) + size);
+	op = PyObject_NewVar(&PyString_Type, size);
 	if (op == NULL)
-		return PyErr_NoMemory();
-	PyObject_INIT_VAR(op, &PyString_Type, size);
+		return NULL;
 	op->ob_shash = -1;
 	Py_MEMCPY(op->ob_sval, str, size+1);
 	/* share short strings */
@@ -351,7 +347,7 @@ PyString_FromFormat(const char *format, ...)
 static void
 string_dealloc(PyObject *op)
 {
-	Py_TYPE(op)->tp_free(op);
+	PyObject_Del(op);
 }
 
 /* Unescape a backslash-escaped string. If unicode is non-zero,
@@ -742,11 +738,9 @@ string_repeat(register PyStringObject *a, register Py_ssize_t n)
 			"repeated string is too long");
 		return NULL;
 	}
-	op = (PyStringObject *)
-		PyObject_MALLOC(sizeof(PyStringObject) + nbytes);
+	op = PyObject_NewVar(&PyString_Type, size);
 	if (op == NULL)
-		return PyErr_NoMemory();
-	PyObject_INIT_VAR(op, &PyString_Type, size);
+		return NULL;
 	op->ob_shash = -1;
 	op->ob_sval[size] = '\0';
 	if (Py_SIZE(a) == 1 && n > 0) {
@@ -3012,7 +3006,7 @@ str_subtype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 	assert(PyString_CheckExact(tmp));
 	n = PyString_GET_SIZE(tmp);
-	pnew = type->tp_alloc(type, n);
+	pnew = PyObject_NewVar(type, n);
 	if (pnew != NULL) {
 		Py_MEMCPY(PyString_AS_STRING(pnew),
 			  PyString_AS_STRING(tmp), n+1);
@@ -3021,6 +3015,12 @@ str_subtype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 	Py_DECREF(tmp);
 	return pnew;
+}
+
+static int
+str_isshareable (PyObject *v)
+{
+    return PyString_CheckExact(v);
 }
 
 PyDoc_STRVAR(string_doc,
@@ -3042,7 +3042,7 @@ PyTypeObject PyString_Type = {
 	"bytes",
 	sizeof(PyStringObject),
 	sizeof(char),
- 	string_dealloc, 			/* tp_dealloc */
+	string_dealloc,				/* tp_dealloc */
 	0,			 		/* tp_print */
 	0,					/* tp_getattr */
 	0,					/* tp_setattr */
@@ -3058,7 +3058,8 @@ PyTypeObject PyString_Type = {
 	0,					/* tp_setattro */
 	&string_as_buffer,			/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
-		Py_TPFLAGS_STRING_SUBCLASS,	/* tp_flags */
+		Py_TPFLAGS_STRING_SUBCLASS |
+		Py_TPFLAGS_SHAREABLE,		/* tp_flags */
 	string_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -3075,9 +3076,14 @@ PyTypeObject PyString_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	string_new,				/* tp_new */
-	PyObject_Del,	                	/* tp_free */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	str_isshareable,			/* tp_isshareable */
 };
 
 void
@@ -3125,25 +3131,19 @@ _PyString_Resize(PyObject **pv, Py_ssize_t newsize)
 	register PyObject *v;
 	register PyStringObject *sv;
 	v = *pv;
-	if (!PyString_Check(v) || Py_REFCNT(v) != 1 || newsize < 0) {
+	if (!PyString_Check(v) || !Py_RefcntMatches(v, 1) || newsize < 0) {
 		*pv = 0;
 		Py_DECREF(v);
 		PyErr_BadInternalCall();
 		return -1;
 	}
-	/* XXX UNREF/NEWREF interface should be more symmetrical */
-	_Py_DEC_REFTOTAL;
-	_Py_ForgetReference(v);
-	*pv = (PyObject *)
-		PyObject_REALLOC((char *)v, sizeof(PyStringObject) + newsize);
+	*pv = PyObject_Resize(v, newsize);
 	if (*pv == NULL) {
-		PyObject_Del(v);
-		PyErr_NoMemory();
+		Py_DECREF(v);
 		return -1;
 	}
-	_Py_NewReference(*pv);
 	sv = (PyStringObject *) *pv;
-	Py_SIZE(sv) = newsize;
+	assert(Py_SIZE(sv) == newsize);
 	sv->ob_sval[newsize] = '\0';
 	sv->ob_shash = -1;	/* invalidate cached hash value */
 	return 0;
@@ -3221,7 +3221,7 @@ _PyString_FormatLong(PyObject *val, int flags, int prec, int type,
 	}
 
 	/* To modify the string in-place, there can only be one reference. */
-	if (Py_REFCNT(result) != 1) {
+	if (!Py_RefcntMatches(result, 1)) {
 		PyErr_BadInternalCall();
 		return NULL;
 	}
@@ -3315,9 +3315,8 @@ typedef struct {
 static void
 striter_dealloc(striterobject *it)
 {
-	_PyObject_GC_UNTRACK(it);
 	Py_XDECREF(it->it_seq);
-	PyObject_GC_Del(it);
+	PyObject_Del(it);
 }
 
 static int
@@ -3412,12 +3411,11 @@ str_iter(PyObject *seq)
 		PyErr_BadInternalCall();
 		return NULL;
 	}
-	it = PyObject_GC_New(striterobject, &PyStringIter_Type);
+	it = PyObject_New(&PyStringIter_Type);
 	if (it == NULL)
 		return NULL;
 	it->it_index = 0;
 	Py_INCREF(seq);
 	it->it_seq = (PyStringObject *)seq;
-	_PyObject_GC_TRACK(it);
 	return (PyObject *)it;
 }

@@ -213,7 +213,7 @@ void pysqlite_connection_dealloc(pysqlite_Connection* self)
     Py_XDECREF(self->collations);
     Py_XDECREF(self->statements);
 
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    PyObject_Del(self);
 }
 
 PyObject* pysqlite_connection_cursor(pysqlite_Connection* self, PyObject* args, PyObject* kwargs)
@@ -510,9 +510,11 @@ void _pysqlite_func_callback(sqlite3_context* context, int argc, sqlite3_value**
     PyObject* py_func;
     PyObject* py_retval = NULL;
 
-    PyGILState_STATE threadstate;
+    PyState_EnterFrame *enterframe;
 
-    threadstate = PyGILState_Ensure();
+    enterframe = PyState_Enter();
+    if (enterframe == NULL)
+        Py_FatalError("PyState_Enter failed");
 
     py_func = (PyObject*)sqlite3_user_data(context);
 
@@ -534,7 +536,7 @@ void _pysqlite_func_callback(sqlite3_context* context, int argc, sqlite3_value**
         _sqlite3_result_error(context, "user-defined function raised exception", -1);
     }
 
-    PyGILState_Release(threadstate);
+    PyState_Exit(threadstate);
 }
 
 static void _pysqlite_step_callback(sqlite3_context *context, int argc, sqlite3_value** params)
@@ -545,9 +547,11 @@ static void _pysqlite_step_callback(sqlite3_context *context, int argc, sqlite3_
     PyObject** aggregate_instance;
     PyObject* stepmethod = NULL;
 
-    PyGILState_STATE threadstate;
+    PyState_EnterFrame *enterframe;
 
-    threadstate = PyGILState_Ensure();
+    enterframe = PyState_Enter();
+    if (enterframe == NULL)
+        Py_FatalError("PyState_Enter failed");
 
     aggregate_class = (PyObject*)sqlite3_user_data(context);
 
@@ -594,7 +598,7 @@ error:
     Py_XDECREF(stepmethod);
     Py_XDECREF(function_result);
 
-    PyGILState_Release(threadstate);
+    PyState_Exit(enterframe);
 }
 
 void _pysqlite_final_callback(sqlite3_context* context)
@@ -603,9 +607,11 @@ void _pysqlite_final_callback(sqlite3_context* context)
     PyObject** aggregate_instance;
     PyObject* aggregate_class;
 
-    PyGILState_STATE threadstate;
+    PyState_EnterFrame *enterframe;
 
-    threadstate = PyGILState_Ensure();
+    enterframe = PyState_Enter();
+    if (enterframe == NULL)
+        Py_FatalError("PyState_Enter failed");
 
     aggregate_class = (PyObject*)sqlite3_user_data(context);
 
@@ -633,7 +639,7 @@ error:
     Py_XDECREF(*aggregate_instance);
     Py_XDECREF(function_result);
 
-    PyGILState_Release(threadstate);
+    PyState_Exit(enterframe);
 }
 
 void _pysqlite_drop_unused_statement_references(pysqlite_Connection* self)
@@ -728,9 +734,12 @@ static int _authorizer_callback(void* user_arg, int action, const char* arg1, co
 {
     PyObject *ret;
     int rc;
-    PyGILState_STATE gilstate;
+    PyState_EnterFrame *enterframe;
 
-    gilstate = PyGILState_Ensure();
+    enterframe = PyState_Enter();
+    if (enterframe == NULL)
+        Py_FatalError("PyState_Enter failed");
+
     ret = PyObject_CallFunction((PyObject*)user_arg, "issss", action, arg1, arg2, dbname, access_attempt_source);
 
     if (!ret) {
@@ -750,7 +759,7 @@ static int _authorizer_callback(void* user_arg, int action, const char* arg1, co
         Py_DECREF(ret);
     }
 
-    PyGILState_Release(gilstate);
+    PyState_Exit(enterframe);
     return rc;
 }
 
@@ -1071,12 +1080,14 @@ pysqlite_collation_callback(
     PyObject* callback = (PyObject*)context;
     PyObject* string1 = 0;
     PyObject* string2 = 0;
-    PyGILState_STATE gilstate;
+    PyState_EnterFrame *enterframe;
 
     PyObject* retval = NULL;
     int result = 0;
 
-    gilstate = PyGILState_Ensure();
+    enterframe = PyState_Enter();
+    if (enterframe == NULL)
+        Py_FatalError("PyState_Enter failed");
 
     if (PyErr_Occurred()) {
         goto finally;
@@ -1106,7 +1117,7 @@ finally:
     Py_XDECREF(string2);
     Py_XDECREF(retval);
 
-    PyGILState_Release(gilstate);
+    PyState_Exit(enterframe);
 
     return result;
 }
@@ -1383,9 +1394,7 @@ PyTypeObject pysqlite_ConnectionType = {
         0,                                              /* tp_descr_set */
         0,                                              /* tp_dictoffset */
         (initproc)pysqlite_connection_init,             /* tp_init */
-        0,                                              /* tp_alloc */
         0,                                              /* tp_new */
-        0                                               /* tp_free */
 };
 
 extern int pysqlite_connection_setup_types(void)

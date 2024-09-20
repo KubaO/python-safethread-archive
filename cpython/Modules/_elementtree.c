@@ -294,7 +294,7 @@ element_new(PyObject* tag, PyObject* attrib)
 {
     ElementObject* self;
 
-    self = PyObject_New(ElementObject, &Element_Type);
+    self = PyObject_New(&Element_Type);
     if (self == NULL)
         return NULL;
 
@@ -1427,7 +1427,7 @@ treebuilder_new(void)
 {
     TreeBuilderObject* self;
 
-    self = PyObject_New(TreeBuilderObject, &TreeBuilder_Type);
+    self = PyObject_New(&TreeBuilder_Type);
     if (self == NULL)
         return NULL;
 
@@ -1584,7 +1584,7 @@ treebuilder_handle_data(TreeBuilderObject* self, PyObject* data)
         Py_INCREF(data); self->data = data;
     } else {
         /* more than one item; use a list to collect items */
-        if (PyString_CheckExact(self->data) && Py_REFCNT(self->data) == 1 &&
+        if (PyString_CheckExact(self->data) && Py_RefcntMatches(self->data, 1) &&
             PyString_CheckExact(data) && PyString_GET_SIZE(data) == 1) {
             /* expat often generates single character data sections; handle
                the most common case by resizing the existing string... */
@@ -2167,7 +2167,7 @@ xmlparser(PyObject* self_, PyObject* args, PyObject* kw)
     }
 #endif
 
-    self = PyObject_New(XMLParserObject, &XMLParser_Type);
+    self = PyObject_New(&XMLParser_Type);
     if (self == NULL)
         return NULL;
 

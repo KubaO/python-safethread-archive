@@ -175,13 +175,13 @@ PyCursesPanel_New(PANEL *pan, PyCursesWindowObject *wo)
 {
     PyCursesPanelObject *po;
 
-    po = PyObject_NEW(PyCursesPanelObject, &PyCursesPanel_Type);
+    po = PyObject_New(&PyCursesPanel_Type);
     if (po == NULL) return NULL;
     po->pan = pan;
     po->wo = wo;
     Py_INCREF(wo);
     if (insert_lop(po) < 0) {
-	PyObject_DEL(po);
+	PyObject_Del(po);
 	return NULL;
     }
     return (PyObject *)po;
@@ -193,7 +193,7 @@ PyCursesPanel_Dealloc(PyCursesPanelObject *po)
     (void)del_panel(po->pan);
     Py_DECREF(po->wo);
     remove_lop(po);
-    PyObject_DEL(po);
+    PyObject_Del(po);
 }
 
 /* panel_above(NULL) returns the bottom panel in the stack. To get

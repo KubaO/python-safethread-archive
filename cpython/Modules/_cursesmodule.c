@@ -354,7 +354,7 @@ PyCursesWindow_New(WINDOW *win)
 {
 	PyCursesWindowObject *wo;
 
-	wo = PyObject_NEW(PyCursesWindowObject, &PyCursesWindow_Type);
+	wo = PyObject_New(&PyCursesWindow_Type);
 	if (wo == NULL) return NULL;
 	wo->win = win;
 	return (PyObject *)wo;
@@ -364,7 +364,7 @@ static void
 PyCursesWindow_Dealloc(PyCursesWindowObject *wo)
 {
   if (wo->win != stdscr) delwin(wo->win);
-  PyObject_DEL(wo);
+  PyObject_Del(wo);
 }
 
 /* Addch, Addstr, Addnstr */

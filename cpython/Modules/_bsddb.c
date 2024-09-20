@@ -115,9 +115,10 @@ typedef int Py_ssize_t;
 /* and these are for calling C --> Python */
 #if defined(MYDB_USE_GILSTATE)
 #define MYDB_BEGIN_BLOCK_THREADS \
-		PyGILState_STATE __savestate = PyGILState_Ensure();
+		PyState_EnterFrame *__enterframe = PyState_Enter(); \
+		if (__enterframe == NULL) Py_FatalError("PyState_Enter failed");
 #define MYDB_END_BLOCK_THREADS \
-		PyGILState_Release(__savestate);
+		PyState_Exit(__enterframe);
 #else /* MYDB_USE_GILSTATE */
 /* Pre GILState API - do it the long old way */
 static PyInterpreterState* _db_interpreterState = NULL;
@@ -785,7 +786,7 @@ newDBObject(DBEnvObject* arg, int flags)
     DB_ENV* db_env = NULL;
     int err;
 
-    self = PyObject_New(DBObject, &DB_Type);
+    self = PyObject_New(&DB_Type);
     if (self == NULL)
         return NULL;
 
@@ -846,9 +847,13 @@ DB_dealloc(DBObject* self)
         if (!self->myenvobj ||
             (self->myenvobj && self->myenvobj->db_env))
         {
-            MYDB_BEGIN_ALLOW_THREADS;
+#warning XXX FIXME DB_dealloc cannot call PyState_Suspend while in *_dealloc function
+            /* XXX FIXME shouldn't block here */
+            //MYDB_BEGIN_ALLOW_THREADS;
+            PyState_MaybeSuspend();
             self->db->close(self->db, 0);
-            MYDB_END_ALLOW_THREADS;
+            PyState_MaybeResume();
+            //MYDB_END_ALLOW_THREADS;
         } else {
             PyErr_WarnEx(PyExc_RuntimeWarning,
 			 "DB could not be closed in destructor:"
@@ -856,9 +861,6 @@ DB_dealloc(DBObject* self)
 			 1);
         }
         self->db = NULL;
-    }
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
     }
     if (self->myenvobj) {
         Py_DECREF(self->myenvobj);
@@ -881,7 +883,7 @@ DB_dealloc(DBObject* self)
 static DBCursorObject*
 newDBCursorObject(DBC* dbc, DBObject* db)
 {
-    DBCursorObject* self = PyObject_New(DBCursorObject, &DBCursor_Type);
+    DBCursorObject* self = PyObject_New(&DBCursor_Type);
     if (self == NULL)
         return NULL;
 
@@ -898,10 +900,6 @@ DBCursor_dealloc(DBCursorObject* self)
 {
     int err;
 
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-
     if (self->dbc != NULL) {
 	/* If the underlying database has been closed, we don't
 	   need to do anything. If the environment has been closed
@@ -914,9 +912,12 @@ DBCursor_dealloc(DBCursorObject* self)
         /* test for: open db + no environment or non-closed environment */
 	if (self->mydb->db && (!self->mydb->myenvobj || (self->mydb->myenvobj &&
 	    !self->mydb->myenvobj->closed))) {
-            MYDB_BEGIN_ALLOW_THREADS;
+            /* XXX FIXME shouldn't block here */
+            //MYDB_BEGIN_ALLOW_THREADS;
+            PyState_MaybeSuspend();
             err = self->dbc->c_close(self->dbc);
-            MYDB_END_ALLOW_THREADS;
+            PyState_MaybeResume();
+            //MYDB_END_ALLOW_THREADS;
         }
         self->dbc = NULL;
     }
@@ -929,7 +930,7 @@ static DBEnvObject*
 newDBEnvObject(int flags)
 {
     int err;
-    DBEnvObject* self = PyObject_New(DBEnvObject, &DBEnv_Type);
+    DBEnvObject* self = PyObject_New(&DBEnv_Type);
     if (self == NULL)
         return NULL;
 
@@ -956,14 +957,13 @@ newDBEnvObject(int flags)
 static void
 DBEnv_dealloc(DBEnvObject* self)
 {
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-
     if (self->db_env && !self->closed) {
-        MYDB_BEGIN_ALLOW_THREADS;
+        /* XXX FIXME shouldn't block here */
+        //MYDB_BEGIN_ALLOW_THREADS;
+        PyState_MaybeSuspend();
         self->db_env->close(self->db_env, 0);
-        MYDB_END_ALLOW_THREADS;
+        PyState_MaybeResume();
+        //MYDB_END_ALLOW_THREADS;
     }
     PyObject_Del(self);
 }
@@ -973,7 +973,7 @@ static DBTxnObject*
 newDBTxnObject(DBEnvObject* myenv, DB_TXN *parent, int flags)
 {
     int err;
-    DBTxnObject* self = PyObject_New(DBTxnObject, &DBTxn_Type);
+    DBTxnObject* self = PyObject_New(&DBTxn_Type);
     if (self == NULL)
         return NULL;
     Py_INCREF(myenv);
@@ -999,19 +999,18 @@ newDBTxnObject(DBEnvObject* myenv, DB_TXN *parent, int flags)
 static void
 DBTxn_dealloc(DBTxnObject* self)
 {
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-
     if (self->txn) {
         /* it hasn't been finalized, abort it! */
-        MYDB_BEGIN_ALLOW_THREADS;
+        /* XXX FIXME shouldn't block here */
+        //MYDB_BEGIN_ALLOW_THREADS;
+        PyState_MaybeSuspend();
 #if (DBVER >= 40)
         self->txn->abort(self->txn);
 #else
         txn_abort(self->txn);
 #endif
-        MYDB_END_ALLOW_THREADS;
+        PyState_MaybeResume();
+        //MYDB_END_ALLOW_THREADS;
         PyErr_WarnEx(PyExc_RuntimeWarning,
 		     "DBTxn aborted in destructor. "
 		     " No prior commit() or abort().",
@@ -1028,7 +1027,7 @@ newDBLockObject(DBEnvObject* myenv, u_int32_t locker, DBT* obj,
                 db_lockmode_t lock_mode, int flags)
 {
     int err;
-    DBLockObject* self = PyObject_New(DBLockObject, &DBLock_Type);
+    DBLockObject* self = PyObject_New(&DBLock_Type);
     if (self == NULL)
         return NULL;
     self->in_weakreflist = NULL;
@@ -1053,9 +1052,6 @@ newDBLockObject(DBEnvObject* myenv, u_int32_t locker, DBT* obj,
 static void
 DBLock_dealloc(DBLockObject* self)
 {
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
     /* TODO: is this lock held? should we release it? */
 
     PyObject_Del(self);
@@ -1091,10 +1087,6 @@ newDBSequenceObject(DBObject* mydb,  int flags)
 static void
 DBSequence_dealloc(DBSequenceObject* self)
 {
-    if (self->in_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject *) self);
-    }
-
     Py_DECREF(self->mydb);
     PyObject_Del(self);
 }
@@ -1274,7 +1266,7 @@ DB_associate(DBObject* self, PyObject* args, PyObject* kwargs)
      *  (see pybsddb-users mailing list post on 2002-08-07)
      */
 #ifdef WITH_THREAD
-    PyEval_InitThreads();
+    //PyState_InitThreads();
 #endif
     MYDB_BEGIN_ALLOW_THREADS;
 #if (DBVER >= 41)
@@ -2203,7 +2195,7 @@ DB_set_bt_compare(DBObject* self, PyObject* args)
     /* This is to workaround a problem with un-initialized threads (see
        comment in DB_associate) */
 #ifdef WITH_THREAD
-    PyEval_InitThreads();
+    //PyState_InitThreads();
 #endif
 
     err = self->db->set_bt_compare(self->db, _db_compareCallback);

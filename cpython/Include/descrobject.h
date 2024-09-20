@@ -67,6 +67,10 @@ typedef struct {
 	void *d_wrapped; /* This can be any function pointer */
 } PyWrapperDescrObject;
 
+typedef struct {
+    PyDescr_COMMON;
+} PyFinalizeAttrDescrObject;
+
 PyAPI_DATA(PyTypeObject) PyClassMethodDescr_Type;
 PyAPI_DATA(PyTypeObject) PyGetSetDescr_Type;
 PyAPI_DATA(PyTypeObject) PyMemberDescr_Type;
@@ -82,6 +86,7 @@ PyAPI_FUNC(PyObject *) PyDescr_NewGetSet(PyTypeObject *,
 					       struct PyGetSetDef *);
 PyAPI_FUNC(PyObject *) PyDescr_NewWrapper(PyTypeObject *,
 						struct wrapperbase *, void *);
+PyAPI_FUNC(PyObject *) PyDescr_NewFinalizeAttr(PyTypeObject *, PyObject *);
 #define PyDescr_IsData(d) (Py_TYPE(d)->tp_descr_set != NULL)
 
 PyAPI_FUNC(PyObject *) PyDictProxy_New(PyObject *);

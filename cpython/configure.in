@@ -1696,7 +1696,7 @@ AC_MSG_RESULT($SHLIBS)
 AC_CHECK_LIB(dl, dlopen)	# Dynamic linking for SunOS/Solaris and SYSV
 AC_CHECK_LIB(dld, shl_load)	# Dynamic linking for HP-UX
 
-# only check for sem_ini if thread support is requested
+# only check for sem_init if thread support is requested
 if test "$with_threads" = "yes" -o -z "$with_threads"; then
     AC_SEARCH_LIBS(sem_init, pthread rt posix4) # 'Real Time' functions on Solaris
 						# posix4 on Solaris 2.6
@@ -1740,26 +1740,6 @@ AC_ARG_WITH(system_ffi,
             AC_HELP_STRING(--with-system-ffi, build _ctypes module using an installed ffi library))
 
 AC_MSG_RESULT($with_system_ffi)
-
-# Determine if signalmodule should be used.
-AC_SUBST(USE_SIGNAL_MODULE)
-AC_SUBST(SIGNAL_OBJS)
-AC_MSG_CHECKING(for --with-signal-module)
-AC_ARG_WITH(signal-module,
-            AC_HELP_STRING(--with-signal-module, disable/enable signal module))
-
-if test -z "$with_signal_module"
-then with_signal_module="yes"
-fi
-AC_MSG_RESULT($with_signal_module)
-
-if test "${with_signal_module}" = "yes"; then
-	USE_SIGNAL_MODULE=""
-	SIGNAL_OBJS=""
-else
-	USE_SIGNAL_MODULE="#"
-	SIGNAL_OBJS="Parser/intrcheck.o Python/sigcheck.o"
-fi
 
 # This is used to generate Setup.config
 AC_SUBST(USE_THREAD_MODULE)
@@ -1995,6 +1975,19 @@ if test "$posix_threads" = "yes"; then
             [Define if pthread_sigmask() does not work on your system.])
             ;;
         esac])
+
+      AC_MSG_CHECKING(for __thread storage class specifier)
+      AC_TRY_COMPILE([#ifdef HAVE_PTHREAD_H
+        #include <pthread.h>
+        #endif],
+        [static __thread int foo = 1;],
+        [
+          AC_MSG_RESULT(yes)
+          AC_DEFINE(HAVE_THREAD_LOCAL_VARIABLE, 1,
+            [Define if your toolchain supports __thread storage class specifier.])
+        ],
+        AC_MSG_RESULT(no)
+      )
 fi
 
 
@@ -2222,6 +2215,21 @@ then
 else AC_MSG_RESULT(no)
 fi],
 [AC_MSG_RESULT(no)])
+
+# Check for --without-gil
+AC_MSG_CHECKING(for --with-gil)
+AC_ARG_WITH(gil,
+            AC_HELP_STRING(--with(out)-gil, disables the GIL))
+
+if test -z "$with_gil"
+then with_gil="yes"
+fi
+if test "$with_gil" != "no"
+then
+    AC_DEFINE(WITH_GIL, 1,
+     [Define if you want to build an interpreter with the GIL, for single-threaded performance rather than multi-threaded])
+fi
+AC_MSG_RESULT($with_gil)
 
 # -I${DLINCLDIR} is added to the compile rule for importdl.o
 AC_SUBST(DLINCLDIR)

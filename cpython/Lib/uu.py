@@ -58,10 +58,12 @@ def encode(in_file, out_file, name=None, mode=None):
     #
     # Open out_file if it is a pathname
     #
+    opened = False
     if out_file == '-':
         out_file = sys.stdout.buffer
     elif isinstance(out_file, str):
         out_file = open(out_file, 'wb')
+        opened = True
     #
     # Set defaults for name and mode
     #
@@ -78,6 +80,8 @@ def encode(in_file, out_file, name=None, mode=None):
         out_file.write(binascii.b2a_uu(data))
         data = in_file.read(45)
     out_file.write(b' \nend\n')
+    if opened:
+        out_file.close()
 
 
 def decode(in_file, out_file=None, mode=None, quiet=0):

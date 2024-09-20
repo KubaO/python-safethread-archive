@@ -133,7 +133,7 @@ deque_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	block *b;
 
 	/* create dequeobject structure */
-	deque = (dequeobject *)type->tp_alloc(type, 0);
+	deque = PyObject_New(type);
 	if (deque == NULL)
 		return NULL;
 
@@ -573,9 +573,6 @@ PyDoc_STRVAR(clear_doc, "Remove all elements from the deque.");
 static void
 deque_dealloc(dequeobject *deque)
 {
-	PyObject_GC_UnTrack(deque);
-	if (deque->weakreflist != NULL)
-		PyObject_ClearWeakRefs((PyObject *) deque);
 	if (deque->leftblock != NULL) {
 		deque_clear(deque);
 		assert(deque->leftblock != NULL);
@@ -583,7 +580,7 @@ deque_dealloc(dequeobject *deque)
 	}
 	deque->leftblock = NULL;
 	deque->rightblock = NULL;
-	Py_TYPE(deque)->tp_free(deque);
+	PyObject_Del(deque);
 }
 
 static int
@@ -882,9 +879,7 @@ static PyTypeObject deque_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	(initproc)deque_init,		/* tp_init */
-	PyType_GenericAlloc,		/* tp_alloc */
 	deque_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 /*********************** Deque Iterator **************************/
@@ -905,7 +900,7 @@ deque_iter(dequeobject *deque)
 {
 	dequeiterobject *it;
 
-	it = PyObject_New(dequeiterobject, &dequeiter_type);
+	it = PyObject_New(&dequeiter_type);
 	if (it == NULL)
 		return NULL;
 	it->b = deque->leftblock;
@@ -921,7 +916,7 @@ static void
 dequeiter_dealloc(dequeiterobject *dio)
 {
 	Py_XDECREF(dio->deque);
-	Py_TYPE(dio)->tp_free(dio);
+	PyObject_Del(dio);
 }
 
 static PyObject *
@@ -1007,7 +1002,7 @@ deque_reviter(dequeobject *deque)
 {
 	dequeiterobject *it;
 
-	it = PyObject_New(dequeiterobject, &dequereviter_type);
+	it = PyObject_New(&dequereviter_type);
 	if (it == NULL)
 		return NULL;
 	it->b = deque->rightblock;
@@ -1335,9 +1330,7 @@ static PyTypeObject defdict_type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	defdict_init,			/* tp_init */
-	PyType_GenericAlloc,		/* tp_alloc */
 	0,				/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 /* module level code ********************************************************/

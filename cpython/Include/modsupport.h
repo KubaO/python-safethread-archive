@@ -43,6 +43,10 @@ PyAPI_FUNC(int) PyModule_AddStringConstant(PyObject *, const char *, const char 
 #define PyModule_AddIntMacro(m, c) PyModule_AddIntConstant(m, #c, c)
 #define PyModule_AddStringMacro(m, c) PyModule_AddStringConstant(m, #c, c)
 
+PyAPI_FUNC(int) PyArg_RequireShareable(const char *, PyObject *, PyObject *);
+PyAPI_FUNC(int) PyArg_RequireShareableReturn(const char *funcname, PyObject *innerfunc, PyObject *result);
+
+
 #define PYTHON_API_VERSION 1013
 #define PYTHON_API_STRING "1013"
 /* The API version is maintained (independently from the Python version)
@@ -117,6 +121,9 @@ PyAPI_FUNC(int) PyModule_AddStringConstant(PyObject *, const char *, const char 
 PyAPI_FUNC(PyObject *) Py_InitModule4(const char *name, PyMethodDef *methods,
                                       const char *doc, PyObject *self,
                                       int apiver);
+PyAPI_FUNC(PyObject *) Py_InitModule5(const char *name, PyMethodDef *methods,
+                                      const char *doc, PyObject *self,
+                                      int apiver, int shared);
 
 #define Py_InitModule(name, methods) \
 	Py_InitModule4(name, methods, (char *)NULL, (PyObject *)NULL, \

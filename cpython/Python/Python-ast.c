@@ -507,9 +507,7 @@ static PyTypeObject AST_type = {
     0,                       /* tp_descr_set */
     0,                       /* tp_dictoffset */
     (initproc)ast_type_init, /* tp_init */
-    PyType_GenericAlloc,     /* tp_alloc */
     PyType_GenericNew,       /* tp_new */
-    PyObject_Del,            /* tp_free */
 };
 
 

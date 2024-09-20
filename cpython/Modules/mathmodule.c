@@ -129,6 +129,7 @@ FUNC2(atan2, atan2,
 static PyObject * math_ceil(PyObject *self, PyObject *number) {
 	static PyObject *ceil_str = NULL;
 	PyObject *method;
+	PyObject *result;
 
 	if (ceil_str == NULL) {
 		ceil_str = PyUnicode_InternFromString("__ceil__");
@@ -136,11 +137,15 @@ static PyObject * math_ceil(PyObject *self, PyObject *number) {
 			return NULL;
 	}
 
-	method = _PyType_Lookup(Py_TYPE(number), ceil_str);
+	if (_PyType_LookupEx(Py_TYPE(number), ceil_str, &method) < 0)
+		return NULL;
 	if (method == NULL)
 		return math_1_to_int(number, ceil);
-	else
-		return PyObject_CallFunction(method, "O", number);
+	else {
+		result = PyObject_CallFunction(method, "O", number);
+		Py_DECREF(method);
+		return result;
+	}
 }
 
 PyDoc_STRVAR(math_ceil_doc,
@@ -169,6 +174,7 @@ FUNC1(fabs, fabs,
 static PyObject * math_floor(PyObject *self, PyObject *number) {
 	static PyObject *floor_str = NULL;
 	PyObject *method;
+	PyObject *result;
 
 	if (floor_str == NULL) {
 		floor_str = PyUnicode_InternFromString("__floor__");
@@ -176,11 +182,15 @@ static PyObject * math_floor(PyObject *self, PyObject *number) {
 			return NULL;
 	}
 
-	method = _PyType_Lookup(Py_TYPE(number), floor_str);
+	if (_PyType_LookupEx(Py_TYPE(number), floor_str, &method) < 0)
+		return NULL;
 	if (method == NULL)
         	return math_1_to_int(number, floor);
-	else
-		return PyObject_CallFunction(method, "O", number);
+	else {
+		result = PyObject_CallFunction(method, "O", number);
+		Py_DECREF(method);
+		return result;
+	}
 }
 
 PyDoc_STRVAR(math_floor_doc,
@@ -210,6 +220,7 @@ math_trunc(PyObject *self, PyObject *number)
 {
 	static PyObject *trunc_str = NULL;
 	PyObject *trunc;
+	PyObject *result;
 
 	if (Py_TYPE(number)->tp_dict == NULL) {
 		if (PyType_Ready(Py_TYPE(number)) < 0)
@@ -222,14 +233,19 @@ math_trunc(PyObject *self, PyObject *number)
 			return NULL;
 	}
 
-	trunc = _PyType_Lookup(Py_TYPE(number), trunc_str);
+	if (_PyType_LookupEx(Py_TYPE(number), trunc_str, &trunc) < 0)
+		return NULL;
 	if (trunc == NULL) {
 		PyErr_Format(PyExc_TypeError,
 			     "type %.100s doesn't define __trunc__ method",
 			     Py_TYPE(number)->tp_name);
 		return NULL;
 	}
-	return PyObject_CallFunctionObjArgs(trunc, number, NULL);
+	else {
+		result = PyObject_CallFunctionObjArgs(trunc, number, NULL);
+		Py_DECREF(trunc);
+		return result;
+	}
 }
 
 PyDoc_STRVAR(math_trunc_doc,

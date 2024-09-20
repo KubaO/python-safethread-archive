@@ -51,10 +51,12 @@ site-specific customizations.  If this import fails with an
 ImportError exception, it is silently ignored.
 
 """
+from __future__ import shared_module
 
 import sys
 import os
 import builtins
+from threadtools import Monitor, monitormethod
 
 
 def makepath(*paths):
@@ -234,11 +236,14 @@ def setquit():
     else:
         eof = 'Ctrl-D (i.e. EOF)'
 
-    class Quitter(object):
-        def __init__(self, name):
+    class Quitter(Monitor):
+        __shared__ = True
+        def __init__(self, name, eof):
             self.name = name
+            self.eof = eof
+        @monitormethod
         def __repr__(self):
-            return 'Use %s() or %s to exit' % (self.name, eof)
+            return 'Use %s() or %s to exit' % (self.name, self.eof)
         def __call__(self, code=None):
             # Shells like IDLE catch the SystemExit, but listen when their
             # stdin wrapper is closed.
@@ -252,13 +257,14 @@ def setquit():
             except:
                 pass
             raise SystemExit(code)
-    builtins.quit = Quitter('quit')
-    builtins.exit = Quitter('exit')
+    builtins.quit = Quitter('quit', eof)
+    builtins.exit = Quitter('exit', eof)
 
 
-class _Printer(object):
+class _Printer(Monitor):
     """interactive prompt objects for printing the license text, a list of
     contributors and the copyright notice."""
+    __shared__ = True
 
     MAXLINES = 23
 
@@ -290,6 +296,7 @@ class _Printer(object):
         self.__lines = data.split('\n')
         self.__linecnt = len(self.__lines)
 
+    @monitormethod
     def __repr__(self):
         self.__setup()
         if len(self.__lines) <= self.MAXLINES:
@@ -297,6 +304,7 @@ class _Printer(object):
         else:
             return "Type %s() to see the full %s text" % ((self.__name,)*2)
 
+    @monitormethod
     def __call__(self):
         self.__setup()
         prompt = 'Hit Return for more, or q (and Return) to quit: '
@@ -331,15 +339,16 @@ def setcopyright():
     here = os.path.dirname(os.__file__)
     builtins.license = _Printer(
         "license", "See http://www.python.org/%.3s/license.html" % sys.version,
-        ["LICENSE.txt", "LICENSE"],
-        [os.path.join(here, os.pardir), here, os.curdir])
+        ("LICENSE.txt", "LICENSE"),
+        (os.path.join(here, os.pardir), here, os.curdir))
 
 
-class _Helper(object):
+class _Helper(Monitor):
     """Define the built-in 'help'.
     This is a wrapper around pydoc.help (with a twist).
 
     """
+    __shared__ = True
 
     def __repr__(self):
         return "Type help() for interactive help, " \

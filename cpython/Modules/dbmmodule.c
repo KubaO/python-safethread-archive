@@ -48,7 +48,7 @@ newdbmobject(char *file, int flags, int mode)
 {
         dbmobject *dp;
 
-	dp = PyObject_New(dbmobject, &Dbmtype);
+	dp = PyObject_New(&Dbmtype);
 	if (dp == NULL)
 		return NULL;
 	dp->di_size = -1;

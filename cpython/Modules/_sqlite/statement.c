@@ -398,7 +398,7 @@ void pysqlite_statement_dealloc(pysqlite_Statement* self)
         PyObject_ClearWeakRefs((PyObject*)self);
     }
 
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    PyObject_Del(self);
 }
 
 /*
@@ -508,9 +508,7 @@ PyTypeObject pysqlite_StatementType = {
         0,                                              /* tp_descr_set */
         0,                                              /* tp_dictoffset */
         (initproc)0,                                    /* tp_init */
-        0,                                              /* tp_alloc */
         0,                                              /* tp_new */
-        0                                               /* tp_free */
 };
 
 extern int pysqlite_statement_setup_types(void)

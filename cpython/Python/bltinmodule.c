@@ -9,6 +9,9 @@
 
 #include <ctype.h>
 
+#include "monitorobject.h"
+#include "branchobject.h"
+
 /* The default encoding used by the platform file system APIs
    Can remain NULL for all platforms that don't have such a concept
 
@@ -147,12 +150,16 @@ builtin___import__(PyObject *self, PyObject *args, PyObject *kwds)
 	PyObject *locals = NULL;
 	PyObject *fromlist = NULL;
 	int level = -1;
+	PyObject *r;
 
 	if (!PyArg_ParseTupleAndKeywords(args, kwds, "s|OOOi:__import__",
 			kwlist, &name, &globals, &locals, &fromlist, &level))
 		return NULL;
-	return PyImport_ImportModuleLevel(name, globals, locals,
+	PyState_EnterImport();
+	r = PyImport_ImportModuleLevel(name, globals, locals,
 					  fromlist, level);
+	PyState_ExitImport();
+	return r;
 }
 
 PyDoc_STRVAR(import_doc,
@@ -305,7 +312,7 @@ filter_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 
 	/* create filterobject structure */
-	lz = (filterobject *)type->tp_alloc(type, 0);
+	lz = PyObject_New(type);
 	if (lz == NULL) {
 		Py_DECREF(it);
 		return NULL;
@@ -320,10 +327,9 @@ filter_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static void
 filter_dealloc(filterobject *lz)
 {
-	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->func);
 	Py_XDECREF(lz->it);
-	Py_TYPE(lz)->tp_free(lz);
+	PyObject_Del(lz);
 }
 
 static int
@@ -396,7 +402,8 @@ PyTypeObject PyFilter_Type = {
 	0,				/* tp_setattro */
 	0,				/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-		Py_TPFLAGS_BASETYPE,	/* tp_flags */
+		Py_TPFLAGS_BASETYPE |
+		Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	filter_doc,			/* tp_doc */
 	(traverseproc)filter_traverse,	/* tp_traverse */
 	0,				/* tp_clear */
@@ -413,9 +420,7 @@ PyTypeObject PyFilter_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	PyType_GenericAlloc,		/* tp_alloc */
 	filter_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
@@ -932,7 +937,7 @@ map_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 
 	/* create mapobject structure */
-	lz = (mapobject *)type->tp_alloc(type, 0);
+	lz = PyObject_New(type);
 	if (lz == NULL) {
 		Py_DECREF(iters);
 		return NULL;
@@ -948,10 +953,9 @@ map_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static void
 map_dealloc(mapobject *lz)
 {
-	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->iters);
 	Py_XDECREF(lz->func);
-	Py_TYPE(lz)->tp_free(lz);
+	PyObject_Del(lz);
 }
 
 static int
@@ -1016,7 +1020,8 @@ PyTypeObject PyMap_Type = {
 	0,				/* tp_setattro */
 	0,				/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-		Py_TPFLAGS_BASETYPE,	/* tp_flags */
+		Py_TPFLAGS_BASETYPE |
+		Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	map_doc,			/* tp_doc */
 	(traverseproc)map_traverse,	/* tp_traverse */
 	0,				/* tp_clear */
@@ -1033,9 +1038,7 @@ PyTypeObject PyMap_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	PyType_GenericAlloc,		/* tp_alloc */
 	map_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 static PyObject *
@@ -1672,6 +1675,7 @@ builtin_round(PyObject *self, PyObject *args, PyObject *kwds)
 	int ndigits = UNDEF_NDIGITS;
 	static char *kwlist[] = {"number", "ndigits", 0};
 	PyObject *number, *round;
+	PyObject *result;
 
 	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|i:round",
                 kwlist, &number, &ndigits))
@@ -1688,7 +1692,8 @@ builtin_round(PyObject *self, PyObject *args, PyObject *kwds)
 			return NULL;
 	}
 
-	round = _PyType_Lookup(Py_TYPE(number), round_str);
+	if (_PyType_LookupEx(Py_TYPE(number), round_str, &round) < 0)
+		return NULL;
 	if (round == NULL) {
 		PyErr_Format(PyExc_TypeError,
 			     "type %.100s doesn't define __round__ method",
@@ -1697,9 +1702,11 @@ builtin_round(PyObject *self, PyObject *args, PyObject *kwds)
 	}
 
 	if (ndigits == UNDEF_NDIGITS)
-                return PyObject_CallFunction(round, "O", number);
+		result = PyObject_CallFunction(round, "O", number);
 	else
-                return PyObject_CallFunction(round, "Oi", number, ndigits);
+                result = PyObject_CallFunction(round, "Oi", number, ndigits);
+	Py_DECREF(round);
+	return result;
 #undef UNDEF_NDIGITS
 }
 
@@ -2047,7 +2054,7 @@ zip_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 
 	/* create zipobject structure */
-	lz = (zipobject *)type->tp_alloc(type, 0);
+	lz = PyObject_New(type);
 	if (lz == NULL) {
 		Py_DECREF(ittuple);
 		Py_DECREF(result);
@@ -2063,10 +2070,9 @@ zip_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static void
 zip_dealloc(zipobject *lz)
 {
-	PyObject_GC_UnTrack(lz);
 	Py_XDECREF(lz->ittuple);
 	Py_XDECREF(lz->result);
-	Py_TYPE(lz)->tp_free(lz);
+	PyObject_Del(lz);
 }
 
 static int
@@ -2089,7 +2095,7 @@ zip_next(zipobject *lz)
 
 	if (tuplesize == 0)
 		return NULL;
-	if (Py_REFCNT(result) == 1) {
+	if (Py_RefcntMatches(result, 1)) {
 		Py_INCREF(result);
 		for (i=0 ; i < tuplesize ; i++) {
 			it = PyTuple_GET_ITEM(lz->ittuple, i);
@@ -2153,7 +2159,8 @@ PyTypeObject PyZip_Type = {
 	0,				/* tp_setattro */
 	0,				/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
-		Py_TPFLAGS_BASETYPE,	/* tp_flags */
+		Py_TPFLAGS_BASETYPE |
+		Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	zip_doc,			/* tp_doc */
 	(traverseproc)zip_traverse,    /* tp_traverse */
 	0,				/* tp_clear */
@@ -2170,54 +2177,52 @@ PyTypeObject PyZip_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	PyType_GenericAlloc,		/* tp_alloc */
 	zip_new,			/* tp_new */
-	PyObject_GC_Del,		/* tp_free */
 };
 
 
 static PyMethodDef builtin_methods[] = {
  	{"__build_class__", (PyCFunction)builtin___build_class__,
-         METH_VARARGS | METH_KEYWORDS, build_class_doc},
- 	{"__import__",	(PyCFunction)builtin___import__, METH_VARARGS | METH_KEYWORDS, import_doc},
- 	{"abs",		builtin_abs,        METH_O, abs_doc},
- 	{"all",		builtin_all,        METH_O, all_doc},
- 	{"any",		builtin_any,        METH_O, any_doc},
-	{"bin",		builtin_bin,	    METH_O, bin_doc},
- 	{"chr",		builtin_chr,        METH_VARARGS, chr_doc},
- 	{"cmp",		builtin_cmp,        METH_VARARGS, cmp_doc},
- 	{"compile",	(PyCFunction)builtin_compile,    METH_VARARGS | METH_KEYWORDS, compile_doc},
- 	{"delattr",	builtin_delattr,    METH_VARARGS, delattr_doc},
- 	{"dir",		builtin_dir,        METH_VARARGS, dir_doc},
- 	{"divmod",	builtin_divmod,     METH_VARARGS, divmod_doc},
- 	{"eval",	builtin_eval,       METH_VARARGS, eval_doc},
-	{"exec",        builtin_exec,       METH_VARARGS, exec_doc},
- 	{"format",	builtin_format,     METH_VARARGS, format_doc},
- 	{"getattr",	builtin_getattr,    METH_VARARGS, getattr_doc},
- 	{"globals",	(PyCFunction)builtin_globals,    METH_NOARGS, globals_doc},
- 	{"hasattr",	builtin_hasattr,    METH_VARARGS, hasattr_doc},
- 	{"hash",	builtin_hash,       METH_O, hash_doc},
- 	{"hex",		builtin_hex,        METH_O, hex_doc},
- 	{"id",		builtin_id,         METH_O, id_doc},
- 	{"input",	builtin_input,      METH_VARARGS, input_doc},
- 	{"isinstance",  builtin_isinstance, METH_VARARGS, isinstance_doc},
- 	{"issubclass",  builtin_issubclass, METH_VARARGS, issubclass_doc},
- 	{"iter",	builtin_iter,       METH_VARARGS, iter_doc},
- 	{"len",		builtin_len,        METH_O, len_doc},
- 	{"locals",	(PyCFunction)builtin_locals,     METH_NOARGS, locals_doc},
- 	{"max",		(PyCFunction)builtin_max,        METH_VARARGS | METH_KEYWORDS, max_doc},
- 	{"min",		(PyCFunction)builtin_min,        METH_VARARGS | METH_KEYWORDS, min_doc},
-	{"next",	(PyCFunction)builtin_next,       METH_VARARGS, next_doc},
- 	{"oct",		builtin_oct,        METH_O, oct_doc},
- 	{"ord",		builtin_ord,        METH_O, ord_doc},
- 	{"pow",		builtin_pow,        METH_VARARGS, pow_doc},
- 	{"print",	(PyCFunction)builtin_print,      METH_VARARGS | METH_KEYWORDS, print_doc},
- 	{"repr",	builtin_repr,       METH_O, repr_doc},
- 	{"round",	(PyCFunction)builtin_round,      METH_VARARGS | METH_KEYWORDS, round_doc},
- 	{"setattr",	builtin_setattr,    METH_VARARGS, setattr_doc},
- 	{"sorted",	(PyCFunction)builtin_sorted,     METH_VARARGS | METH_KEYWORDS, sorted_doc},
- 	{"sum",		builtin_sum,        METH_VARARGS, sum_doc},
- 	{"vars",	builtin_vars,       METH_VARARGS, vars_doc},
+         METH_SHARED | METH_VARARGS | METH_KEYWORDS, build_class_doc},
+ 	{"__import__",	(PyCFunction)builtin___import__, METH_SHARED | METH_VARARGS | METH_KEYWORDS, import_doc},
+ 	{"abs",		builtin_abs,        METH_SHARED | METH_O, abs_doc},
+ 	{"all",		builtin_all,        METH_SHARED | METH_O, all_doc},
+ 	{"any",		builtin_any,        METH_SHARED | METH_O, any_doc},
+	{"bin",		builtin_bin,	    METH_SHARED | METH_O, bin_doc},
+ 	{"chr",		builtin_chr,        METH_SHARED | METH_VARARGS, chr_doc},
+ 	{"cmp",		builtin_cmp,        METH_SHARED | METH_VARARGS, cmp_doc},
+ 	{"compile",	(PyCFunction)builtin_compile,    METH_SHARED | METH_VARARGS | METH_KEYWORDS, compile_doc},
+ 	{"delattr",	builtin_delattr,    METH_SHARED | METH_VARARGS, delattr_doc},
+ 	{"dir",		builtin_dir,        METH_SHARED | METH_VARARGS, dir_doc},
+ 	{"divmod",	builtin_divmod,     METH_SHARED | METH_VARARGS, divmod_doc},
+ 	{"eval",	builtin_eval,       METH_SHARED | METH_VARARGS, eval_doc},
+	{"exec",        builtin_exec,       METH_SHARED | METH_VARARGS, exec_doc},
+ 	{"format",	builtin_format,     METH_SHARED | METH_VARARGS, format_doc},
+ 	{"getattr",	builtin_getattr,    METH_SHARED | METH_VARARGS, getattr_doc},
+ 	{"globals",	(PyCFunction)builtin_globals,    METH_SHARED | METH_NOARGS, globals_doc},
+ 	{"hasattr",	builtin_hasattr,    METH_SHARED | METH_VARARGS, hasattr_doc},
+ 	{"hash",	builtin_hash,       METH_SHARED | METH_O, hash_doc},
+ 	{"hex",		builtin_hex,        METH_SHARED | METH_O, hex_doc},
+ 	{"id",		builtin_id,         METH_SHARED | METH_O, id_doc},
+ 	{"input",	builtin_input,      METH_SHARED | METH_VARARGS, input_doc},
+ 	{"isinstance",  builtin_isinstance, METH_SHARED | METH_VARARGS, isinstance_doc},
+ 	{"issubclass",  builtin_issubclass, METH_SHARED | METH_VARARGS, issubclass_doc},
+ 	{"iter",	builtin_iter,       METH_SHARED | METH_VARARGS, iter_doc},
+ 	{"len",		builtin_len,        METH_SHARED | METH_O, len_doc},
+ 	{"locals",	(PyCFunction)builtin_locals,     METH_SHARED | METH_NOARGS, locals_doc},
+ 	{"max",		(PyCFunction)builtin_max,        METH_SHARED | METH_VARARGS | METH_KEYWORDS, max_doc},
+ 	{"min",		(PyCFunction)builtin_min,        METH_SHARED | METH_VARARGS | METH_KEYWORDS, min_doc},
+	{"next",	(PyCFunction)builtin_next,       METH_SHARED | METH_VARARGS, next_doc},
+ 	{"oct",		builtin_oct,        METH_SHARED | METH_O, oct_doc},
+ 	{"ord",		builtin_ord,        METH_SHARED | METH_O, ord_doc},
+ 	{"pow",		builtin_pow,        METH_SHARED | METH_VARARGS, pow_doc},
+ 	{"print",	(PyCFunction)builtin_print,      METH_SHARED | METH_VARARGS | METH_KEYWORDS, print_doc},
+ 	{"repr",	builtin_repr,       METH_SHARED | METH_O, repr_doc},
+ 	{"round",	(PyCFunction)builtin_round,      METH_SHARED | METH_VARARGS | METH_KEYWORDS, round_doc},
+ 	{"setattr",	builtin_setattr,    METH_SHARED | METH_VARARGS, setattr_doc},
+ 	{"sorted",	(PyCFunction)builtin_sorted,     METH_SHARED | METH_VARARGS | METH_KEYWORDS, sorted_doc},
+ 	{"sum",		builtin_sum,        METH_SHARED | METH_VARARGS, sum_doc},
+ 	{"vars",	builtin_vars,       METH_SHARED | METH_VARARGS, vars_doc},
 	{NULL,		NULL},
 };
 
@@ -2226,16 +2231,26 @@ PyDoc_STRVAR(builtin_doc,
 \n\
 Noteworthy: None is the `nil' object; Ellipsis represents `...' in slices.");
 
-PyObject *
+
+PyObject *_PyBuiltin_Dict;
+
+extern PyTypeObject PyFakeRange_Type;
+int
 _PyBuiltin_Init(void)
 {
-	PyObject *mod, *dict, *debug;
-	mod = Py_InitModule4("builtins", builtin_methods,
+	PyObject *mod, *debug;
+
+	PyState_EnterImport();
+
+	mod = Py_InitModule5("builtins", builtin_methods,
 			     builtin_doc, (PyObject *)NULL,
-			     PYTHON_API_VERSION);
+			     PYTHON_API_VERSION, 1);
 	if (mod == NULL)
-		return NULL;
-	dict = PyModule_GetDict(mod);
+		goto error;
+	_PyBuiltin_Dict = PyModule_GetDict(mod);
+	if (_PyBuiltin_Dict == NULL)
+		Py_FatalError("_PyBuiltin_Init: can't retrieve dict");
+	Py_INCREF(_PyBuiltin_Dict);
 
 #ifdef Py_TRACE_REFS
 	/* "builtins" exposes a number of statically allocated objects
@@ -2250,8 +2265,8 @@ _PyBuiltin_Init(void)
 #endif
 
 #define SETBUILTIN(NAME, OBJECT) \
-	if (PyDict_SetItemString(dict, NAME, (PyObject *)OBJECT) < 0)	\
-		return NULL;						\
+	if (PyDict_SetItemString(_PyBuiltin_Dict, NAME, (PyObject *)OBJECT) < 0)	\
+		goto error;						\
 	ADD_TO_ALL(OBJECT)
 
 	SETBUILTIN("None",		Py_None);
@@ -2268,6 +2283,7 @@ _PyBuiltin_Init(void)
 	SETBUILTIN("complex",		&PyComplex_Type);
 #endif
 	SETBUILTIN("dict",		&PyDict_Type);
+	SETBUILTIN("shareddict",	&PySharedDict_Type);
  	SETBUILTIN("enumerate",		&PyEnum_Type);
  	SETBUILTIN("filter",		&PyFilter_Type);
 	SETBUILTIN("float",		&PyFloat_Type);
@@ -2278,6 +2294,7 @@ _PyBuiltin_Init(void)
 	SETBUILTIN("map",		&PyMap_Type);
 	SETBUILTIN("object",		&PyBaseObject_Type);
 	SETBUILTIN("range",		&PyRange_Type);
+	SETBUILTIN("fakerange",		&PyFakeRange_Type);
 	SETBUILTIN("reversed",		&PyReversed_Type);
 	SETBUILTIN("set",		&PySet_Type);
 	SETBUILTIN("slice",		&PySlice_Type);
@@ -2288,13 +2305,102 @@ _PyBuiltin_Init(void)
 	SETBUILTIN("type",		&PyType_Type);
 	SETBUILTIN("zip",		&PyZip_Type);
 	debug = PyBool_FromLong(Py_OptimizeFlag == 0);
-	if (PyDict_SetItemString(dict, "__debug__", debug) < 0) {
+	if (PyDict_SetItemString(_PyBuiltin_Dict, "__debug__", debug) < 0) {
 		Py_XDECREF(debug);
-		return NULL;
+		goto error;
 	}
 	Py_XDECREF(debug);
 
-	return mod;
+	/* initialize builtin exceptions */
+	_PyExc_Init();
+
+	PyState_ExitImport();
+	return 0;
+
+error:
+	PyState_ExitImport();
+	return 1;
+#undef ADD_TO_ALL
+#undef SETBUILTIN
+}
+
+
+/* Doesn't really belong here, but oh well */
+static PyObject *
+threadtools_wait(PyObject *unused, PyObject *args, PyObject *kwds)
+{
+    PyObject *self, *rest, *method, *result;
+
+    if (PyTuple_GET_SIZE(args) < 1) {
+        PyErr_SetString(PyExc_TypeError, "wait() requires at least 1 "
+            "argument");
+        return NULL;
+    }
+
+    self = PyTuple_GET_ITEM(args, 0);
+    rest = PyTuple_GetSlice(args, 1, PyTuple_GET_SIZE(args));
+    if (rest == NULL)
+        return NULL;
+
+    method = PyObject_GetAttrString(self, "__wait__");
+    if (method == NULL) {
+        Py_DECREF(rest);
+        return NULL;
+    }
+
+    result = PyObject_Call(method, rest, kwds);
+    Py_DECREF(rest);
+    Py_DECREF(method);
+    return result;
+}
+
+PyDoc_STRVAR(wait_doc,
+"wait(monitor, func, *args, **kwargs) -> result\n\
+wait(monitor.condition) -> None\n\
+\n\
+Relinquishes monitor until func returns or condition is true.");
+
+
+static PyMethodDef threadtools_methods[] = {
+    {"wait", (PyCFunction)threadtools_wait,
+        METH_SHARED | METH_VARARGS | METH_KEYWORDS, wait_doc},
+    {NULL, NULL},
+};
+
+PyDoc_STRVAR(module_doc,
+"This is a template module just for instruction.");
+
+PyMODINIT_FUNC
+_Py_ThreadTools_Init(void)
+{
+	PyObject *mod, *dict;
+
+	mod = Py_InitModule3("_threadtools", threadtools_methods, module_doc);
+	if (mod == NULL)
+		return;
+
+	dict = PyModule_GetDict(mod);
+
+#ifdef Py_TRACE_REFS
+#define ADD_TO_ALL(OBJECT) _Py_AddToAllObjects((PyObject *)(OBJECT), 0)
+#else
+#define ADD_TO_ALL(OBJECT) (void)0
+#endif
+
+#define SETBUILTIN(NAME, OBJECT) \
+	if (PyDict_SetItemString(dict, NAME, (PyObject *)OBJECT) < 0)	\
+		goto error;						\
+	ADD_TO_ALL(OBJECT)
+
+	SETBUILTIN("MonitorMeta",	&PyMonitorMeta_Type);
+	SETBUILTIN("Monitor",		&PyMonitor_Type);
+	SETBUILTIN("monitormethod",	&PyMonitorMethod_Type);
+	SETBUILTIN("condition",		&PyMonitorCondition_Type);
+	SETBUILTIN("MonitorSpace",	&PyMonitorSpace_Type);
+	SETBUILTIN("branch",		&PyBranch_Type);
+
+error:
+	;
 #undef ADD_TO_ALL
 #undef SETBUILTIN
 }

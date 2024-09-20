@@ -67,7 +67,8 @@ class ABCMeta(type):
     even via super()).
 
     """
-
+    # XXX GIANT FREAKIN' BODGE!
+    '''
     # A global counter that is incremented each time a class is
     # registered as a virtual subclass of anything.  It forces the
     # negative cache to be cleared before its next use.
@@ -169,3 +170,6 @@ class ABCMeta(type):
         # No dice; update negative cache
         cls._abc_negative_cache.add(subclass)
         return False
+    '''
+    def register(self, subclass):
+        pass

@@ -2,6 +2,8 @@
 /* Time module */
 
 #include "Python.h"
+#include "cancelobject.h"
+#include "pythread.h"
 #include "structseq.h"
 #include "timefuncs.h"
 
@@ -44,6 +46,7 @@ extern int ftime(struct timeb *);
 #include <windows.h>
 #include "pythread.h"
 
+#if 0
 /* helper to allow us to interrupt sleep() on Windows*/
 static HANDLE hInterruptEvent = NULL;
 static BOOL WINAPI PyCtrlHandler(DWORD dwCtrlType)
@@ -56,6 +59,7 @@ static BOOL WINAPI PyCtrlHandler(DWORD dwCtrlType)
 	return FALSE;
 }
 static long main_thread;
+#endif
 
 #if defined(__BORLANDC__)
 /* These overrides not needed for Win32 */
@@ -793,7 +797,7 @@ static PyMethodDef time_methods[] = {
 #ifdef HAVE_CLOCK
 	{"clock",	time_clock, METH_NOARGS, clock_doc},
 #endif
-	{"sleep",	time_sleep, METH_VARARGS, sleep_doc},
+	{"sleep",	time_sleep, METH_VARARGS|METH_SHARED, sleep_doc},
 	{"gmtime",	time_gmtime, METH_VARARGS, gmtime_doc},
 	{"localtime",	time_localtime, METH_VARARGS, localtime_doc},
 	{"asctime",	time_asctime, METH_VARARGS, asctime_doc},
@@ -877,6 +881,8 @@ inittime(void)
 	/* Set, or reset, module variables like time.timezone */
 	inittimezone(m);
 
+#if 0
+/* This Ctrl-C blurb is unnecessary now */
 #ifdef MS_WINDOWS
 	/* Helper to allow interrupts for Windows.
 	   If Ctrl+C event delivered while not sleeping
@@ -886,6 +892,7 @@ inittime(void)
 	hInterruptEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	SetConsoleCtrlHandler( PyCtrlHandler, TRUE);
 #endif /* MS_WINDOWS */
+#endif
 	if (!initialized) {
 		PyStructSequence_InitType(&StructTimeType,
 					  &struct_time_type_desc);
@@ -936,105 +943,43 @@ floattime(void)
 }
 
 
-/* Implement floatsleep() for various platforms.
+/* Implement floatsleep().
    When interrupted (or when another error occurs), return -1 and
    set an exception; else return 0. */
+static void
+sleep_wakeup(PyCancelQueue *queue, void *arg)
+{
+    PyThread_type_flag *flag = arg;
+    PyThread_flag_set(flag);
+}
 
 static int
 floatsleep(double secs)
 {
-/* XXX Should test for MS_WINDOWS first! */
-#if defined(HAVE_SELECT) && !defined(__EMX__)
-	struct timeval t;
-	double frac;
-	frac = fmod(secs, 1.0);
-	secs = floor(secs);
-	t.tv_sec = (long)secs;
-	t.tv_usec = (long)(frac*1000000.0);
-	Py_BEGIN_ALLOW_THREADS
-	if (select(0, (fd_set *)0, (fd_set *)0, (fd_set *)0, &t) != 0) {
-#ifdef EINTR
-		if (errno != EINTR) {
-#else
-		if (1) {
-#endif
-			Py_BLOCK_THREADS
-			PyErr_SetFromErrno(PyExc_IOError);
-			return -1;
-		}
-	}
-	Py_END_ALLOW_THREADS
-#elif defined(__WATCOMC__) && !defined(__QNX__)
-	/* XXX Can't interrupt this sleep */
-	Py_BEGIN_ALLOW_THREADS
-	delay((int)(secs * 1000 + 0.5));  /* delay() uses milliseconds */
-	Py_END_ALLOW_THREADS
-#elif defined(MS_WINDOWS)
-	{
-		double millisecs = secs * 1000.0;
-		unsigned long ul_millis;
+    PyState *pystate = PyState_Get();
+    /* We reuse condition_flag here.  It shouldn't be in use at this
+     * point anyway */
+    PyThread_type_flag *flag = pystate->condition_flag;
+    PyCancelObject *cancel_scope;
+    int value;
 
-		if (millisecs > (double)ULONG_MAX) {
-			PyErr_SetString(PyExc_OverflowError,
-					"sleep length is too large");
-			return -1;
-		}
-		Py_BEGIN_ALLOW_THREADS
-		/* Allow sleep(0) to maintain win32 semantics, and as decreed
-		 * by Guido, only the main thread can be interrupted.
-		 */
-		ul_millis = (unsigned long)millisecs;
-		if (ul_millis == 0 ||
-		    main_thread != PyThread_get_thread_ident())
-			Sleep(ul_millis);
-		else {
-			DWORD rc;
-			ResetEvent(hInterruptEvent);
-			rc = WaitForSingleObject(hInterruptEvent, ul_millis);
-			if (rc == WAIT_OBJECT_0) {
-				/* Yield to make sure real Python signal
-				 * handler called.
-				 */
-				Sleep(1);
-				Py_BLOCK_THREADS
-				errno = EINTR;
-				PyErr_SetFromErrno(PyExc_IOError);
-				return -1;
-			}
-		}
-		Py_END_ALLOW_THREADS
-	}
-#elif defined(PYOS_OS2)
-	/* This Sleep *IS* Interruptable by Exceptions */
-	Py_BEGIN_ALLOW_THREADS
-	if (DosSleep(secs * 1000) != NO_ERROR) {
-		Py_BLOCK_THREADS
-		PyErr_SetFromErrno(PyExc_IOError);
-		return -1;
-	}
-	Py_END_ALLOW_THREADS
-#elif defined(PLAN9)
-	{
-		double millisecs = secs * 1000.0;
-		if (millisecs > (double)LONG_MAX) {
-			PyErr_SetString(PyExc_OverflowError, "sleep length is too large");
-			return -1;
-		}
-		/* This sleep *CAN BE* interrupted. */
-		Py_BEGIN_ALLOW_THREADS
-		if(sleep((long)millisecs) < 0){
-			Py_BLOCK_THREADS
-			PyErr_SetFromErrno(PyExc_IOError);
-			return -1;
-		}
-		Py_END_ALLOW_THREADS
-	}
-#else
-	/* XXX Can't interrupt this sleep */
-	Py_BEGIN_ALLOW_THREADS
-	sleep((int)secs);
-	Py_END_ALLOW_THREADS
-#endif
+    cancel_scope = PyCancel_New(sleep_wakeup, flag, pystate);
 
-	return 0;
+    PyCancel_Push(cancel_scope);
+    PyState_Suspend();
+
+    value = PyThread_flag_timedwait(flag, secs);
+
+    PyState_Resume();
+    PyCancel_Pop(cancel_scope);
+
+    PyThread_flag_clear(flag);
+    Py_DECREF(cancel_scope);
+
+    if (value) {
+        PyErr_SetString(PyExc_Cancelled, "sleep cancelled");
+        return -1;
+    }
+
+    return 0;
 }

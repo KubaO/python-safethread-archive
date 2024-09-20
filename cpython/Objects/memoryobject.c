@@ -31,9 +31,9 @@ PyMemoryView_FromMemory(Py_buffer *info)
 {
 	PyMemoryViewObject *mview;
 
-	mview = (PyMemoryViewObject *)PyObject_New(PyMemoryViewObject,
-						   &PyMemoryView_Type);
-	if (mview == NULL) return NULL;
+	mview = PyObject_New(&PyMemoryView_Type);
+	if (mview == NULL)
+		return NULL;
 	mview->base = NULL;
 	mview->view = *info;
 	return (PyObject *)mview;
@@ -51,8 +51,7 @@ PyMemoryView_FromObject(PyObject *base)
                 return NULL;
         }
 
-        mview = (PyMemoryViewObject *)PyObject_New(PyMemoryViewObject,
-                                                   &PyMemoryView_Type);
+        mview = PyObject_New(&PyMemoryView_Type);
         if (mview == NULL) return NULL;
 
         mview->base = NULL;
@@ -221,7 +220,7 @@ PyMemoryView_GetContiguous(PyObject *obj, int buffertype, char fort)
                 return NULL;
         }
 
-        mem = PyObject_New(PyMemoryViewObject, &PyMemoryView_Type);
+        mem = PyObject_New(&PyMemoryView_Type);
         if (mem == NULL) return NULL;
 
         view = &PyMemoryView(mem);
@@ -236,7 +235,7 @@ PyMemoryView_GetContiguous(PyObject *obj, int buffertype, char fort)
         }
 
         if (PyObject_GetBuffer(obj, view, flags) != 0) {
-                PyObject_DEL(mem);
+                PyObject_Del(mem);
                 return NULL;
         }
 
@@ -248,7 +247,7 @@ PyMemoryView_GetContiguous(PyObject *obj, int buffertype, char fort)
         }
         /* otherwise a copy is needed */
         if (buffertype == PyBUF_WRITE) {
-                PyObject_DEL(mem);
+                PyObject_Del(mem);
                 PyErr_SetString(PyExc_BufferError,
                                 "writable contiguous buffer requested "
                                 "for a non-contiguousobject.");
@@ -432,7 +431,7 @@ memory_dealloc(PyMemoryViewObject *self)
             }
             Py_CLEAR(self->base);
         }
-        PyObject_DEL(self);
+        PyObject_Del(self);
 }
 
 static PyObject *
@@ -584,7 +583,7 @@ PyTypeObject PyMemoryView_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	&memory_as_buffer,			/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT,			/* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_SHAREABLE,	/* tp_flags */
 	memory_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -601,6 +600,5 @@ PyTypeObject PyMemoryView_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	memory_new,				/* tp_new */
 };

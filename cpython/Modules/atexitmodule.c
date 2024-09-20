@@ -78,8 +78,10 @@ atexit_delete_cb(int i)
 void
 atexit_cleanup(void)
 {
-    PyObject *r = atexit_clear(NULL);
-    Py_DECREF(r);
+    // This is called after the interpreter is torn down, so it's too
+    // late to delete python objects
+    //PyObject *r = atexit_clear(NULL);
+    //Py_DECREF(r);
 }
 
 /* ===================================================================== */

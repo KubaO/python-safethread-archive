@@ -679,6 +679,7 @@ class _TextTestResult(TestResult):
         if self.showAll:
             self.stream.write(self.getDescription(test))
             self.stream.write(" ... ")
+            self.stream.flush()
 
     def addSuccess(self, test):
         TestResult.addSuccess(self, test)

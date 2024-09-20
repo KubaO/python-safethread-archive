@@ -134,6 +134,7 @@ char *conversion_mode_errors = NULL;
 
 /****************************************************************/
 
+#if 0
 typedef struct {
 	PyObject_HEAD
 	PyObject *key;
@@ -146,7 +147,7 @@ _DictRemover_dealloc(PyObject *_self)
 	DictRemoverObject *self = (DictRemoverObject *)_self;
 	Py_XDECREF(self->key);
 	Py_XDECREF(self->dict);
-	Py_TYPE(self)->tp_free(_self);
+	PyObject_Del(_self);
 }
 
 static PyObject *
@@ -204,9 +205,7 @@ static PyTypeObject DictRemover_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	0,					/* tp_new */
-	0,					/* tp_free */
 };
 
 int
@@ -254,6 +253,7 @@ PyDict_GetItemProxy(PyObject *dict, PyObject *key)
 		return NULL;
 	return result;
 }
+#endif
 
 /******************************************************************/
 /*
@@ -591,9 +591,7 @@ PyTypeObject StructType_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	StructType_new,				/* tp_new */
-	0,					/* tp_free */
 };
 
 static PyTypeObject UnionType_Type = {
@@ -633,9 +631,7 @@ static PyTypeObject UnionType_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	UnionType_new,				/* tp_new */
-	0,					/* tp_free */
 };
 
 
@@ -848,9 +844,7 @@ PyTypeObject PointerType_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	PointerType_new,			/* tp_new */
-	0,					/* tp_free */
 };
 
 
@@ -1227,9 +1221,7 @@ PyTypeObject ArrayType_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	ArrayType_new,				/* tp_new */
-	0,					/* tp_free */
 };
 
 
@@ -1874,9 +1866,7 @@ PyTypeObject SimpleType_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	SimpleType_new,				/* tp_new */
-	0,					/* tp_free */
 };
 
 /******************************************************************/
@@ -2085,9 +2075,7 @@ PyTypeObject CFuncPtrType_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	CFuncPtrType_new,			/* tp_new */
-	0,					/* tp_free */
 };
 
 
@@ -2217,7 +2205,7 @@ static void
 CData_dealloc(PyObject *self)
 {
 	CData_clear((CDataObject *)self);
-	Py_TYPE(self)->tp_free(self);
+	PyObject_Del(self);
 }
 
 static PyMemberDef CData_members[] = {
@@ -2347,9 +2335,7 @@ PyTypeObject CData_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	0,					/* tp_new */
-	0,					/* tp_free */
 };
 
 static int CData_MallocBuffer(CDataObject *obj, StgDictObject *dict)
@@ -2394,7 +2380,7 @@ CData_FromBaseObj(PyObject *type, PyObject *base, Py_ssize_t index, char *adr)
 		return NULL;
 	}
 	dict->flags |= DICTFLAG_FINAL;
-	cmem = (CDataObject *)((PyTypeObject *)type)->tp_alloc((PyTypeObject *)type, 0);
+	cmem = PyObject_New((PyTypeObject *)type);
 	if (cmem == NULL)
 		return NULL;
 	assert(CDataObject_Check(cmem));
@@ -2437,7 +2423,7 @@ CData_AtAddress(PyObject *type, void *buf)
 	}
 	dict->flags |= DICTFLAG_FINAL;
 
-	pd = (CDataObject *)((PyTypeObject *)type)->tp_alloc((PyTypeObject *)type, 0);
+	pd = PyObject_New((PyTypeObject *)type);
 	if (!pd)
 		return NULL;
 	assert(CDataObject_Check(pd));
@@ -2616,7 +2602,7 @@ GenericCData_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	}
 	dict->flags |= DICTFLAG_FINAL;
 
-	obj = (CDataObject *)type->tp_alloc(type, 0);
+	obj = PyObject_New(type);
 	if (!obj)
 		return NULL;
 
@@ -3613,7 +3599,7 @@ static void
 CFuncPtr_dealloc(CFuncPtrObject *self)
 {
 	CFuncPtr_clear(self);
-	Py_TYPE(self)->tp_free((PyObject *)self);
+	PyObject_Del(self);
 }
 
 static PyObject *
@@ -3668,9 +3654,7 @@ PyTypeObject CFuncPtr_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
         CFuncPtr_new,				/* tp_new */
-	0,					/* tp_free */
 };
 
 /*****************************************************************/
@@ -3811,9 +3795,7 @@ static PyTypeObject Struct_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	Struct_init,				/* tp_init */
-	0,					/* tp_alloc */
 	GenericCData_new,			/* tp_new */
-	0,					/* tp_free */
 };
 
 static PyTypeObject Union_Type = {
@@ -3853,9 +3835,7 @@ static PyTypeObject Union_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	Struct_init,				/* tp_init */
-	0,					/* tp_alloc */
 	GenericCData_new,			/* tp_new */
-	0,					/* tp_free */
 };
 
 
@@ -4162,14 +4142,13 @@ PyTypeObject Array_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	(initproc)Array_init,			/* tp_init */
-	0,					/* tp_alloc */
         GenericCData_new,			/* tp_new */
-	0,					/* tp_free */
 };
 
 PyObject *
 CreateArrayType(PyObject *itemtype, Py_ssize_t length)
 {
+#if 0
 	static PyObject *cache;
 	PyObject *key;
 	PyObject *result;
@@ -4228,6 +4207,10 @@ CreateArrayType(PyObject *itemtype, Py_ssize_t length)
 	}
 	Py_DECREF(key);
 	return result;
+#else
+	PyErr_SetString(PyExc_NotImplementedError, "CreateArrayType");
+        return NULL;
+#endif
 }
 
 
@@ -4394,9 +4377,7 @@ static PyTypeObject Simple_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	(initproc)Simple_init,			/* tp_init */
-	0,					/* tp_alloc */
         GenericCData_new,			/* tp_new */
-	0,					/* tp_free */
 };
 
 /******************************************************************/
@@ -4771,9 +4752,7 @@ PyTypeObject Pointer_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	(initproc)Pointer_init,			/* tp_init */
-	0,					/* tp_alloc */
 	Pointer_new,				/* tp_new */
-	0,					/* tp_free */
 };
 
 
@@ -4866,7 +4845,6 @@ static PyTypeObject PyComError_Type = {
     0,                          /* tp_descr_set */
     0,                          /* tp_dictoffset */
     (initproc)comerror_init,    /* tp_init */
-    0,                          /* tp_alloc */
     0,                          /* tp_new */
 };
 
@@ -4987,9 +4965,6 @@ init_ctypes(void)
    ob_type is the metatype (the 'type'), defaults to PyType_Type,
    tp_base is the base type, defaults to 'object' aka PyBaseObject_Type.
 */
-#ifdef WITH_THREAD
-	PyEval_InitThreads();
-#endif
 	m = Py_InitModule3("_ctypes", module_methods, module_docs);
 	if (!m)
 		return;
@@ -5093,9 +5068,11 @@ init_ctypes(void)
 	 * Other stuff
 	 */
 
+#if 0
 	DictRemover_Type.tp_new = PyType_GenericNew;
 	if (PyType_Ready(&DictRemover_Type) < 0)
 		return;
+#endif
 
 #ifdef MS_WIN32
 	if (create_comerror() < 0)
