@@ -255,7 +255,7 @@ parser_compare(PyST_Object *left, PyST_Object *right)
 static PyObject*
 parser_newstobject(node *st, int type)
 {
-    PyST_Object* o = PyObject_New(PyST_Object, &PyST_Type);
+    PyST_Object* o = PyObject_NEW(PyST_Object, &PyST_Type);
 
     if (o != 0) {
         o->st_node = st;
@@ -277,7 +277,7 @@ static void
 parser_free(PyST_Object *st)
 {
     PyNode_Free(st->st_node);
-    PyObject_Del(st);
+    PyObject_DEL(st);
 }
 
 

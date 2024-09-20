@@ -1343,6 +1343,7 @@ Optional Packages:
   --with(out)-tsc         enable/disable timestamp counter profile
   --with(out)-pymalloc    disable/enable specialized mallocs
   --with-wctype-functions use wctype.h functions
+  --with-freethread       enable free threading
   --with-fpectl           enable SIGFPE catching
   --with-libm=STRING      math library
   --with-libc=STRING      C library
@@ -15614,6 +15615,31 @@ _ACEOF
 echo "${ECHO_T}yes" >&6; }
 else { echo "$as_me:$LINENO: result: no" >&5
 echo "${ECHO_T}no" >&6; }
+fi
+else
+  { echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6; }
+fi
+
+
+# Check for --with-freethread
+{ echo "$as_me:$LINENO: checking for --with-freethread" >&5
+echo $ECHO_N "checking for --with-freethread... $ECHO_C" >&6; }
+
+# Check whether --with-freethread was given.
+if test "${with_freethread+set}" = set; then
+  withval=$with_freethread;
+if test "$withval" != no
+then
+
+cat >>confdefs.h <<\_ACEOF
+#define WITH_FREETHREAD 1
+_ACEOF
+
+  { echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6; };
+else { echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6; };
 fi
 else
   { echo "$as_me:$LINENO: result: no" >&5

@@ -60,7 +60,7 @@ newdbmobject(char *file, int flags, int mode)
 {
     dbmobject *dp;
 
-    dp = PyObject_New(dbmobject, &Dbmtype);
+    dp = PyObject_NEW(dbmobject, &Dbmtype);
     if (dp == NULL)
         return NULL;
     dp->di_size = -1;
@@ -83,7 +83,7 @@ dbm_dealloc(register dbmobject *dp)
 {
     if (dp->di_dbm)
         gdbm_close(dp->di_dbm);
-    PyObject_Del(dp);
+    PyObject_DEL(dp);
 }
 
 static Py_ssize_t

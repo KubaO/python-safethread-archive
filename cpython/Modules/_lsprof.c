@@ -207,8 +207,11 @@ normalizeUserObj(PyObject *obj)
 		PyObject *self = fn->m_self;
 		PyObject *name = PyUnicode_FromString(fn->m_ml->ml_name);
 		if (name != NULL) {
-			PyObject *mo = _PyType_Lookup(Py_TYPE(self), name);
-			Py_XINCREF(mo);
+			PyObject *mo;
+			if (_PyType_LookupEx(Py_TYPE(self), name, &mo) < 0) {
+				Py_DECREF(name);
+				return NULL;
+			}
 			Py_DECREF(name);
 			if (mo != NULL) {
 				PyObject *res = PyObject_Repr(mo);
@@ -217,7 +220,8 @@ normalizeUserObj(PyObject *obj)
 					return res;
 			}
 		}
-		PyErr_Clear();
+		/* XXX FIXME why is this calling PyErr_Clear()? */
+		//PyErr_Clear();
 		return PyUnicode_FromFormat("<built-in method %s>",
 					    fn->m_ml->ml_name);
 	}
@@ -756,7 +760,7 @@ profiler_dealloc(ProfilerObject *op)
 	flush_unmatched(op);
 	clearEntries(op);
 	Py_XDECREF(op->externalTimer);
-	Py_TYPE(op)->tp_free(op);
+	PyObject_DEL(op);
 }
 
 static int
@@ -848,9 +852,7 @@ static PyTypeObject PyProfiler_Type = {
 	0,                                      /* tp_descr_set */
 	0,                                      /* tp_dictoffset */
 	(initproc)profiler_init,                /* tp_init */
-	PyType_GenericAlloc,                    /* tp_alloc */
 	PyType_GenericNew,                      /* tp_new */
-	PyObject_Del,                           /* tp_free */
 };
 
 static PyMethodDef moduleMethods[] = {

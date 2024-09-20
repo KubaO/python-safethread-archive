@@ -806,7 +806,6 @@ SRE_MATCH(SRE_STATE* state, SRE_CODE* pattern)
     Py_ssize_t alloc_pos, ctx_pos = -1;
     Py_ssize_t i, ret = 0;
     Py_ssize_t jump;
-    unsigned int sigcount=0;
 
     SRE_MATCH_CONTEXT* ctx;
     SRE_MATCH_CONTEXT* nextctx;
@@ -835,10 +834,6 @@ entrance:
     }
 
     for (;;) {
-        ++sigcount;
-        if ((0 == (sigcount & 0xfff)) && PyErr_CheckSignals())
-            RETURN_ERROR(SRE_ERROR_INTERRUPTED);
-
         switch (*ctx->pattern++) {
 
         case SRE_OP_MARK:
@@ -1853,8 +1848,6 @@ pattern_error(int status)
 static void
 pattern_dealloc(PatternObject* self)
 {
-    if (self->weakreflist != NULL)
-        PyObject_ClearWeakRefs((PyObject *) self);
     Py_XDECREF(self->pattern);
     Py_XDECREF(self->groupindex);
     Py_XDECREF(self->indexgroup);
@@ -2494,7 +2487,7 @@ pattern_copy(PatternObject* self, PyObject *unused)
     PatternObject* copy;
     int offset;
 
-    copy = PyObject_NEW_VAR(PatternObject, &Pattern_Type, self->codesize);
+    copy = PyObject_NEWVAR(PatternObject, &Pattern_Type, self->codesize);
     if (!copy)
         return NULL;
 
@@ -2678,7 +2671,7 @@ _compile(PyObject* self_, PyObject* args)
 
     n = PyList_GET_SIZE(code);
     /* coverity[ampersand_in_size] */
-    self = PyObject_NEW_VAR(PatternObject, &Pattern_Type, n);
+    self = PyObject_NEWVAR(PatternObject, &Pattern_Type, n);
     if (!self)
         return NULL;
 
@@ -3040,7 +3033,7 @@ match_copy(MatchObject* self, PyObject *unused)
 
     slots = 2 * (self->pattern->groups+1);
 
-    copy = PyObject_NEW_VAR(MatchObject, &Match_Type, slots);
+    copy = PyObject_NEWVAR(MatchObject, &Match_Type, slots);
     if (!copy)
         return NULL;
 
@@ -3188,7 +3181,7 @@ pattern_new_match(PatternObject* pattern, SRE_STATE* state, int status)
 
         /* create match object (with room for extra group marks) */
         /* coverity[ampersand_in_size] */
-        match = PyObject_NEW_VAR(MatchObject, &Match_Type,
+        match = PyObject_NEWVAR(MatchObject, &Match_Type,
                                  2*(pattern->groups+1));
         if (!match)
             return NULL;

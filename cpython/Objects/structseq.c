@@ -31,7 +31,7 @@ PyStructSequence_New(PyTypeObject *type)
 {
 	PyStructSequence *obj;
 
-	obj = PyObject_New(PyStructSequence, type);
+	obj = PyObject_NEW(PyStructSequence, type);
 	Py_SIZE(obj) = VISIBLE_SIZE_TP(type);
 
 	return (PyObject*) obj;
@@ -46,7 +46,7 @@ structseq_dealloc(PyStructSequence *obj)
 	for (i = 0; i < size; ++i) {
 		Py_XDECREF(obj->ob_item[i]);
 	}
-	PyObject_Del(obj);
+	PyObject_DEL(obj);
 }
 
 static Py_ssize_t
@@ -466,7 +466,6 @@ static PyTypeObject _struct_sequence_template = {
 	0,					/* tp_descr_set */
 	0,	                                /* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	structseq_new,				/* tp_new */
 };
 
@@ -480,6 +479,10 @@ PyStructSequence_InitType(PyTypeObject *type, PyStructSequence_Desc *desc)
 #ifdef Py_TRACE_REFS
 	/* if the type object was chained, unchain it first
 	   before overwriting its storage */
+	/* This is "probably" safe.  _ob_next should only be manipulated
+	   during object creation/deletion, so it should have passed
+	   through some memory barriers before we see it.  Then again,
+	   why are we manipulating it here? */
 	if (type->ob_base.ob_base._ob_next) {
 		_Py_ForgetReference((PyObject*)type);
 	}

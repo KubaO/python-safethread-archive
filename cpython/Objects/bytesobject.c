@@ -16,7 +16,7 @@ PyBytes_Fini(void)
 int
 PyBytes_Init(void)
 {
-    nullbytes = PyObject_New(PyBytesObject, &PyBytes_Type);
+    nullbytes = PyObject_NEW(PyBytesObject, &PyBytes_Type);
     if (nullbytes == NULL)
         return 0;
     nullbytes->ob_bytes = NULL;
@@ -110,7 +110,7 @@ PyBytes_FromStringAndSize(const char *bytes, Py_ssize_t size)
 
     assert(size >= 0);
 
-    new = PyObject_New(PyBytesObject, &PyBytes_Type);
+    new = PyObject_NEW(PyBytesObject, &PyBytes_Type);
     if (new == NULL)
         return NULL;
 
@@ -1008,7 +1008,7 @@ bytes_dealloc(PyBytesObject *self)
     if (self->ob_bytes != 0) {
         PyMem_Free(self->ob_bytes);
     }
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyObject_DEL(self);
 }
 
 
@@ -3145,7 +3145,8 @@ PyTypeObject PyBytes_Type = {
     PyObject_GenericGetAttr,            /* tp_getattro */
     0,                                  /* tp_setattro */
     &bytes_as_buffer,                   /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
+        Py_TPFLAGS_SHAREABLE,           /* tp_flags */
     bytes_doc,                          /* tp_doc */
     0,                                  /* tp_traverse */
     0,                                  /* tp_clear */
@@ -3162,9 +3163,7 @@ PyTypeObject PyBytes_Type = {
     0,                                  /* tp_descr_set */
     0,                                  /* tp_dictoffset */
     (initproc)bytes_init,               /* tp_init */
-    PyType_GenericAlloc,                /* tp_alloc */
     PyType_GenericNew,                  /* tp_new */
-    PyObject_Del,                       /* tp_free */
 };
 
 /*********************** Bytes Iterator ****************************/
@@ -3178,9 +3177,8 @@ typedef struct {
 static void
 bytesiter_dealloc(bytesiterobject *it)
 {
-    _PyObject_GC_UNTRACK(it);
     Py_XDECREF(it->it_seq);
-    PyObject_GC_Del(it);
+    PyObject_DEL(it);
 }
 
 static int
@@ -3275,12 +3273,11 @@ bytes_iter(PyObject *seq)
         PyErr_BadInternalCall();
         return NULL;
     }
-    it = PyObject_GC_New(bytesiterobject, &PyBytesIter_Type);
+    it = PyObject_NEW(bytesiterobject, &PyBytesIter_Type);
     if (it == NULL)
         return NULL;
     it->it_index = 0;
     Py_INCREF(seq);
     it->it_seq = (PyBytesObject *)seq;
-    _PyObject_GC_TRACK(it);
     return (PyObject *)it;
 }

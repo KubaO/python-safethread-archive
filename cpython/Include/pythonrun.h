@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define PyCF_MASK 0
+#define PyCF_MASK CO_FUTURE_SHARED_MODULE
 #define PyCF_MASK_OBSOLETE 0
 #define PyCF_SOURCE_IS_UTF8  0x0100
 #define PyCF_DONT_IMPLY_DEDENT 0x0200
@@ -27,8 +27,6 @@ PyAPI_FUNC(void) Py_Initialize(void);
 PyAPI_FUNC(void) Py_InitializeEx(int);
 PyAPI_FUNC(void) Py_Finalize(void);
 PyAPI_FUNC(int) Py_IsInitialized(void);
-PyAPI_FUNC(PyThreadState *) Py_NewInterpreter(void);
-PyAPI_FUNC(void) Py_EndInterpreter(PyThreadState *);
 
 PyAPI_FUNC(int) PyRun_AnyFileFlags(FILE *, const char *, PyCompilerFlags *);
 PyAPI_FUNC(int) PyRun_AnyFileExFlags(FILE *, const char *, int, PyCompilerFlags *);
@@ -76,7 +74,8 @@ PyAPI_FUNC(void) PyErr_Display(PyObject *, PyObject *, PyObject *);
 PyAPI_FUNC(void) _Py_PyAtExit(void (*func)(void));
 PyAPI_FUNC(int) Py_AtExit(void (*func)(void));
 
-PyAPI_FUNC(void) Py_Exit(int);
+PyAPI_FUNC(void) Py_Exit(int)
+    Py_GCC_ATTRIBUTE((noreturn));
 
 PyAPI_FUNC(int) Py_FdIsInteractive(FILE *, const char *);
 
@@ -119,14 +118,21 @@ PyAPI_FUNC(const char *) Py_SubversionRevision(void);
 PyAPI_FUNC(const char *) Py_SubversionShortBranch(void);
 
 /* Internal -- various one-time initializations */
-PyAPI_FUNC(PyObject *) _PyBuiltin_Init(void);
-PyAPI_FUNC(PyObject *) _PySys_Init(void);
+PyAPI_FUNC(int) _PyBuiltin_Init(void);
+PyAPI_FUNC(void) _Py_ThreadTools_Init(void);
+PyAPI_FUNC(int) _PySys_Init(void);
 PyAPI_FUNC(void) _PyImport_Init(void);
 PyAPI_FUNC(void) _PyExc_Init(void);
 PyAPI_FUNC(void) _PyImportHooks_Init(void);
 PyAPI_FUNC(int) _PyFrame_Init(void);
 PyAPI_FUNC(void) _PyFloat_Init(void);
 PyAPI_FUNC(int) PyBytes_Init(void);
+PyAPI_FUNC(void) _PyMethod_Init(void);
+PyAPI_FUNC(void) _PyList_Init(void);
+PyAPI_FUNC(void) _PySet_Init(void);
+PyAPI_FUNC(void) _PyCFunction_Init(void);
+PyAPI_FUNC(void) _PySignal_Init(void);
+PyAPI_FUNC(void) _PySignal_InitSigInt(int);
 
 /* Various internal finalizers */
 PyAPI_FUNC(void) _PyExc_Fini(void);
@@ -141,13 +147,15 @@ PyAPI_FUNC(void) PySet_Fini(void);
 PyAPI_FUNC(void) PyString_Fini(void);
 PyAPI_FUNC(void) PyBytes_Fini(void);
 PyAPI_FUNC(void) PyFloat_Fini(void);
-PyAPI_FUNC(void) PyOS_FiniInterrupts(void);
+PyAPI_FUNC(void) PyDict_Fini(void);
+PyAPI_FUNC(void) _PySignal_Fini(void);
+PyAPI_FUNC(void) _PySignal_FiniSigInt(void);
 
 /* Stuff with no proper home (yet) */
 PyAPI_FUNC(char *) PyOS_Readline(FILE *, FILE *, char *);
 PyAPI_DATA(int) (*PyOS_InputHook)(void);
 PyAPI_DATA(char) *(*PyOS_ReadlineFunctionPointer)(FILE *, FILE *, char *);
-PyAPI_DATA(PyThreadState*) _PyOS_ReadlineTState;
+PyAPI_DATA(PyState *) _PyOS_ReadlineTState;
 
 /* Stack size, in "pointers" (so we get extra safety margins
    on 64-bit platforms).  On a 32-bit platform, this translates
@@ -163,11 +171,6 @@ PyAPI_DATA(PyThreadState*) _PyOS_ReadlineTState;
 /* Check that we aren't overflowing our stack */
 PyAPI_FUNC(int) PyOS_CheckStack(void);
 #endif
-
-/* Signals */
-typedef void (*PyOS_sighandler_t)(int);
-PyAPI_FUNC(PyOS_sighandler_t) PyOS_getsig(int);
-PyAPI_FUNC(PyOS_sighandler_t) PyOS_setsig(int, PyOS_sighandler_t);
 
 
 #ifdef __cplusplus

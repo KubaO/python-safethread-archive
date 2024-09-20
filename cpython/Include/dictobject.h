@@ -67,6 +67,7 @@ To avoid slowing down lookups on a near-full table, we resize the table when
 it's two-thirds full.
 */
 typedef struct _dictobject PyDictObject;
+typedef struct _pydict_lockstate PyDict_LockState;
 struct _dictobject {
 	PyObject_HEAD
 	Py_ssize_t ma_fill;  /* # Active + # Dummy */
@@ -78,17 +79,41 @@ struct _dictobject {
 	 */
 	Py_ssize_t ma_mask;
 
+	/* Counter for number of times ma_table has been reallocated and
+	 * rebuilt.  Used to detect changes during a lookup.
+	 *
+	 * It's theoretically possible for this to wrap around completely
+	 * during one lookup, causing it to not restart.  Using a 64bit
+	 * counter would be the safest defense against this, but for now
+	 * we'll just be lazy.
+	 */
+	unsigned long long ma_rebuilds;
+
 	/* ma_table points to ma_smalltable for small tables, else to
 	 * additional malloc'ed memory.  ma_table is never NULL!  This rule
 	 * saves repeated runtime null-tests in the workhorse getitem and
 	 * setitem calls.
 	 */
 	PyDictEntry *ma_table;
-	PyDictEntry *(*ma_lookup)(PyDictObject *mp, PyObject *key, long hash);
+	PyDictEntry *(*ma_lookup)(PyDictObject *mp, PyObject *key,
+		long hash, PyDict_LockState *lockstate);
 	PyDictEntry ma_smalltable[PyDict_MINSIZE];
 };
 
+typedef struct {
+    PyDictObject base;
+    AO_t readonly_mode;
+    PyCritical *crit;
+    int read_count;
+} PySharedDictObject;
+
+struct _pydict_lockstate {
+    int doing_write;  /* These two flags are mutually incompatible */
+    int skipped_lock;
+};
+
 PyAPI_DATA(PyTypeObject) PyDict_Type;
+PyAPI_DATA(PyTypeObject) PySharedDict_Type;
 PyAPI_DATA(PyTypeObject) PyDictIterKey_Type;
 PyAPI_DATA(PyTypeObject) PyDictIterValue_Type;
 PyAPI_DATA(PyTypeObject) PyDictIterItem_Type;
@@ -105,10 +130,12 @@ PyAPI_DATA(PyTypeObject) PyDictValues_Type;
 /* This excludes Values, since they are not sets. */
 # define PyDictViewSet_Check(op) \
 	(PyDictKeys_Check(op) || PyDictItems_Check(op))
+#define PySharedDict_Check(op) (Py_TYPE(op) == &PySharedDict_Type)
 
 
 PyAPI_FUNC(PyObject *) PyDict_New(void);
 PyAPI_FUNC(PyObject *) PyDict_GetItem(PyObject *mp, PyObject *key);
+PyAPI_FUNC(int) PyDict_GetItemEx(PyObject *op, PyObject *key, PyObject **value);
 PyAPI_FUNC(int) PyDict_SetItem(PyObject *mp, PyObject *key, PyObject *item);
 PyAPI_FUNC(int) PyDict_DelItem(PyObject *mp, PyObject *key);
 PyAPI_FUNC(void) PyDict_Clear(PyObject *mp);
@@ -116,6 +143,8 @@ PyAPI_FUNC(int) PyDict_Next(
 	PyObject *mp, Py_ssize_t *pos, PyObject **key, PyObject **value);
 PyAPI_FUNC(int) _PyDict_Next(
 	PyObject *mp, Py_ssize_t *pos, PyObject **key, PyObject **value, long *hash);
+PyAPI_FUNC(int) PyDict_NextEx(PyObject *mp, Py_ssize_t *pos,
+    PyObject **key, PyObject **value);
 PyAPI_FUNC(PyObject *) PyDict_Keys(PyObject *mp);
 PyAPI_FUNC(PyObject *) PyDict_Values(PyObject *mp);
 PyAPI_FUNC(PyObject *) PyDict_Items(PyObject *mp);
@@ -147,8 +176,16 @@ PyAPI_FUNC(int) PyDict_MergeFromSeq2(PyObject *d,
 					   int override);
 
 PyAPI_FUNC(PyObject *) PyDict_GetItemString(PyObject *dp, const char *key);
+PyAPI_FUNC(int) PyDict_GetItemStringEx(PyObject *v, const char *key, PyObject **value);
 PyAPI_FUNC(int) PyDict_SetItemString(PyObject *dp, const char *key, PyObject *item);
 PyAPI_FUNC(int) PyDict_DelItemString(PyObject *dp, const char *key);
+PyAPI_FUNC(int) PyDict_ContainsString(PyObject *d, const char *key);
+
+PyAPI_FUNC(void) _pydictlock_initstate_read(PyDict_LockState *);
+PyAPI_FUNC(void) _pydictlock_initstate_write(PyDict_LockState *);
+PyAPI_FUNC(void) _pydictlock_initstate_notshared(PyDict_LockState *);
+PyAPI_FUNC(void) _pydictlock_acquire(PyDictObject *, PyDict_LockState *);
+PyAPI_FUNC(void) _pydictlock_release(PyDictObject *, PyDict_LockState *);
 
 #ifdef __cplusplus
 }

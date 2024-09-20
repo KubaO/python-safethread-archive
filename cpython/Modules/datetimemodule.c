@@ -576,56 +576,6 @@ normalize_datetime(int *year, int *month, int *day,
 	return normalize_date(year, month, day);
 }
 
-/* ---------------------------------------------------------------------------
- * Basic object allocation:  tp_alloc implementations.  These allocate
- * Python objects of the right size and type, and do the Python object-
- * initialization bit.  If there's not enough memory, they return NULL after
- * setting MemoryError.  All data members remain uninitialized trash.
- *
- * We abuse the tp_alloc "nitems" argument to communicate whether a tzinfo
- * member is needed.  This is ugly, imprecise, and possibly insecure.
- * tp_basicsize for the time and datetime types is set to the size of the
- * struct that has room for the tzinfo member, so subclasses in Python will
- * allocate enough space for a tzinfo member whether or not one is actually
- * needed.  That's the "ugly and imprecise" parts.  The "possibly insecure"
- * part is that PyType_GenericAlloc() (which subclasses in Python end up
- * using) just happens today to effectively ignore the nitems argument
- * when tp_itemsize is 0, which it is for these type objects.  If that
- * changes, perhaps the callers of tp_alloc slots in this file should
- * be changed to force a 0 nitems argument unless the type being allocated
- * is a base type implemented in this file (so that tp_alloc is time_alloc
- * or datetime_alloc below, which know about the nitems abuse).
- */
-
-static PyObject *
-time_alloc(PyTypeObject *type, Py_ssize_t aware)
-{
-	PyObject *self;
-
-	self = (PyObject *)
-		PyObject_MALLOC(aware ?
-				sizeof(PyDateTime_Time) :
-				sizeof(_PyDateTime_BaseTime));
-	if (self == NULL)
-		return (PyObject *)PyErr_NoMemory();
-	PyObject_INIT(self, type);
-	return self;
-}
-
-static PyObject *
-datetime_alloc(PyTypeObject *type, Py_ssize_t aware)
-{
-	PyObject *self;
-
-	self = (PyObject *)
-		PyObject_MALLOC(aware ?
-				sizeof(PyDateTime_DateTime) :
-				sizeof(_PyDateTime_BaseDateTime));
-	if (self == NULL)
-		return (PyObject *)PyErr_NoMemory();
-	PyObject_INIT(self, type);
-	return self;
-}
 
 /* ---------------------------------------------------------------------------
  * Helpers for setting object fields.  These work on pointers to the
@@ -652,7 +602,7 @@ new_date_ex(int year, int month, int day, PyTypeObject *type)
 {
 	PyDateTime_Date *self;
 
-	self = (PyDateTime_Date *) (type->tp_alloc(type, 0));
+	self = PyObject_NEW(PyDateTime_Date, type);
 	if (self != NULL)
 		set_date_fields(self, year, month, day);
 	return (PyObject *) self;
@@ -669,7 +619,7 @@ new_datetime_ex(int year, int month, int day, int hour, int minute,
 	PyDateTime_DateTime *self;
 	char aware = tzinfo != Py_None;
 
-	self = (PyDateTime_DateTime *) (type->tp_alloc(type, aware));
+	self = PyObject_NEW(PyDateTime_DateTime, type);
 	if (self != NULL) {
 		self->hastzinfo = aware;
 		set_date_fields((PyDateTime_Date *)self, year, month, day);
@@ -697,7 +647,7 @@ new_time_ex(int hour, int minute, int second, int usecond,
 	PyDateTime_Time *self;
 	char aware = tzinfo != Py_None;
 
-	self = (PyDateTime_Time *) (type->tp_alloc(type, aware));
+	self = PyObject_NEW(PyDateTime_Time, type);
 	if (self != NULL) {
 		self->hastzinfo = aware;
 		self->hashcode = -1;
@@ -736,7 +686,7 @@ new_delta_ex(int days, int seconds, int microseconds, int normalize,
  	if (check_delta_day_range(days) < 0)
  		return NULL;
 
-	self = (PyDateTime_Delta *) (type->tp_alloc(type, 0));
+	self = PyObject_NEW(PyDateTime_Delta, type);
 	if (self != NULL) {
 		self->hashcode = -1;
 		SET_TD_DAYS(self, days);
@@ -2135,9 +2085,7 @@ static PyTypeObject PyDateTime_DeltaType = {
 	0,						/* tp_descr_set */
 	0,						/* tp_dictoffset */
 	0,						/* tp_init */
-	0,						/* tp_alloc */
 	delta_new,					/* tp_new */
-	0,						/* tp_free */
 };
 
 /*
@@ -2192,7 +2140,7 @@ date_new(PyTypeObject *type, PyObject *args, PyObject *kw)
 	{
 	    	PyDateTime_Date *me;
 
-		me = (PyDateTime_Date *) (type->tp_alloc(type, 0));
+		me = PyObject_NEW(PyDateTime_Date, type);
 		if (me != NULL) {
 			char *pdata = PyString_AS_STRING(state);
 			memcpy(me->data, pdata, _PyDateTime_DATE_DATASIZE);
@@ -2706,9 +2654,7 @@ static PyTypeObject PyDateTime_DateType = {
 	0,						/* tp_descr_set */
 	0,						/* tp_dictoffset */
 	0,						/* tp_init */
-	0,						/* tp_alloc */
 	date_new,					/* tp_new */
-	0,						/* tp_free */
 };
 
 /*
@@ -2960,9 +2906,7 @@ static PyTypeObject PyDateTime_TZInfoType = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	PyType_GenericNew,			/* tp_new */
-	0,					/* tp_free */
 };
 
 /*
@@ -3051,7 +2995,7 @@ time_new(PyTypeObject *type, PyObject *args, PyObject *kw)
 			}
 		}
 		aware = (char)(tzinfo != Py_None);
-		me = (PyDateTime_Time *) (type->tp_alloc(type, aware));
+		me = PyObject_NEW(PyDateTime_Time, type);
 		if (me != NULL) {
 			char *pdata = PyString_AS_STRING(state);
 
@@ -3089,7 +3033,7 @@ time_dealloc(PyDateTime_Time *self)
 	if (HASTZINFO(self)) {
 		Py_XDECREF(self->tzinfo);
 	}
-	Py_TYPE(self)->tp_free((PyObject *)self);
+	PyObject_DEL(self);
 }
 
 /*
@@ -3474,9 +3418,7 @@ static PyTypeObject PyDateTime_TimeType = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	time_alloc,				/* tp_alloc */
 	time_new,				/* tp_new */
-	0,					/* tp_free */
 };
 
 /*
@@ -3570,7 +3512,7 @@ datetime_new(PyTypeObject *type, PyObject *args, PyObject *kw)
 			}
 		}
 		aware = (char)(tzinfo != Py_None);
-		me = (PyDateTime_DateTime *) (type->tp_alloc(type , aware));
+		me = PyObject_NEW(PyDateTime_DateTime, type);
 		if (me != NULL) {
 			char *pdata = PyString_AS_STRING(state);
 
@@ -3882,7 +3824,7 @@ datetime_dealloc(PyDateTime_DateTime *self)
 	if (HASTZINFO(self)) {
 		Py_XDECREF(self->tzinfo);
 	}
-	Py_TYPE(self)->tp_free((PyObject *)self);
+	PyObject_DEL(self);
 }
 
 /*
@@ -4571,9 +4513,7 @@ static PyTypeObject PyDateTime_DateTimeType = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	datetime_alloc,				/* tp_alloc */
 	datetime_new,				/* tp_new */
-	0,					/* tp_free */
 };
 
 /* ---------------------------------------------------------------------------

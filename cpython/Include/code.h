@@ -49,6 +49,7 @@ typedef struct {
 #define CO_FUTURE_ABSOLUTE_IMPORT 0x4000 /* do absolute imports by default */
 #define CO_FUTURE_WITH_STATEMENT  0x8000
 #endif
+#define CO_FUTURE_SHARED_MODULE 0x0800
 
 /* This should be defined if a future statement modifies the syntax.
    For example, when a keyword is added.

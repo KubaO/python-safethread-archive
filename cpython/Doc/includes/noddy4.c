@@ -47,7 +47,7 @@ static void
 Noddy_dealloc(Noddy* self)
 {
     Noddy_clear(self);
-    self->ob_type->tp_free((PyObject*)self);
+    PyObject_DEL(self);
 }
 
 static PyObject *
@@ -55,7 +55,7 @@ Noddy_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     Noddy *self;
 
-    self = (Noddy *)type->tp_alloc(type, 0);
+    self = PyObject_NEW(Noddy, type);
     if (self != NULL) {
         self->first = PyUnicode_FromString("");
         if (self->first == NULL)
@@ -194,7 +194,6 @@ static PyTypeObject NoddyType = {
     0,                         /* tp_descr_set */
     0,                         /* tp_dictoffset */
     (initproc)Noddy_init,      /* tp_init */
-    0,                         /* tp_alloc */
     Noddy_new,                 /* tp_new */
 };
 

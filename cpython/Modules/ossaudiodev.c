@@ -133,7 +133,7 @@ newossobject(PyObject *arg)
         return NULL;
     }
     /* Create and initialize the object */
-    if ((self = PyObject_New(oss_audio_t, &OSSAudioType)) == NULL) {
+    if ((self = PyObject_NEW(oss_audio_t, &OSSAudioType)) == NULL) {
         close(fd);
         return NULL;
     }
@@ -151,7 +151,7 @@ oss_dealloc(oss_audio_t *self)
     /* if already closed, don't reclose it */
     if (self->fd != -1)
         close(self->fd);
-    PyObject_Del(self);
+    PyObject_DEL(self);
 }
 
 
@@ -181,7 +181,7 @@ newossmixerobject(PyObject *arg)
         return NULL;
     }
 
-    if ((self = PyObject_New(oss_mixer_t, &OSSMixerType)) == NULL) {
+    if ((self = PyObject_NEW(oss_mixer_t, &OSSMixerType)) == NULL) {
         close(fd);
         return NULL;
     }
@@ -197,7 +197,7 @@ oss_mixer_dealloc(oss_mixer_t *self)
     /* if already closed, don't reclose it */
     if (self->fd != -1)
         close(self->fd);
-    PyObject_Del(self);
+    PyObject_DEL(self);
 }
 
 

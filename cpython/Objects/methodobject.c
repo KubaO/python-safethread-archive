@@ -3,37 +3,48 @@
 
 #include "Python.h"
 #include "structmember.h"
+#include "pythread.h"
 
+#ifdef USE_METHOD_FREELIST
 /* Free list for method objects to safe malloc/free overhead
  * The m_self element is used to chain the objects.
  */
 static PyCFunctionObject *free_list = NULL;
+static PyThread_type_lock free_list_lock;
 static int numfree = 0;
 #ifndef PyCFunction_MAXFREELIST
 #define PyCFunction_MAXFREELIST 256
+#endif
 #endif
 
 PyObject *
 PyCFunction_NewEx(PyMethodDef *ml, PyObject *self, PyObject *module)
 {
 	PyCFunctionObject *op;
+#ifdef USE_METHOD_FREELIST
+	PyThread_lock_acquire(free_list_lock);
 	op = free_list;
 	if (op != NULL) {
 		free_list = (PyCFunctionObject *)(op->m_self);
+		PyThread_lock_release(free_list_lock);
 		PyObject_INIT(op, &PyCFunction_Type);
+		_PyObject_GC_TRACK(op);
 		numfree--;
 	}
 	else {
-		op = PyObject_GC_New(PyCFunctionObject, &PyCFunction_Type);
+		PyThread_lock_release(free_list_lock);
+#endif
+		op = PyObject_NEW(PyCFunctionObject, &PyCFunction_Type);
 		if (op == NULL)
 			return NULL;
+#ifdef USE_METHOD_FREELIST
 	}
+#endif
 	op->m_ml = ml;
 	Py_XINCREF(self);
 	op->m_self = self;
 	Py_XINCREF(module);
 	op->m_module = module;
-	_PyObject_GC_TRACK(op);
 	return (PyObject *)op;
 }
 
@@ -75,7 +86,8 @@ PyCFunction_Call(PyObject *func, PyObject *arg, PyObject *kw)
 	PyObject *self = PyCFunction_GET_SELF(func);
 	Py_ssize_t size;
 
-	switch (PyCFunction_GET_FLAGS(func) & ~(METH_CLASS | METH_STATIC | METH_COEXIST)) {
+	switch (PyCFunction_GET_FLAGS(func) & ~(METH_CLASS | METH_STATIC |
+			METH_COEXIST | METH_SHARED)) {
 	case METH_VARARGS:
 		if (kw == NULL || PyDict_Size(kw) == 0)
 			return (*meth)(self, arg);
@@ -121,17 +133,23 @@ PyCFunction_Call(PyObject *func, PyObject *arg, PyObject *kw)
 static void
 meth_dealloc(PyCFunctionObject *m)
 {
-	_PyObject_GC_UNTRACK(m);
 	Py_XDECREF(m->m_self);
 	Py_XDECREF(m->m_module);
+#ifdef USE_METHOD_FREELIST
+	PyThread_lock_acquire(free_list_lock);
 	if (numfree < PyCFunction_MAXFREELIST) {
 		m->m_self = (PyObject *)free_list;
 		free_list = m;
 		numfree++;
+		PyThread_lock_release(free_list_lock);
 	}
 	else {
-		PyObject_GC_Del(m);
+		PyThread_lock_release(free_list_lock);
+		PyObject_DEL(m);
 	}
+#else
+	PyObject_DEL(m);
+#endif
 }
 
 static PyObject *
@@ -244,6 +262,14 @@ meth_hash(PyCFunctionObject *a)
 	return x;
 }
 
+static int
+meth_isshareable(PyCFunctionObject *a)
+{
+	if (a->m_ml->ml_flags & METH_SHARED)
+		return 1;
+	return 0;
+}
+
 
 PyTypeObject PyCFunction_Type = {
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
@@ -278,6 +304,18 @@ PyTypeObject PyCFunction_Type = {
 	meth_getsets,				/* tp_getset */
 	0,					/* tp_base */
 	0,					/* tp_dict */
+	0,					/* tp_descr_get */
+	0,					/* tp_descr_set */
+	0,					/* tp_dictoffset */
+	0,					/* tp_init */
+	0,					/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	(isshareablefunc)meth_isshareable,	/* tp_isshareable */
 };
 
 /* Find a method in a method chain */
@@ -317,21 +355,36 @@ Py_FindMethod(PyMethodDef *methods, PyObject *self, const char *name)
 	return Py_FindMethodInChain(&chain, self, name);
 }
 
+void
+_PyCFunction_Init(void)
+{
+#ifdef USE_METHOD_FREELIST
+	free_list_lock = PyThread_lock_allocate();
+	if (!free_list_lock)
+		Py_FatalError("unable to allocate lock");
+#endif
+}
+
 /* Clear out the free list */
 
 int
 PyCFunction_ClearFreeList(void)
 {
+#ifdef USE_METHOD_FREELIST
 	int freelist_size = numfree;
 	
 	while (free_list) {
 		PyCFunctionObject *v = free_list;
 		free_list = (PyCFunctionObject *)(v->m_self);
-		PyObject_GC_Del(v);
+		PyObject_DEL(v);
 		numfree--;
 	}
+
 	assert(numfree == 0);
 	return freelist_size;
+#else
+	return 0;
+#endif
 }
 
 void

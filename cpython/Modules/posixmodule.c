@@ -156,6 +156,16 @@ corresponding Unix manual entries for more information on calls.");
 #endif  /* ! __WATCOMC__ || __QNX__ */
 #endif /* ! __IBMC__ */
 
+#if !defined(HAVE_SPAWNV) && (defined(HAVE_FORK) && defined(HAVE_EXECV))
+#define EMULATE_SPAWNV
+#define HAVE_SPAWNV
+#endif
+
+/* These are broken so we disable them */
+#undef HAVE_FORK
+#undef HAVE_FORK1
+#undef HAVE_FORKPTY
+
 #ifndef _MSC_VER
 
 #if defined(__sgi)&&_COMPILER_VERSION>=700
@@ -3138,6 +3148,64 @@ posix_execve(PyObject *self, PyObject *args)
 #endif /* HAVE_EXECV */
 
 
+#ifdef EMULATE_SPAWNV
+#define _P_WAIT 1
+#define _P_NOWAIT 2
+#define _OLD_P_OVERLAY 42
+#define _P_OVERLAY 43
+/* XXX is this really right?  Am I getting all the spawn semantics right?
+ * Should I even claim I am emulating spawn? */
+static Py_intptr_t
+_py_spawn(int mode, const char *path, char **argvlist, char **envlist)
+{
+	int pid;
+
+	/* We only support _P_WAIT and _P_NOWAIT */
+	assert(mode == _P_WAIT || mode == _P_NOWAIT);
+
+	pid = fork();
+	if (pid == -1)
+		return -1;
+	else if (pid == 0) {
+		/* XXX purge open file descriptors.  Doesn't that mean
+		 * we need an argument telling us which to keep though? */
+		if (envlist == NULL)
+			execv(path, argvlist);
+		else
+			execve(path, argvlist, envlist);
+
+		/* IF we get here then execv{,e} failed */
+		_exit(1);
+	} else {
+		if (mode == _P_WAIT) {
+			int status;
+			/* XXX FIXME loop if the child gets stopped? */
+			if (waitpid(pid, &status, 0) == -1)
+				return -1;
+			return status;
+		}
+		return pid;
+	}
+}
+
+static Py_intptr_t
+_py_spawnv(int mode, const char *path, char **argvlist)
+{
+	return _py_spawn(mode, path, argvlist, NULL);
+}
+
+static Py_intptr_t
+_py_spawnve(int mode, const char *path, char **argvlist, char **envlist)
+{
+	return _py_spawn(mode, path, argvlist, envlist);
+}
+#else
+#define _py_spawnv _spawnv
+#define _py_spawnve _spawnve
+#define _py_spawnvp _spawnvp
+#endif /* EMULATE_SPAWNV */
+
+
 #ifdef HAVE_SPAWNV
 PyDoc_STRVAR(posix_spawnv__doc__,
 "spawnv(mode, path, args)\n\n\
@@ -3208,7 +3276,7 @@ posix_spawnv(PyObject *self, PyObject *args)
 		mode = _P_OVERLAY;
 
 	Py_BEGIN_ALLOW_THREADS
-	spawnval = _spawnv(mode, path, argvlist);
+	spawnval = _py_spawnv(mode, path, argvlist);
 	Py_END_ALLOW_THREADS
 #endif
 
@@ -3353,7 +3421,7 @@ posix_spawnve(PyObject *self, PyObject *args)
 		mode = _P_OVERLAY;
 
 	Py_BEGIN_ALLOW_THREADS
-	spawnval = _spawnve(mode, path, argvlist, envlist);
+	spawnval = _py_spawnve(mode, path, argvlist, envlist);
 	Py_END_ALLOW_THREADS
 #endif
 
@@ -3445,7 +3513,7 @@ posix_spawnvp(PyObject *self, PyObject *args)
 #if defined(PYCC_GCC)
 	spawnval = spawnvp(mode, path, argvlist);
 #else
-	spawnval = _spawnvp(mode, path, argvlist);
+	spawnval = _py_spawnvp(mode, path, argvlist);
 #endif
 	Py_END_ALLOW_THREADS
 
@@ -3616,10 +3684,18 @@ Return 0 to child process and PID of child to parent process.");
 static PyObject *
 posix_fork1(PyObject *self, PyObject *noargs)
 {
-	pid_t pid = fork1();
-	if (pid == -1)
+	pid_t pid;
+
+	PyState_PrepareFork();
+	pid = fork1();
+	if (pid == -1) {
+		PyState_CleanupForkParent();
 		return posix_error();
-	PyOS_AfterFork();
+	} else if (pid == 0) {
+		PyOS_AfterFork();
+		return PyLong_FromLong(0);
+	}
+	PyState_CleanupForkParent();
 	return PyLong_FromLong(pid);
 }
 #endif
@@ -3634,11 +3710,18 @@ Return 0 to child process and PID of child to parent process.");
 static PyObject *
 posix_fork(PyObject *self, PyObject *noargs)
 {
-	pid_t pid = fork();
-	if (pid == -1)
+	pid_t pid;
+
+	PyState_PrepareFork();
+	pid = fork();
+	if (pid == -1) {
+		PyState_CleanupForkParent();
 		return posix_error();
-	if (pid == 0)
+	} if (pid == 0) {
 		PyOS_AfterFork();
+		return PyLong_FromLong(0);
+	}
+	PyState_CleanupForkParent();
 	return PyLong_FromLong(pid);
 }
 #endif
@@ -7313,9 +7396,11 @@ all_ins(PyObject *d)
 #else
         if (ins(d, "P_WAIT", (long)_P_WAIT)) return -1;
         if (ins(d, "P_NOWAIT", (long)_P_NOWAIT)) return -1;
+#ifndef EMULATE_SPAWNV
         if (ins(d, "P_OVERLAY", (long)_OLD_P_OVERLAY)) return -1;
         if (ins(d, "P_NOWAITO", (long)_P_NOWAITO)) return -1;
         if (ins(d, "P_DETACH", (long)_P_DETACH)) return -1;
+#endif
 #endif
 #endif
 

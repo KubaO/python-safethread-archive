@@ -30,7 +30,7 @@ int pysqlite_prepare_protocol_init(pysqlite_PrepareProtocol* self, PyObject* arg
 
 void pysqlite_prepare_protocol_dealloc(pysqlite_PrepareProtocol* self)
 {
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    PyObject_DEL(self);
 }
 
 PyTypeObject pysqlite_PrepareProtocolType= {
@@ -70,9 +70,7 @@ PyTypeObject pysqlite_PrepareProtocolType= {
         0,                                              /* tp_descr_set */
         0,                                              /* tp_dictoffset */
         (initproc)pysqlite_prepare_protocol_init,       /* tp_init */
-        0,                                              /* tp_alloc */
         0,                                              /* tp_new */
-        0                                               /* tp_free */
 };
 
 extern int pysqlite_prepare_protocol_setup_types(void)

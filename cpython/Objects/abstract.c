@@ -6,6 +6,8 @@
 #include "longintrepr.h"
 
 
+static PyObject *__bases__ = NULL;
+
 
 /* Shorthands to return certain errors */
 
@@ -731,8 +733,9 @@ PyObject_Format(PyObject *obj, PyObject *format_spec)
         if (PyType_Ready(Py_TYPE(obj)) < 0)
             goto done;
 
-    /* Find the (unbound!) __format__ method (a borrowed reference) */
-    meth = _PyType_Lookup(Py_TYPE(obj), str__format__);
+    /* Find the (unbound!) __format__ method */
+    if (_PyType_LookupEx(Py_TYPE(obj), str__format__, &meth) < 0)
+        goto done;
     if (meth == NULL) {
         PyErr_Format(PyExc_TypeError,
                 "Type %.100s doesn't define __format__",
@@ -742,6 +745,7 @@ PyObject_Format(PyObject *obj, PyObject *format_spec)
 
     /* And call it, binding it to the value */
     result = PyObject_CallFunctionObjArgs(meth, obj, format_spec, NULL);
+    Py_DECREF(meth);
 
     if (result && !PyUnicode_Check(result)) {
         PyErr_SetString(PyExc_TypeError,
@@ -2450,14 +2454,8 @@ PyObject_CallFunctionObjArgs(PyObject *callable, ...)
 static PyObject *
 abstract_get_bases(PyObject *cls)
 {
-	static PyObject *__bases__ = NULL;
 	PyObject *bases;
 
-	if (__bases__ == NULL) {
-		__bases__ = PyUnicode_InternFromString("__bases__");
-		if (__bases__ == NULL)
-			return NULL;
-	}
 	Py_ALLOW_RECURSION
 	bases = PyObject_GetAttr(cls, __bases__);
 	Py_END_ALLOW_RECURSION
@@ -2704,6 +2702,13 @@ PyObject_IsSubclass(PyObject *derived, PyObject *cls)
 	return recursive_issubclass(derived, cls, Py_GetRecursionLimit());
 }
 
+/* Used when it's not safe to call arbitrary code */
+int
+_PyObject_IsSubclassSimple(PyObject *derived, PyObject *cls)
+{
+	return recursive_issubclass(derived, cls, Py_GetRecursionLimit());
+}
+
 
 PyObject *
 PyObject_GetIter(PyObject *o)
@@ -2748,4 +2753,14 @@ PyIter_Next(PyObject *iter)
 	    PyErr_ExceptionMatches(PyExc_StopIteration))
 		PyErr_Clear();
 	return result;
+}
+
+
+void
+_PyAbstract_Init(void)
+{
+    __bases__ = PyUnicode_InternFromString("__bases__");
+    if (__bases__ == NULL)
+        /* XXX FIXME This will actually lead to recursion loop with Py_FatalError */
+        Py_FatalError("Unable to initialize __bases__");
 }

@@ -935,7 +935,7 @@ static void
 formatteriter_dealloc(formatteriterobject *it)
 {
     Py_XDECREF(it->str);
-    PyObject_FREE(it);
+    PyObject_DEL(it);
 }
 
 /* returns a tuple:
@@ -1057,7 +1057,7 @@ formatter_parser(STRINGLIB_OBJECT *self)
 {
     formatteriterobject *it;
 
-    it = PyObject_New(formatteriterobject, &PyFormatterIter_Type);
+    it = PyObject_NEW(formatteriterobject, &PyFormatterIter_Type);
     if (it == NULL)
         return NULL;
 
@@ -1095,7 +1095,7 @@ static void
 fieldnameiter_dealloc(fieldnameiterobject *it)
 {
     Py_XDECREF(it->str);
-    PyObject_FREE(it);
+    PyObject_DEL(it);
 }
 
 /* returns a tuple:
@@ -1197,7 +1197,7 @@ formatter_field_name_split(STRINGLIB_OBJECT *self)
     PyObject *first_obj = NULL;
     PyObject *result = NULL;
 
-    it = PyObject_New(fieldnameiterobject, &PyFieldNameIter_Type);
+    it = PyObject_NEW(fieldnameiterobject, &PyFieldNameIter_Type);
     if (it == NULL)
         return NULL;
 

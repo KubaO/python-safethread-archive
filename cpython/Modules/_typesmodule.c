@@ -69,9 +69,7 @@ static PyTypeObject HelperType = {
     0,						/* tp_descr_set */
     0,						/* tp_dictoffset */
     0,						/* tp_init */
-    0,						/* tp_alloc */
     0,                                          /* tp_new */
-    0,						/* tp_free */
 };
 
 PyMODINIT_FUNC

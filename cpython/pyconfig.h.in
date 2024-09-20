@@ -936,6 +936,10 @@
    Dyld is necessary to support frameworks. */
 #undef WITH_DYLD
 
+/* Define if you want to build an interpreter with free (scalable) threading.
+   */
+#undef WITH_FREETHREAD
+
 /* Define to 1 if libintl is needed for locale functions. */
 #undef WITH_LIBINTL
 

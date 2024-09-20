@@ -3145,6 +3145,8 @@ decode_unicode(const char *s, size_t len, int rawmode, const char *encoding)
         p = buf = PyString_AsString(u);
         end = s + len;
         while (s < end) {
+            if (*s == '\0')
+                Py_FatalError("Meh");
             if (*s == '\\') {
                 *p++ = *s++;
                 if (*s & 0x80) {
@@ -3175,6 +3177,7 @@ decode_unicode(const char *s, size_t len, int rawmode, const char *encoding)
                 *p++ = *s++;
             }
         }
+        *p = '\0';
         len = p - buf;
         s = buf;
     }

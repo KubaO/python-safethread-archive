@@ -618,9 +618,11 @@ on_hook(PyObject *func)
 {
 	int result = 0;
 	if (func != NULL) {
-		PyObject *r;
+		PyObject *r = NULL;
 #ifdef WITH_THREAD
-		PyGILState_STATE gilstate = PyGILState_Ensure();
+		PyState_EnterFrame *enterframe = PyState_Enter();
+		if (enterframe == NULL)
+			goto error;
 #endif
 		r = PyObject_CallFunction(func, NULL);
 		if (r == NULL)
@@ -639,7 +641,7 @@ on_hook(PyObject *func)
 		Py_XDECREF(r);
 	  done:
 #ifdef WITH_THREAD
-		PyGILState_Release(gilstate);
+		PyState_Exit(enterframe);
 #endif
 		return result;
 	}
@@ -670,7 +672,7 @@ on_completion_display_matches_hook(char **matches,
 	int i;
 	PyObject *m=NULL, *s=NULL, *r=NULL;
 #ifdef WITH_THREAD
-	PyGILState_STATE gilstate = PyGILState_Ensure();
+	PyState_EnterFrame *enterframe = PyState_Enter();
 #endif
 	m = PyList_New(num_matches);
 	if (m == NULL)
@@ -700,7 +702,7 @@ on_completion_display_matches_hook(char **matches,
 		Py_XDECREF(r);
 	}
 #ifdef WITH_THREAD
-	PyGILState_Release(gilstate);
+	PyState_Exit(enterframe);
 #endif
 }
 
@@ -712,9 +714,11 @@ on_completion(const char *text, int state)
 {
 	char *result = NULL;
 	if (completer != NULL) {
-		PyObject *r;
+		PyObject *r = NULL;
 #ifdef WITH_THREAD
-		PyGILState_STATE gilstate = PyGILState_Ensure();
+		PyState_EnterFrame *enterframe = PyState_Enter();
+		if (enterframe == NULL)
+			Py_FatalError("PyState_Enter failed");
 #endif
 		rl_attempted_completion_over = 1;
 		r = PyObject_CallFunction(completer, "si", text, state);
@@ -736,7 +740,7 @@ on_completion(const char *text, int state)
 		Py_XDECREF(r);
 	  done:
 #ifdef WITH_THREAD
-		PyGILState_Release(gilstate);
+		PyState_Exit(enterframe);
 #endif
 		return result;
 	}
@@ -821,7 +825,7 @@ rlhandler(char *text)
 	rl_callback_handler_remove();
 }
 
-extern PyThreadState* _PyOS_ReadlineTState;
+extern PyState* _PyOS_ReadlinePyState;
 
 static char *
 readline_until_enter_or_signal(char *prompt, int *signal)
@@ -861,14 +865,19 @@ readline_until_enter_or_signal(char *prompt, int *signal)
 			rl_callback_read_char();
 		}
 		else if (errno == EINTR) {
-			int s;
+			//int s;
 #ifdef WITH_THREAD
-			PyEval_RestoreThread(_PyOS_ReadlineTState);
+			//PyEval_RestoreThread(_PyOS_ReadlinePyState);
+			PyState_Resume();
 #endif
+#if 0
 			s = PyErr_CheckSignals();
-#ifdef WITH_THREAD
-			PyEval_SaveThread();	
 #endif
+#ifdef WITH_THREAD
+			//PyEval_SaveThread();
+			PyState_Suspend();
+#endif
+#if 0
 			if (s < 0) {
 				rl_free_line_state();
 				rl_cleanup_after_signal();
@@ -876,6 +885,7 @@ readline_until_enter_or_signal(char *prompt, int *signal)
 				*signal = 1;
 				completed_input_string = NULL;
 			}
+#endif
 		}
 	}
 

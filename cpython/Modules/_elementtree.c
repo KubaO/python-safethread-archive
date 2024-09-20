@@ -294,7 +294,7 @@ element_new(PyObject* tag, PyObject* attrib)
 {
     ElementObject* self;
 
-    self = PyObject_New(ElementObject, &Element_Type);
+    self = PyObject_NEW(ElementObject, &Element_Type);
     if (self == NULL)
         return NULL;
 
@@ -307,7 +307,7 @@ element_new(PyObject* tag, PyObject* attrib)
     if (attrib != Py_None) {
 
         if (element_new_extra(self, attrib) < 0) {
-            PyObject_Del(self);
+            PyObject_DEL(self);
             return NULL;
 	}
 
@@ -535,7 +535,7 @@ element_dealloc(ElementObject* self)
 
     RELEASE(sizeof(ElementObject), "destroy element");
 
-    PyObject_Del(self);
+    PyObject_DEL(self);
 }
 
 /* -------------------------------------------------------------------- */
@@ -1427,7 +1427,7 @@ treebuilder_new(void)
 {
     TreeBuilderObject* self;
 
-    self = PyObject_New(TreeBuilderObject, &TreeBuilder_Type);
+    self = PyObject_NEW(TreeBuilderObject, &TreeBuilder_Type);
     if (self == NULL)
         return NULL;
 
@@ -1478,7 +1478,7 @@ treebuilder_dealloc(TreeBuilderObject* self)
 
     RELEASE(sizeof(TreeBuilderObject), "destroy treebuilder");
 
-    PyObject_Del(self);
+    PyObject_DEL(self);
 }
 
 /* -------------------------------------------------------------------- */
@@ -1584,7 +1584,7 @@ treebuilder_handle_data(TreeBuilderObject* self, PyObject* data)
         Py_INCREF(data); self->data = data;
     } else {
         /* more than one item; use a list to collect items */
-        if (PyString_CheckExact(self->data) && Py_REFCNT(self->data) == 1 &&
+        if (PyString_CheckExact(self->data) && Py_RefcntMatches(self->data, 1) &&
             PyString_CheckExact(data) && PyString_GET_SIZE(data) == 1) {
             /* expat often generates single character data sections; handle
                the most common case by resizing the existing string... */
@@ -2167,20 +2167,20 @@ xmlparser(PyObject* self_, PyObject* args, PyObject* kw)
     }
 #endif
 
-    self = PyObject_New(XMLParserObject, &XMLParser_Type);
+    self = PyObject_NEW(XMLParserObject, &XMLParser_Type);
     if (self == NULL)
         return NULL;
 
     self->entity = PyDict_New();
     if (!self->entity) {
-        PyObject_Del(self);
+        PyObject_DEL(self);
         return NULL;
     }
      
     self->names = PyDict_New();
     if (!self->names) {
-        PyObject_Del(self->entity);
-        PyObject_Del(self);
+        PyObject_DEL(self->entity);
+        PyObject_DEL(self);
         return NULL;
     }
 
@@ -2190,9 +2190,9 @@ xmlparser(PyObject* self_, PyObject* args, PyObject* kw)
 
     self->parser = EXPAT(ParserCreate_MM)(encoding, &memory_handler, "}");
     if (!self->parser) {
-        PyObject_Del(self->names);
-        PyObject_Del(self->entity);
-        PyObject_Del(self);
+        PyObject_DEL(self->names);
+        PyObject_DEL(self->entity);
+        PyObject_DEL(self);
         PyErr_NoMemory();
         return NULL;
     }
@@ -2202,9 +2202,9 @@ xmlparser(PyObject* self_, PyObject* args, PyObject* kw)
         target = treebuilder_new();
         if (!target) {
             EXPAT(ParserFree)(self->parser);
-            PyObject_Del(self->names);
-            PyObject_Del(self->entity);
-            PyObject_Del(self);
+            PyObject_DEL(self->names);
+            PyObject_DEL(self->entity);
+            PyObject_DEL(self);
             return NULL;
         }
     } else
@@ -2273,7 +2273,7 @@ xmlparser_dealloc(XMLParserObject* self)
 
     RELEASE(sizeof(XMLParserObject), "destroy expatparser");
 
-    PyObject_Del(self);
+    PyObject_DEL(self);
 }
 
 /* -------------------------------------------------------------------- */

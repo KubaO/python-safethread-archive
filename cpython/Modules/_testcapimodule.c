@@ -670,7 +670,8 @@ raise_exception(PyObject *self, PyObject *args)
 	return NULL;
 }
 
-#ifdef WITH_THREAD
+//#ifdef WITH_THREAD
+#if 0
 
 /* test_thread_state spawns a thread of its own, and that thread releases
  * `thread_done` when it's finished.  The driver code has to know when the
@@ -679,16 +680,18 @@ raise_exception(PyObject *self, PyObject *args)
  * synchronization caused rare segfaults, so rare that they were seen only
  * on a Mac buildbot (although they were possible on any box).
  */
-static PyThread_type_lock thread_done = NULL;
+static PyThread_type_sem thread_done = NULL;
 
 static void
 _make_call(void *callable)
 {
 	PyObject *rc;
-	PyGILState_STATE s = PyGILState_Ensure();
+	PyState_EnterTag entertag = PyState_Enter();
+	if (!entertag)
+		Py_FatalError("PyState_Enter failed");
 	rc = PyObject_CallFunction((PyObject *)callable, "");
 	Py_XDECREF(rc);
-	PyGILState_Release(s);
+	PyState_Exit(entertag);
 }
 
 /* Same thing, but releases `thread_done` when it returns.  This variant
@@ -698,7 +701,7 @@ static void
 _make_call_from_thread(void *callable)
 {
 	_make_call(callable);
-	PyThread_release_lock(thread_done);
+	PyThread_sem_post(thread_done);
 }
 
 static PyObject *
@@ -706,15 +709,14 @@ test_thread_state(PyObject *self, PyObject *args)
 {
 	PyObject *fn;
 
+	if (!PyArg_RequireShareable("test_thread_state", args, NULL))
+		return NULL;
 	if (!PyArg_ParseTuple(args, "O:test_thread_state", &fn))
 		return NULL;
 
-	/* Ensure Python is set up for threading */
-	PyEval_InitThreads();
-	thread_done = PyThread_allocate_lock();
+	thread_done = PyThread_sem_allocate(0);
 	if (thread_done == NULL)
 		return PyErr_NoMemory();
-	PyThread_acquire_lock(thread_done, 1);
 
 	/* Start a new thread with our callback. */
 	PyThread_start_new_thread(_make_call_from_thread, fn);
@@ -723,7 +725,7 @@ test_thread_state(PyObject *self, PyObject *args)
 	/* Do it all again, but this time with the thread-lock released */
 	Py_BEGIN_ALLOW_THREADS
 	_make_call(fn);
-	PyThread_acquire_lock(thread_done, 1);  /* wait for thread to finish */
+	PyThread_sem_wait(thread_done);  /* wait for thread to finish */
 	Py_END_ALLOW_THREADS
 
 	/* And once more with and without a thread
@@ -733,13 +735,10 @@ test_thread_state(PyObject *self, PyObject *args)
 	Py_BEGIN_ALLOW_THREADS
 	PyThread_start_new_thread(_make_call_from_thread, fn);
 	_make_call(fn);
-	PyThread_acquire_lock(thread_done, 1);  /* wait for thread to finish */
+	PyThread_sem_wait(thread_done);  /* wait for thread to finish */
 	Py_END_ALLOW_THREADS
 
-	/* Release lock we acquired above.  This is required on HP-UX. */
-	PyThread_release_lock(thread_done);
-
-	PyThread_free_lock(thread_done);
+	PyThread_sem_free(thread_done);
 	Py_RETURN_NONE;
 }
 #endif
@@ -936,9 +935,9 @@ static PyMethodDef TestMethods[] = {
 #endif
 	{"test_u_code",		(PyCFunction)test_u_code,	 METH_NOARGS},
 	{"test_Z_code",		(PyCFunction)test_Z_code,	 METH_NOARGS},
-#ifdef WITH_THREAD
-	{"_test_thread_state",  test_thread_state, 		 METH_VARARGS},
-#endif
+//#ifdef WITH_THREAD
+//	{"_test_thread_state",  test_thread_state, 		 METH_VARARGS},
+#//endif
 #ifdef HAVE_GETTIMEOFDAY
 	{"profile_int",		profile_int,			METH_NOARGS},
 #endif
@@ -1006,8 +1005,7 @@ test_structmembers_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 		"LK"
 #endif
 		;
-	test_structmembers *ob;
-	ob = PyObject_New(test_structmembers, type);
+	test_structmembers *ob = PyObject_NEW(test_structmembers, type);
 	if (ob == NULL)
 		return NULL;
 	memset(&ob->structmembers, 0, sizeof(all_structmembers));
@@ -1037,7 +1035,7 @@ test_structmembers_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 static void
 test_structmembers_free(PyObject *ob)
 {
-	PyObject_FREE(ob);
+	PyObject_Del(ob);
 }
 
 static PyTypeObject test_structmembersType = {
@@ -1070,7 +1068,6 @@ static PyTypeObject test_structmembersType = {
 	0,				/* tp_iternext */
 	0,				/* tp_methods */
 	test_members,			/* tp_members */
-	0,
 	0,
 	0,
 	0,

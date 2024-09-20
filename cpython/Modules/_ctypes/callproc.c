@@ -280,7 +280,7 @@ PyCArgObject *
 new_CArgObject(void)
 {
 	PyCArgObject *p;
-	p = PyObject_New(PyCArgObject, &PyCArg_Type);
+	p = PyObject_NEW(PyCArgObject, &PyCArg_Type);
 	if (p == NULL)
 		return NULL;
 	p->pffi_type = NULL;
@@ -294,7 +294,7 @@ static void
 PyCArg_dealloc(PyCArgObject *self)
 {
 	Py_XDECREF(self->obj);
-	PyObject_Del(self);
+	PyObject_DEL(self);
 }
 
 static PyObject *
@@ -611,9 +611,6 @@ static int _call_function_pointer(int flags,
 				  void *resmem,
 				  int argcount)
 {
-#ifdef WITH_THREAD
-	PyThreadState *_save = NULL; /* For Py_BLOCK_THREADS and Py_UNBLOCK_THREADS */
-#endif
 	ffi_cif cif;
 	int cc;
 #ifdef MS_WIN32

@@ -29,11 +29,11 @@ static PyThread_type_lock zlib_lock = NULL; /* initialized on module load */
 
 #define ENTER_ZLIB \
 	Py_BEGIN_ALLOW_THREADS \
-	PyThread_acquire_lock(zlib_lock, 1); \
+	PyThread_lock_acquire(zlib_lock); \
 	Py_END_ALLOW_THREADS
 
 #define LEAVE_ZLIB \
-	PyThread_release_lock(zlib_lock);
+	PyThread_lock_release(zlib_lock);
 
 #else
 
@@ -92,7 +92,7 @@ static compobject *
 newcompobject(PyTypeObject *type)
 {
     compobject *self;
-    self = PyObject_New(compobject, type);
+    self = PyObject_NEW(compobject, type);
     if (self == NULL)
 	return NULL;
     self->is_initialised = 0;
@@ -370,7 +370,7 @@ Comp_dealloc(compobject *self)
 	deflateEnd(&self->zst);
     Py_XDECREF(self->unused_data);
     Py_XDECREF(self->unconsumed_tail);
-    PyObject_Del(self);
+    PyObject_DEL(self);
 }
 
 static void
@@ -380,7 +380,7 @@ Decomp_dealloc(compobject *self)
 	inflateEnd(&self->zst);
     Py_XDECREF(self->unused_data);
     Py_XDECREF(self->unconsumed_tail);
-    PyObject_Del(self);
+    PyObject_DEL(self);
 }
 
 PyDoc_STRVAR(comp_compress__doc__,
@@ -1047,6 +1047,6 @@ PyInit_zlib(void)
     PyModule_AddStringConstant(m, "__version__", "1.0");
 
 #ifdef WITH_THREAD
-    zlib_lock = PyThread_allocate_lock();
+    zlib_lock = PyThread_lock_allocate();
 #endif /* WITH_THREAD */
 }

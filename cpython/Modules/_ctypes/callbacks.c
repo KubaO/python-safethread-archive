@@ -63,7 +63,7 @@ void _AddTraceback(char *funcname, char *filename, int lineno)
 		);
 	if (!py_code) goto bad;
 	py_frame = PyFrame_New(
-		PyThreadState_Get(), /*PyThreadState *tstate,*/
+		PyState_Get(),       /*PyState *pystate,*/
 		py_code,             /*PyCodeObject *code,*/
 		py_globals,          /*PyObject *globals,*/
 		0                    /*PyObject *locals*/
@@ -124,7 +124,9 @@ static void _CallPythonObject(void *mem,
 	PyObject *arglist = NULL;
 	Py_ssize_t nArgs;
 #ifdef WITH_THREAD
-	PyGILState_STATE state = PyGILState_Ensure();
+	PyState_EnterFrame *enterframe = PyState_Enter();
+	if (enterframe == NULL)
+		Py_FatalError("PyState_Enter failed");
 #endif
 
 	nArgs = PySequence_Length(converters);
@@ -235,7 +237,7 @@ if (x == NULL) _AddTraceback(what, "_ctypes/callbacks.c", __LINE__ - 1), PyErr_P
   Done:
 	Py_XDECREF(arglist);
 #ifdef WITH_THREAD
-	PyGILState_Release(state);
+	PyState_Exit(enterframe);
 #endif
 }
 
@@ -349,9 +351,6 @@ void init_callbacks_in_module(PyObject *m)
 static void LoadPython(void)
 {
 	if (!Py_IsInitialized()) {
-#ifdef WITH_THREAD
-		PyEval_InitThreads();
-#endif
 		Py_Initialize();
 	}
 }
@@ -423,16 +422,18 @@ STDAPI DllGetClassObject(REFCLSID rclsid,
 {
 	long result;
 #ifdef WITH_THREAD
-	PyGILState_STATE state;
+	PyState_EnterFrame *enterframe;
 #endif
 
 	LoadPython();
 #ifdef WITH_THREAD
-	state = PyGILState_Ensure();
+	enterframe = PyState_Enter();
+	if (enterframe == NULL)
+		Py_FatalError("PyState_Enter failed");
 #endif
 	result = Call_GetClassObject(rclsid, riid, ppv);
 #ifdef WITH_THREAD
-	PyGILState_Release(state);
+	PyState_Exit(enterframe);
 #endif
 	return result;
 }
@@ -486,11 +487,13 @@ STDAPI DllCanUnloadNow(void)
 {
 	long result;
 #ifdef WITH_THREAD
-	PyGILState_STATE state = PyGILState_Ensure();
+	PyState_EnterFrame *enterframe = PyState_Enter();
+	if (enterframe == NULL)
+		Py_FatalError("PyState_Enter failed");
 #endif
 	result = Call_CanUnloadNow();
 #ifdef WITH_THREAD
-	PyGILState_Release(state);
+	PyState_Exit(enterframe);
 #endif
 	return result;
 }

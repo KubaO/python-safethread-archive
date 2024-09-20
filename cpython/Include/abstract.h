@@ -1286,6 +1286,9 @@ PyAPI_FUNC(int) PyObject_IsInstance(PyObject *object, PyObject *typeorclass);
 PyAPI_FUNC(int) PyObject_IsSubclass(PyObject *object, PyObject *typeorclass);
       /* issubclass(object, typeorclass) */
 
+/* Used when it's not safe to call arbitrary code */
+PyAPI_FUNC(int) _PyObject_IsSubclassSimple(PyObject *object, PyObject *typeorclass);
+
 
 #ifdef __cplusplus
 }

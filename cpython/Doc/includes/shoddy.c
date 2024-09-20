@@ -69,7 +69,6 @@ static PyTypeObject ShoddyType = {
     0,                       /* tp_descr_set */
     0,                       /* tp_dictoffset */
     (initproc)Shoddy_init,   /* tp_init */
-    0,                       /* tp_alloc */
     0,                       /* tp_new */
 };
 

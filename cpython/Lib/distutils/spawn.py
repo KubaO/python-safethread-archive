@@ -28,7 +28,9 @@ def spawn(cmd, search_path=1, verbose=0, dry_run=0):
     return on success.
     """
     if os.name == 'posix':
-        _spawn_posix(cmd, search_path, dry_run=dry_run)
+        #_spawn_posix(cmd, search_path, dry_run=dry_run)
+        # XXX FIXME bodge
+        _spawn_nt(cmd, search_path, dry_run=dry_run)
     elif os.name == 'nt':
         _spawn_nt(cmd, search_path, dry_run=dry_run)
     elif os.name == 'os2':

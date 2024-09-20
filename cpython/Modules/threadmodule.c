@@ -27,10 +27,13 @@ lock_dealloc(lockobject *self)
 {
 	assert(self->lock_lock);
 	/* Unlock the lock so it's safe to free it */
-	PyThread_acquire_lock(self->lock_lock, 0);
-	PyThread_release_lock(self->lock_lock);
+	/* XXX This is madness.  If another thread holds the lock
+	 * despite having no refcount then they may try to get it
+	 * again anyway. */
+	PyThread_lock_acquire(self->lock_lock);
+	PyThread_lock_release(self->lock_lock);
 	
-	PyThread_free_lock(self->lock_lock);
+	PyThread_lock_free(self->lock_lock);
 	PyObject_Del(self);
 }
 
@@ -39,11 +42,11 @@ lock_PyThread_acquire_lock(lockobject *self, PyObject *args)
 {
 	int i = 1;
 
-	if (!PyArg_ParseTuple(args, "|i:acquire", &i))
+	if (!PyArg_ParseTuple(args, ":acquire"))
 		return NULL;
 
 	Py_BEGIN_ALLOW_THREADS
-	i = PyThread_acquire_lock(self->lock_lock, i);
+	i = PyThread_lock_acquire(self->lock_lock);
 	Py_END_ALLOW_THREADS
 
 	return PyBool_FromLong((long)i);
@@ -63,14 +66,16 @@ The blocking operation is not interruptible.");
 static PyObject *
 lock_PyThread_release_lock(lockobject *self)
 {
+	/* XXX This sanity check contains a race condition.  It needs
+	 * to be replaced with much more robust locking anyway. */
 	/* Sanity check: the lock must be locked */
-	if (PyThread_acquire_lock(self->lock_lock, 0)) {
-		PyThread_release_lock(self->lock_lock);
+	if (_PyThread_lock_tryacquire(self->lock_lock)) {
+		PyThread_lock_release(self->lock_lock);
 		PyErr_SetString(ThreadError, "release unlocked lock");
 		return NULL;
 	}
 
-	PyThread_release_lock(self->lock_lock);
+	PyThread_lock_release(self->lock_lock);
 	Py_INCREF(Py_None);
 	return Py_None;
 }
@@ -86,8 +91,8 @@ but it needn't be locked by the same thread that unlocks it.");
 static PyObject *
 lock_locked_lock(lockobject *self)
 {
-	if (PyThread_acquire_lock(self->lock_lock, 0)) {
-		PyThread_release_lock(self->lock_lock);
+	if (_PyThread_lock_tryacquire(self->lock_lock)) {
+		PyThread_lock_release(self->lock_lock);
 		return PyBool_FromLong(0L);
 	}
 	return PyBool_FromLong(1L);
@@ -146,7 +151,7 @@ newlockobject(void)
 	self = PyObject_New(lockobject, &Locktype);
 	if (self == NULL)
 		return NULL;
-	self->lock_lock = PyThread_allocate_lock();
+	self->lock_lock = PyThread_lock_allocate();
 	if (self->lock_lock == NULL) {
 		PyObject_Del(self);
 		self = NULL;
@@ -181,7 +186,7 @@ local_new(PyTypeObject *type, PyObject *args, PyObject *kw)
 		return NULL;
 	}
 
-	self = (localobject *)type->tp_alloc(type, 0);
+	self = PyObject_NEW(localobject, type);
 	if (self == NULL)
 		return NULL;
 
@@ -250,7 +255,7 @@ local_dealloc(localobject *self)
 	}
 
 	local_clear(self);
-	Py_TYPE(self)->tp_free((PyObject*)self);
+	PyObject_DEL(self);
 }
 
 static PyObject *
@@ -371,9 +376,7 @@ static PyTypeObject localtype = {
 	/* tp_descr_set      */ 0,
 	/* tp_dictoffset     */ offsetof(localobject, dict),
 	/* tp_init           */ 0,
-	/* tp_alloc          */ 0,
 	/* tp_new            */ local_new,
-	/* tp_free           */ 0, /* Low-level free-mem routine */
 	/* tp_is_gc          */ 0, /* For PyObject_IS_GC */
 };
 
@@ -413,12 +416,16 @@ static void
 t_bootstrap(void *boot_raw)
 {
 	struct bootstate *boot = (struct bootstate *) boot_raw;
-	PyThreadState *tstate;
+	//PyThreadState *tstate;
+	PyState_EnterTag entertag;
 	PyObject *res;
 
-	tstate = PyThreadState_New(boot->interp);
+	//tstate = PyThreadState_New(boot->interp);
+	entertag = PyState_Enter();
+	if (!entertag)
+		Py_FatalError("PyState_Enter failed");
 
-	PyEval_AcquireThread(tstate);
+	//PyEval_AcquireThread(tstate);
 	res = PyEval_CallObjectWithKeywords(
 		boot->func, boot->args, boot->keyw);
 	if (res == NULL) {
@@ -443,14 +450,19 @@ t_bootstrap(void *boot_raw)
 	Py_DECREF(boot->args);
 	Py_XDECREF(boot->keyw);
 	PyMem_DEL(boot_raw);
-	PyThreadState_Clear(tstate);
-	PyThreadState_DeleteCurrent();
+	//PyThreadState_Clear(tstate);
+	//PyThreadState_DeleteCurrent();
+	PyState_Exit(entertag);
 	PyThread_exit_thread();
 }
 
 static PyObject *
 thread_PyThread_start_new_thread(PyObject *self, PyObject *fargs)
 {
+#if 1
+	PyErr_SetString(PyExc_TypeError, "thread.start_new_thread is disabled");
+	return NULL;
+#else
 	PyObject *func, *args, *keyw = NULL;
 	struct bootstate *boot;
 	long ident;
@@ -476,7 +488,7 @@ thread_PyThread_start_new_thread(PyObject *self, PyObject *fargs)
 	boot = PyMem_NEW(struct bootstate, 1);
 	if (boot == NULL)
 		return PyErr_NoMemory();
-	boot->interp = PyThreadState_GET()->interp;
+	boot->interp = PyThreadState_Get()->interp;
 	boot->func = func;
 	boot->args = args;
 	boot->keyw = keyw;
@@ -494,6 +506,7 @@ thread_PyThread_start_new_thread(PyObject *self, PyObject *fargs)
 		return NULL;
 	}
 	return PyLong_FromLong(ident);
+#endif
 }
 
 PyDoc_STRVAR(start_new_doc,

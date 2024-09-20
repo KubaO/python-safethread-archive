@@ -2,10 +2,13 @@
 
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
+#include "interruptobject.h"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stddef.h> /* For offsetof */
+#include <poll.h> /* For poll stuff */
 
 /*
  * Known likely problems:
@@ -41,6 +44,96 @@ PyTypeObject PyFileIO_Type;
 
 #define PyFileIO_Check(op) (PyObject_TypeCheck((op), &PyFileIO_Type))
 
+/* Conveniently chosen so that POLL_READ|POLL_WRITE == POLL_ANY. */
+#define POLL_READ 1
+#define POLL_WRITE 2
+#define POLL_ANY 3
+
+/* XXX FIXME clean up the Interrupt API and delete this. */
+typedef struct {
+	int fd;
+	int interrupted;
+} blewed_up;
+
+static void
+poll_wakeup(struct _PyInterruptQueue *queue, void *arg)
+{
+	blewed_up *bu = arg;
+	bu->interrupted = 1;
+	if (write(bu->fd, "x", 1) != 1)
+		Py_FatalError("Writing to I/O wakeup pipe failed");
+}
+
+static int
+poll_single_fd(int fd, int mode)
+{
+	int fds[2];
+	PyInterruptObject *interrupt_point;
+	struct pollfd events[2];
+	int status;
+	blewed_up bu;
+
+	assert(!(mode & ~POLL_ANY));
+
+	if (pipe(fds)) {
+		PyErr_SetFromErrno(PyExc_IOError);
+		return 1;
+	}
+
+	bu.fd = fds[1];
+	bu.interrupted = 0;
+
+	interrupt_point = PyInterrupt_New(poll_wakeup, &bu, NULL);
+	if (interrupt_point == NULL) {
+		close(fds[0]); /* XXX FIXME error handling */
+		close(fds[1]);
+		return 1;
+	}
+
+	events[0].fd = fd;
+	events[0].events = 0;
+	if (mode & POLL_READ)
+		events[0].events |= POLLIN;
+	if (mode & POLL_WRITE)
+		events[0].events |= POLLOUT;
+
+	events[1].fd = fds[0];
+	events[1].events = POLLIN;
+
+	PyInterrupt_Push(interrupt_point);
+	Py_BEGIN_ALLOW_THREADS
+
+	status = poll(events, 2, -1);
+
+	Py_END_ALLOW_THREADS
+	PyInterrupt_Pop(interrupt_point);
+
+	if (status == 0)
+		Py_FatalError("I/O wakeup poll somehow returned 0");
+
+	//if (status == -1 || events[1].revents & (POLLIN|POLLHUP)) {
+	if (bu.interrupted) {
+		char buf[1];
+		/* Reset pipe for next usage */
+		/* XXX doesn't matter yet */
+		if (read(fds[0], buf, 1) != 1)
+			Py_FatalError("Resetting I/O wakeup pipe failed");
+	}
+
+	close(fds[0]); /* XXX FIXME error handling */
+	close(fds[1]);
+
+	if (bu.interrupted) {
+		PyErr_SetString(PyExc_Interrupted,
+			"I/O operation interrupted by parent");
+		Py_DECREF(interrupt_point);
+		return 1;
+	}
+
+	Py_DECREF(interrupt_point);
+	return 0;
+}
+
 /* Returns 0 on success, errno (which is < 0) on failure. */
 static int
 internal_close(PyFileIOObject *self)
@@ -49,10 +142,13 @@ internal_close(PyFileIOObject *self)
 	if (self->fd >= 0) {
 		int fd = self->fd;
 		self->fd = -1;
-		Py_BEGIN_ALLOW_THREADS
+		/* We may be called from tp_dealloc, which does not
+		 * allow suspending.  Hopefully the OS won't make
+		 * close() block significantly. */
+		PyState_MaybeSuspend();
 		if (close(fd) < 0)
 			save_errno = errno;
-		Py_END_ALLOW_THREADS
+		PyState_MaybeResume();
 	}
 	return save_errno;
 }
@@ -81,9 +177,9 @@ fileio_new(PyTypeObject *type, PyObject *args, PyObject *kews)
 {
 	PyFileIOObject *self;
 
-	assert(type != NULL && type->tp_alloc != NULL);
+	assert(type != NULL);
 
-	self = (PyFileIOObject *) type->tp_alloc(type, 0);
+	self = PyObject_NEW(PyFileIOObject, type);
 	if (self != NULL) {
 		self->fd = -1;
 		self->weakreflist = NULL;
@@ -245,6 +341,8 @@ fileio_init(PyObject *oself, PyObject *args, PyObject *kwds)
 		flags |= O_APPEND;
 #endif
 
+	flags |= O_NONBLOCK;
+
 	if (fd >= 0) {
 		self->fd = fd;
 		self->closefd = closefd;
@@ -289,9 +387,6 @@ fileio_init(PyObject *oself, PyObject *args, PyObject *kwds)
 static void
 fileio_dealloc(PyFileIOObject *self)
 {
-	if (self->weakreflist != NULL)
-		PyObject_ClearWeakRefs((PyObject *) self);
-
 	if (self->fd >= 0 && self->closefd) {
 		errno = internal_close(self);
 		if (errno < 0) {
@@ -304,7 +399,7 @@ fileio_dealloc(PyFileIOObject *self)
 		}
 	}
 
-	Py_TYPE(self)->tp_free((PyObject *)self);
+	PyObject_DEL(self);
 }
 
 static PyObject *
@@ -377,10 +472,11 @@ fileio_readinto(PyFileIOObject *self, PyObject *args)
 	if (!PyArg_ParseTuple(args, "w#", &ptr, &n))
 		return NULL;
 
-	Py_BEGIN_ALLOW_THREADS
+	if (poll_single_fd(self->fd, POLL_READ))
+		return NULL;
+
 	errno = 0;
 	n = read(self->fd, ptr, n);
-	Py_END_ALLOW_THREADS
 	if (n < 0) {
 		if (errno == EAGAIN)
 			Py_RETURN_NONE;
@@ -416,12 +512,14 @@ fileio_readall(PyFileIOObject *self)
 				break;
 			}
 		}
-		Py_BEGIN_ALLOW_THREADS
+
+		if (poll_single_fd(self->fd, POLL_READ))
+			return NULL;
+
 		errno = 0;
 		n = read(self->fd,
 			 PyString_AS_STRING(result) + total,
 			 newsize - total);
-		Py_END_ALLOW_THREADS
 		if (n == 0)
 			break;
 		if (n < 0) {
@@ -473,10 +571,11 @@ fileio_read(PyFileIOObject *self, PyObject *args)
 		return NULL;
 	ptr = PyString_AS_STRING(bytes);
 
-	Py_BEGIN_ALLOW_THREADS
+	if (poll_single_fd(self->fd, POLL_READ))
+		return NULL;
+
 	errno = 0;
 	n = read(self->fd, ptr, size);
-	Py_END_ALLOW_THREADS
 
 	if (n < 0) {
 		if (errno == EAGAIN)
@@ -509,10 +608,11 @@ fileio_write(PyFileIOObject *self, PyObject *args)
 	if (!PyArg_ParseTuple(args, "s#", &ptr, &n))
 		return NULL;
 
-	Py_BEGIN_ALLOW_THREADS
+	if (poll_single_fd(self->fd, POLL_WRITE))
+		return NULL;
+
 	errno = 0;
 	n = write(self->fd, ptr, n);
-	Py_END_ALLOW_THREADS
 
 	if (n < 0) {
 		if (errno == EAGAIN)
@@ -902,9 +1002,7 @@ PyTypeObject PyFileIO_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	fileio_init,				/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	fileio_new,				/* tp_new */
-	PyObject_Del,				/* tp_free */
 };
 
 static PyMethodDef module_methods[] = {

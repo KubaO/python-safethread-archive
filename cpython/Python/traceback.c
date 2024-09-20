@@ -34,12 +34,9 @@ static PyMemberDef tb_memberlist[] = {
 static void
 tb_dealloc(PyTracebackObject *tb)
 {
-	PyObject_GC_UnTrack(tb);
-	Py_TRASHCAN_SAFE_BEGIN(tb)
 	Py_XDECREF(tb->tb_next);
 	Py_XDECREF(tb->tb_frame);
-	PyObject_GC_Del(tb);
-	Py_TRASHCAN_SAFE_END(tb)
+	PyObject_DEL(tb);
 }
 
 static int
@@ -101,7 +98,7 @@ newtracebackobject(PyTracebackObject *next, PyFrameObject *frame)
 		PyErr_BadInternalCall();
 		return NULL;
 	}
-	tb = PyObject_GC_New(PyTracebackObject, &PyTraceBack_Type);
+	tb = PyObject_NEW(PyTracebackObject, &PyTraceBack_Type);
 	if (tb != NULL) {
 		Py_XINCREF(next);
 		tb->tb_next = next;
@@ -110,7 +107,6 @@ newtracebackobject(PyTracebackObject *next, PyFrameObject *frame)
 		tb->tb_lasti = frame->f_lasti;
 		tb->tb_lineno = PyCode_Addr2Line(frame->f_code, 
 						 frame->f_lasti);
-		PyObject_GC_Track(tb);
 	}
 	return tb;
 }
@@ -118,12 +114,12 @@ newtracebackobject(PyTracebackObject *next, PyFrameObject *frame)
 int
 PyTraceBack_Here(PyFrameObject *frame)
 {
-	PyThreadState *tstate = PyThreadState_GET();
-	PyTracebackObject *oldtb = (PyTracebackObject *) tstate->curexc_traceback;
+	PyState *pystate = PyState_Get();
+	PyTracebackObject *oldtb = (PyTracebackObject *) pystate->curexc_traceback;
 	PyTracebackObject *tb = newtracebackobject(oldtb, frame);
 	if (tb == NULL)
 		return -1;
-	tstate->curexc_traceback = (PyObject *)tb;
+	pystate->curexc_traceback = (PyObject *)tb;
 	Py_XDECREF(oldtb);
 	return 0;
 }
@@ -182,7 +178,13 @@ tb_displayline(PyObject *f, char *filename, int lineno, char *name)
 		}
 	}
 	PyOS_snprintf(linebuf, sizeof(linebuf), FMT, filename, lineno, name);
-	err = PyFile_WriteString(linebuf, f);
+
+	if (f == NULL) {
+		PySys_WriteStderr("%s", linebuf);
+		err = 0;
+	} else
+		err = PyFile_WriteString(linebuf, f);
+
 	if (xfp == NULL)
 		return err;
 	else if (err != 0) {
@@ -237,8 +239,6 @@ tb_printinternal(PyTracebackObject *tb, PyObject *f, int limit)
 		}
 		depth--;
 		tb = tb->tb_next;
-		if (err == 0)
-			err = PyErr_CheckSignals();
 	}
 	return err;
 }
@@ -280,7 +280,13 @@ PyTraceBack_Print(PyObject *v, PyObject *f)
 		}
 		PyErr_Restore(exc_type, exc_value, exc_tb);
 	}
-	err = PyFile_WriteString("Traceback (most recent call last):\n", f);
+
+	if (f == NULL) {
+		PySys_WriteStderr("Traceback (most recent call last):\n");
+		err = 0;
+	} else
+		err = PyFile_WriteString("Traceback (most recent call last):\n", f);
+
 	if (!err)
 		err = tb_printinternal((PyTracebackObject *)v, f, limit);
 	return err;

@@ -283,7 +283,7 @@ code_dealloc(PyCodeObject *co)
 	Py_XDECREF(co->co_name);
 	Py_XDECREF(co->co_lnotab);
         if (co->co_zombieframe != NULL)
-                PyObject_GC_Del(co->co_zombieframe);
+                PyObject_DEL(co->co_zombieframe);
 	PyObject_DEL(co);
 }
 
@@ -427,7 +427,6 @@ PyTypeObject PyCode_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	0,				/* tp_init */
-	0,				/* tp_alloc */
 	code_new,			/* tp_new */
 };
 

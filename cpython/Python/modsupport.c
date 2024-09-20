@@ -32,6 +32,14 @@ PyObject *
 Py_InitModule4(const char *name, PyMethodDef *methods, const char *doc,
 	       PyObject *passthrough, int module_api_version)
 {
+	return Py_InitModule5(name, methods, doc, passthrough,
+		module_api_version, 0);
+}
+
+PyObject *
+Py_InitModule5(const char *name, PyMethodDef *methods, const char *doc,
+	       PyObject *passthrough, int module_api_version, int shared)
+{
 	PyObject *m, *d, *v, *n;
 	PyMethodDef *ml;
 	if (!Py_IsInitialized())
@@ -61,7 +69,7 @@ Py_InitModule4(const char *name, PyMethodDef *methods, const char *doc,
 			_Py_PackageContext = NULL;
 		}
 	}
-	if ((m = PyImport_AddModule(name)) == NULL)
+	if ((m = PyImport_AddModuleEx(name, shared)) == NULL)
 		return NULL;
 	d = PyModule_GetDict(m);
 	if (methods != NULL) {

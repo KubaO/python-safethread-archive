@@ -24,7 +24,7 @@ extern "C" {
 void
 PyErr_Restore(PyObject *type, PyObject *value, PyObject *traceback)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyState *pystate = PyState_Get();
 	PyObject *oldtype, *oldvalue, *oldtraceback;
 
 	if (traceback != NULL && !PyTraceBack_Check(traceback)) {
@@ -36,13 +36,13 @@ PyErr_Restore(PyObject *type, PyObject *value, PyObject *traceback)
 
 	/* Save these in locals to safeguard against recursive
 	   invocation through Py_XDECREF */
-	oldtype = tstate->curexc_type;
-	oldvalue = tstate->curexc_value;
-	oldtraceback = tstate->curexc_traceback;
+	oldtype = pystate->curexc_type;
+	oldvalue = pystate->curexc_value;
+	oldtraceback = pystate->curexc_traceback;
 
-	tstate->curexc_type = type;
-	tstate->curexc_value = value;
-	tstate->curexc_traceback = traceback;
+	pystate->curexc_type = type;
+	pystate->curexc_value = value;
+	pystate->curexc_traceback = traceback;
 
 	Py_XDECREF(oldtype);
 	Py_XDECREF(oldvalue);
@@ -52,6 +52,8 @@ PyErr_Restore(PyObject *type, PyObject *value, PyObject *traceback)
 void
 PyErr_SetObject(PyObject *exception, PyObject *value)
 {
+	if (exception != NULL && exception->ob_type == NULL)
+		Py_FatalError("Unitialized exception type passed to PyErr_SetObject");
 	if (exception != NULL &&
 	    !PyExceptionClass_Check(exception)) {
 		PyErr_Format(PyExc_SystemError,
@@ -82,9 +84,9 @@ PyErr_SetString(PyObject *exception, const char *string)
 PyObject *
 PyErr_Occurred(void)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyState *pystate = PyState_Get();
 
-	return tstate->curexc_type;
+	return pystate->curexc_type;
 }
 
 
@@ -115,7 +117,9 @@ PyErr_GivenExceptionMatches(PyObject *err, PyObject *exc)
 	if (PyExceptionClass_Check(err) && PyExceptionClass_Check(exc)) {
 		/* problems here!?  not sure PyObject_IsSubclass expects to
 		   be called with an exception pending... */
-		return PyObject_IsSubclass(err, exc);
+		/* Worse, we may be called when it's not safe to call
+		 * arbitrary code.  Thus, I switch to a safer check */
+		return _PyObject_IsSubclassSimple(err, exc);
 	}
 
 	return err == exc;
@@ -139,7 +143,7 @@ PyErr_NormalizeException(PyObject **exc, PyObject **val, PyObject **tb)
 	PyObject *value = *val;
 	PyObject *inclass = NULL;
 	PyObject *initial_tb = NULL;
-	PyThreadState *tstate = NULL;
+	PyState *pystate = NULL;
 
 	if (type == NULL) {
 		/* There was no exception, so nothing to do. */
@@ -215,29 +219,38 @@ finally:
 			Py_DECREF(initial_tb);
 	}
 	/* normalize recursively */
-	tstate = PyThreadState_GET();
-	if (++tstate->recursion_depth > Py_GetRecursionLimit()) {
-	    --tstate->recursion_depth;
+	pystate = PyState_Get();
+	if (++pystate->recursion_depth > Py_GetRecursionLimit()) {
+	    --pystate->recursion_depth;
 	    PyErr_SetObject(PyExc_RuntimeError, PyExc_RecursionErrorInst);
 	    return;
 	}
 	PyErr_NormalizeException(exc, val, tb);
-	--tstate->recursion_depth;
+	--pystate->recursion_depth;
+}
+
+PyObject *
+PyErr_SimplifyException(PyObject *exc, PyObject *val, PyObject *tb)
+{
+    PyErr_NormalizeException(&exc, &val, &tb);
+    Py_DECREF(exc);
+    Py_XDECREF(tb);
+    return val;
 }
 
 
 void
 PyErr_Fetch(PyObject **p_type, PyObject **p_value, PyObject **p_traceback)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyState *pystate = PyState_Get();
 
-	*p_type = tstate->curexc_type;
-	*p_value = tstate->curexc_value;
-	*p_traceback = tstate->curexc_traceback;
+	*p_type = pystate->curexc_type;
+	*p_value = pystate->curexc_value;
+	*p_traceback = pystate->curexc_traceback;
 
-	tstate->curexc_type = NULL;
-	tstate->curexc_value = NULL;
-	tstate->curexc_traceback = NULL;
+	pystate->curexc_type = NULL;
+	pystate->curexc_value = NULL;
+	pystate->curexc_traceback = NULL;
 }
 
 void
@@ -290,11 +303,6 @@ PyErr_SetFromErrnoWithFilenameObject(PyObject *exc, PyObject *filenameObject)
 	WCHAR *s_buf = NULL;
 #endif /* Unix/Windows */
 #endif /* PLAN 9*/
-
-#ifdef EINTR
-	if (i == EINTR && PyErr_CheckSignals())
-		return NULL;
-#endif
 
 #ifdef PLAN9
 	rerrstr(errbuf, sizeof errbuf);

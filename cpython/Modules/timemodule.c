@@ -44,6 +44,7 @@ extern int ftime(struct timeb *);
 #include <windows.h>
 #include "pythread.h"
 
+#if 0
 /* helper to allow us to interrupt sleep() on Windows*/
 static HANDLE hInterruptEvent = NULL;
 static BOOL WINAPI PyCtrlHandler(DWORD dwCtrlType)
@@ -56,6 +57,7 @@ static BOOL WINAPI PyCtrlHandler(DWORD dwCtrlType)
 	return FALSE;
 }
 static long main_thread;
+#endif
 
 #if defined(__BORLANDC__)
 /* These overrides not needed for Win32 */
@@ -792,7 +794,7 @@ static PyMethodDef time_methods[] = {
 #ifdef HAVE_CLOCK
 	{"clock",	time_clock, METH_NOARGS, clock_doc},
 #endif
-	{"sleep",	time_sleep, METH_VARARGS, sleep_doc},
+	{"sleep",	time_sleep, METH_VARARGS|METH_SHARED, sleep_doc},
 	{"gmtime",	time_gmtime, METH_VARARGS, gmtime_doc},
 	{"localtime",	time_localtime, METH_VARARGS, localtime_doc},
 	{"asctime",	time_asctime, METH_VARARGS, asctime_doc},
@@ -876,6 +878,8 @@ inittime(void)
 	/* Set, or reset, module variables like time.timezone */
 	inittimezone(m);
 
+#if 0
+/* This Ctrl-C blurb is unnecessary now */
 #ifdef MS_WINDOWS
 	/* Helper to allow interrupts for Windows.
 	   If Ctrl+C event delivered while not sleeping
@@ -885,6 +889,7 @@ inittime(void)
 	hInterruptEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	SetConsoleCtrlHandler( PyCtrlHandler, TRUE);
 #endif /* MS_WINDOWS */
+#endif
 	if (!initialized) {
 		PyStructSequence_InitType(&StructTimeType,
 					  &struct_time_type_desc);
@@ -983,9 +988,12 @@ floatsleep(double secs)
 		 * by Guido, only the main thread can be interrupted.
 		 */
 		ul_millis = (unsigned long)millisecs;
+#if 0
 		if (ul_millis == 0 ||
 		    main_thread != PyThread_get_thread_ident())
+#endif
 			Sleep(ul_millis);
+#if 0
 		else {
 			DWORD rc;
 			ResetEvent(hInterruptEvent);
@@ -1001,6 +1009,7 @@ floatsleep(double secs)
 				return -1;
 			}
 		}
+#endif
 		Py_END_ALLOW_THREADS
 	}
 #elif defined(PYOS_OS2)

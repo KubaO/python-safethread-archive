@@ -100,7 +100,7 @@ PyFile_GetLine(PyObject *f, int n)
 					"EOF when reading a line");
 		}
 		else if (s[len-1] == '\n') {
-			if (result->ob_refcnt == 1)
+			if (Py_RefcntSnoop(result) == 1)
 				_PyString_Resize(&result, len-1);
 			else {
 				PyObject *v;
@@ -120,7 +120,7 @@ PyFile_GetLine(PyObject *f, int n)
 					"EOF when reading a line");
 		}
 		else if (s[len-1] == '\n') {
-			if (result->ob_refcnt == 1)
+			if (Py_RefcntSnoop(result) == 1)
 				PyUnicode_Resize(&result, len-1);
 			else {
 				PyObject *v;
@@ -341,9 +341,9 @@ stdprinter_new(PyTypeObject *type, PyObject *args, PyObject *kews)
 {
 	PyStdPrinter_Object *self;
 
-	assert(type != NULL && type->tp_alloc != NULL);
+	assert(type != NULL);
 
-	self = (PyStdPrinter_Object *) type->tp_alloc(type, 0);
+	self = PyObject_NEW(PyStdPrinter_Object, type);
 	if (self != NULL) {
 		self->fd = -1;
 	}
@@ -369,7 +369,7 @@ PyFile_NewStdPrinter(int fd)
 		return NULL;
 	}
 
-	self = PyObject_New(PyStdPrinter_Object,
+	self = PyObject_NEW(PyStdPrinter_Object,
 			    &PyStdPrinter_Type);
         if (self != NULL) {
 		self->fd = fd;
@@ -518,9 +518,7 @@ PyTypeObject PyStdPrinter_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	fileio_init,				/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	stdprinter_new,				/* tp_new */
-	PyObject_Del,				/* tp_free */
 };
 
 

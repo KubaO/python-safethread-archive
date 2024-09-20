@@ -36,7 +36,7 @@ typedef struct _frame {
      */
     PyObject *f_exc_type, *f_exc_value, *f_exc_traceback;
 
-    PyThreadState *f_tstate;
+    PyState *f_pystate;
     int f_lasti;		/* Last instruction if called */
     /* As of 2.3 f_lineno is only valid when tracing is active (i.e. when
        f_trace is set) -- at other times use PyCode_Addr2Line instead. */
@@ -53,7 +53,7 @@ PyAPI_DATA(PyTypeObject) PyFrame_Type;
 
 #define PyFrame_Check(op) (Py_TYPE(op) == &PyFrame_Type)
 
-PyAPI_FUNC(PyFrameObject *) PyFrame_New(PyThreadState *, PyCodeObject *,
+PyAPI_FUNC(PyFrameObject *) PyFrame_New(PyState *, PyCodeObject *,
                                        PyObject *, PyObject *);
 
 

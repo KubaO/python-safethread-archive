@@ -260,39 +260,39 @@ getcode(enum HandlerTypes slot, char* func_name, int lineno)
 
 #ifdef FIX_TRACE
 static int
-trace_frame(PyThreadState *tstate, PyFrameObject *f, int code, PyObject *val)
+trace_frame(PyState *pystate, PyFrameObject *f, int code, PyObject *val)
 {
     int result = 0;
-    if (!tstate->use_tracing || tstate->tracing)
+    if (!pystate->use_tracing || pystate->tracing)
 	return 0;
-    if (tstate->c_profilefunc != NULL) {
-	tstate->tracing++;
-	result = tstate->c_profilefunc(tstate->c_profileobj,
+    if (pystate->c_profilefunc != NULL) {
+	pystate->tracing++;
+	result = pystate->c_profilefunc(pystate->c_profileobj,
 				       f, code , val);
-	tstate->use_tracing = ((tstate->c_tracefunc != NULL)
-			       || (tstate->c_profilefunc != NULL));
-	tstate->tracing--;
+	pystate->use_tracing = ((pystate->c_tracefunc != NULL)
+			       || (pystate->c_profilefunc != NULL));
+	pystate->tracing--;
 	if (result)
 	    return result;
     }
-    if (tstate->c_tracefunc != NULL) {
-	tstate->tracing++;
-	result = tstate->c_tracefunc(tstate->c_traceobj,
+    if (pystate->c_tracefunc != NULL) {
+	pystate->tracing++;
+	result = pystate->c_tracefunc(pystate->c_traceobj,
 				     f, code , val);
-	tstate->use_tracing = ((tstate->c_tracefunc != NULL)
-			       || (tstate->c_profilefunc != NULL));
-	tstate->tracing--;
+	pystate->use_tracing = ((pystate->c_tracefunc != NULL)
+			       || (pystate->c_profilefunc != NULL));
+	pystate->tracing--;
     }	
     return result;
 }
 
 static int
-trace_frame_exc(PyThreadState *tstate, PyFrameObject *f)
+trace_frame_exc(PyState *pystate, PyFrameObject *f)
 {
     PyObject *type, *value, *traceback, *arg;
     int err;
 
-    if (tstate->c_tracefunc == NULL)
+    if (pystate->c_tracefunc == NULL)
 	return 0;
 
     PyErr_Fetch(&type, &value, &traceback);
@@ -309,7 +309,7 @@ trace_frame_exc(PyThreadState *tstate, PyFrameObject *f)
 	PyErr_Restore(type, value, traceback);
 	return 0;
     }
-    err = trace_frame(tstate, f, PyTrace_EXCEPTION, arg);
+    err = trace_frame(pystate, f, PyTrace_EXCEPTION, arg);
     Py_DECREF(arg);
     if (err == 0)
 	PyErr_Restore(type, value, traceback);
@@ -326,34 +326,34 @@ static PyObject*
 call_with_frame(PyCodeObject *c, PyObject* func, PyObject* args,
                 xmlparseobject *self)
 {
-    PyThreadState *tstate = PyThreadState_GET();
+    PyState *pystate = PyState_Get();
     PyFrameObject *f;
     PyObject *res;
 
     if (c == NULL)
         return NULL;
     
-    f = PyFrame_New(tstate, c, PyEval_GetGlobals(), NULL);
+    f = PyFrame_New(pystate, c, PyEval_GetGlobals(), NULL);
     if (f == NULL)
         return NULL;
-    tstate->frame = f;
+    pystate->frame = f;
 #ifdef FIX_TRACE
-    if (trace_frame(tstate, f, PyTrace_CALL, Py_None) < 0) {
+    if (trace_frame(pystate, f, PyTrace_CALL, Py_None) < 0) {
 	return NULL;
     }
 #endif
     res = PyEval_CallObject(func, args);
     if (res == NULL) {
-	if (tstate->curexc_traceback == NULL)
+	if (pystate->curexc_traceback == NULL)
 	    PyTraceBack_Here(f);
         XML_StopParser(self->itself, XML_FALSE);
 #ifdef FIX_TRACE
-	if (trace_frame_exc(tstate, f) < 0) {
+	if (trace_frame_exc(pystate, f) < 0) {
 	    return NULL;
 	}
     }
     else {
-	if (trace_frame(tstate, f, PyTrace_RETURN, res) < 0) {
+	if (trace_frame(pystate, f, PyTrace_RETURN, res) < 0) {
 	    Py_XDECREF(res);
 	    res = NULL;
 	}
@@ -361,7 +361,7 @@ call_with_frame(PyCodeObject *c, PyObject* func, PyObject* args,
 #else
     }
 #endif
-    tstate->frame = f->f_back;
+    pystate->frame = f->f_back;
     Py_DECREF(f);
     return res;
 }
@@ -1020,7 +1020,7 @@ xmlparse_ExternalEntityParserCreate(xmlparseobject *self, PyObject *args)
     new_parser = PyObject_New(xmlparseobject, &Xmlparsetype);
 #else
     /* Python versions 2.2 and later */
-    new_parser = PyObject_GC_New(xmlparseobject, &Xmlparsetype);
+    new_parser = PyObject_NEW(xmlparseobject, &Xmlparsetype);
 #endif
 
     if (new_parser == NULL)
@@ -1035,7 +1035,7 @@ xmlparse_ExternalEntityParserCreate(xmlparseobject *self, PyObject *args)
             PyObject_Del(new_parser);
 #else
             /* Code for versions 2.2 and later. */
-            PyObject_GC_Del(new_parser);
+            PyObject_DEL(new_parser);
 #endif
             return PyErr_NoMemory();
         }
@@ -1052,7 +1052,6 @@ xmlparse_ExternalEntityParserCreate(xmlparseobject *self, PyObject *args)
     new_parser->intern = self->intern;
     Py_XINCREF(new_parser->intern);
 #ifdef Py_TPFLAGS_HAVE_GC
-    PyObject_GC_Track(new_parser);
 #else
     PyObject_GC_Init(new_parser);
 #endif
@@ -1219,7 +1218,7 @@ newxmlparseobject(char *encoding, char *namespace_separator, PyObject *intern)
 
 #ifdef Py_TPFLAGS_HAVE_GC
     /* Code for versions 2.2 and later */
-    self = PyObject_GC_New(xmlparseobject, &Xmlparsetype);
+    self = PyObject_NEW(xmlparseobject, &Xmlparsetype);
 #else
     self = PyObject_New(xmlparseobject, &Xmlparsetype);
 #endif
@@ -1243,7 +1242,6 @@ newxmlparseobject(char *encoding, char *namespace_separator, PyObject *intern)
     self->intern = intern;
     Py_XINCREF(self->intern);
 #ifdef Py_TPFLAGS_HAVE_GC
-    PyObject_GC_Track(self);
 #else
     PyObject_GC_Init(self);
 #endif
@@ -1276,7 +1274,6 @@ xmlparse_dealloc(xmlparseobject *self)
 {
     int i;
 #ifdef Py_TPFLAGS_HAVE_GC
-    PyObject_GC_UnTrack(self);
 #else
     PyObject_GC_Fini(self);
 #endif
@@ -1304,7 +1301,7 @@ xmlparse_dealloc(xmlparseobject *self)
     PyObject_Del(self);
 #else
     /* Code for versions 2.2 and later. */
-    PyObject_GC_Del(self);
+    PyObject_DEL(self);
 #endif
 }
 

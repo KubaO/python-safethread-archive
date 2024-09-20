@@ -6,6 +6,7 @@
 #define Py_OBJIMPL_H
 
 #include "pymem.h"
+#include "pythread.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -94,6 +95,7 @@ PyObject_{New, NewVar, Del}.
    the object gets initialized via PyObject_{Init, InitVar} after obtaining
    the raw memory.
 */
+#if 0
 PyAPI_FUNC(void *) PyObject_Malloc(size_t);
 PyAPI_FUNC(void *) PyObject_Realloc(void *, size_t);
 PyAPI_FUNC(void) PyObject_Free(void *);
@@ -130,6 +132,7 @@ PyAPI_FUNC(void) _PyObject_DebugMallocStats(void);
 
 #define PyObject_Del		PyObject_Free
 #define PyObject_DEL		PyObject_FREE
+#endif
 
 /*
  * Generic object allocator interface
@@ -137,23 +140,31 @@ PyAPI_FUNC(void) _PyObject_DebugMallocStats(void);
  */
 
 /* Functions */
-PyAPI_FUNC(PyObject *) PyObject_Init(PyObject *, PyTypeObject *);
-PyAPI_FUNC(PyVarObject *) PyObject_InitVar(PyVarObject *,
-                                                 PyTypeObject *, Py_ssize_t);
 PyAPI_FUNC(PyObject *) _PyObject_New(PyTypeObject *);
-PyAPI_FUNC(PyVarObject *) _PyObject_NewVar(PyTypeObject *, Py_ssize_t);
+PyAPI_FUNC(PyObject *) _PyObject_NewVar(PyTypeObject *, Py_ssize_t);
+PyAPI_FUNC(void) _PyObject_Del(PyObject *);
+PyAPI_FUNC(void) _PyObject_Revive(PyObject *);
+PyAPI_FUNC(void) _PyObject_Complete(PyObject *);
+PyAPI_FUNC(PyObject *) _PyObject_Resize(PyObject *, Py_ssize_t);
 
-#define PyObject_New(type, typeobj) \
-		( (type *) _PyObject_New(typeobj) )
-#define PyObject_NewVar(type, typeobj, n) \
-		( (type *) _PyObject_NewVar((typeobj), (n)) )
+#define PyObject_New _PyObject_New
+#define PyObject_NewVar _PyObject_NewVar
+#define PyObject_Del _PyObject_Del
+#define PyObject_Revive _PyObject_Revive
+#define PyObject_Complete _PyObject_Complete
+#define PyObject_Resize _PyObject_Resize
 
-/* Macros trading binary compatibility for speed. See also pymem.h.
-   Note that these macros expect non-NULL object pointers.*/
-#define PyObject_INIT(op, typeobj) \
-	( Py_TYPE(op) = (typeobj), _Py_NewReference((PyObject *)(op)), (op) )
-#define PyObject_INIT_VAR(op, typeobj, size) \
-	( Py_SIZE(op) = (size), PyObject_INIT((op), (typeobj)) )
+#define PyObject_NEW(type, typeobj) \
+        ((type *) _PyObject_New(typeobj))
+#define PyObject_NEWVAR(type, typeobj, n) \
+        ((type *) _PyObject_NewVar((typeobj), (n)))
+#define PyObject_DEL(op) (PyObject_Del((PyObject *)(op)))
+#define PyObject_REVIVE(op) \
+        (PyObject_Revive((PyObject *)(op)))
+#define PyObject_COMPLETE(op) \
+        (PyObject_Complete((PyObject *)(op)))
+#define PyObject_RESIZE(type, op, n) \
+        ((type *) PyObject_Resize((PyObject *)(op), (n)))
 
 #define _PyObject_SIZE(typeobj) ( (typeobj)->tp_basicsize )
 
@@ -178,15 +189,6 @@ PyAPI_FUNC(PyVarObject *) _PyObject_NewVar(PyTypeObject *, Py_ssize_t);
 	    (SIZEOF_VOID_P - 1)			\
 	  ) & ~(SIZEOF_VOID_P - 1)		\
 	)
-
-#define PyObject_NEW(type, typeobj) \
-( (type *) PyObject_Init( \
-	(PyObject *) PyObject_MALLOC( _PyObject_SIZE(typeobj) ), (typeobj)) )
-
-#define PyObject_NEW_VAR(type, typeobj, n) \
-( (type *) PyObject_InitVar( \
-      (PyVarObject *) PyObject_MALLOC(_PyObject_VAR_SIZE((typeobj),(n)) ),\
-      (typeobj), (n)) )
 
 /* This example code implements an object constructor with a custom
    allocator, where PyObject_New is inlined, and shows the important
@@ -231,68 +233,33 @@ PyAPI_FUNC(Py_ssize_t) PyGC_Collect(void);
 #define PyObject_IS_GC(o) (PyType_IS_GC(Py_TYPE(o)) && \
 	(Py_TYPE(o)->tp_is_gc == NULL || Py_TYPE(o)->tp_is_gc(o)))
 
-PyAPI_FUNC(PyVarObject *) _PyObject_GC_Resize(PyVarObject *, Py_ssize_t);
-#define PyObject_GC_Resize(type, op, n) \
-		( (type *) _PyObject_GC_Resize((PyVarObject *)(op), (n)) )
-
-/* for source compatibility with 2.2 */
-#define _PyObject_GC_Del PyObject_GC_Del
-
+#if 0
 /* GC information is stored BEFORE the object structure. */
 typedef union _gc_head {
 	struct {
+		Py_ssize_t gc_sizeclass;
 		union _gc_head *gc_next;
 		union _gc_head *gc_prev;
 		Py_ssize_t gc_refs;
 	} gc;
 	long double dummy;  /* force worst-case alignment */
 } PyGC_Head;
+#else
+#define PyGC_Head PyObject
+#endif
 
 extern PyGC_Head *_PyGC_generation0;
 
+#if 0
 #define _Py_AS_GC(o) ((PyGC_Head *)(o)-1)
+#endif
 
-#define _PyGC_REFS_UNTRACKED			(-2)
-#define _PyGC_REFS_REACHABLE			(-3)
-#define _PyGC_REFS_TENTATIVELY_UNREACHABLE	(-4)
+#define _PyGC_REFS_TRACKED          (-2)
+#define _PyGC_REFS_TRACKED_YOUNG    (-3)
+#define _PyGC_REFS_UNTRACKED        (-4)
+#define _PyGC_REFS_UNTRACKED_YOUNG  (-5)
 
-/* Tell the GC to track this object.  NB: While the object is tracked the
- * collector it must be safe to call the ob_traverse method. */
-#define _PyObject_GC_TRACK(o) do { \
-	PyGC_Head *g = _Py_AS_GC(o); \
-	if (g->gc.gc_refs != _PyGC_REFS_UNTRACKED) \
-		Py_FatalError("GC object already tracked"); \
-	g->gc.gc_refs = _PyGC_REFS_REACHABLE; \
-	g->gc.gc_next = _PyGC_generation0; \
-	g->gc.gc_prev = _PyGC_generation0->gc.gc_prev; \
-	g->gc.gc_prev->gc.gc_next = g; \
-	_PyGC_generation0->gc.gc_prev = g; \
-    } while (0);
-
-/* Tell the GC to stop tracking this object.
- * gc_next doesn't need to be set to NULL, but doing so is a good
- * way to provoke memory errors if calling code is confused.
- */
-#define _PyObject_GC_UNTRACK(o) do { \
-	PyGC_Head *g = _Py_AS_GC(o); \
-	assert(g->gc.gc_refs != _PyGC_REFS_UNTRACKED); \
-	g->gc.gc_refs = _PyGC_REFS_UNTRACKED; \
-	g->gc.gc_prev->gc.gc_next = g->gc.gc_next; \
-	g->gc.gc_next->gc.gc_prev = g->gc.gc_prev; \
-	g->gc.gc_next = NULL; \
-    } while (0);
-
-PyAPI_FUNC(PyObject *) _PyObject_GC_Malloc(size_t);
-PyAPI_FUNC(PyObject *) _PyObject_GC_New(PyTypeObject *);
-PyAPI_FUNC(PyVarObject *) _PyObject_GC_NewVar(PyTypeObject *, Py_ssize_t);
-PyAPI_FUNC(void) PyObject_GC_Track(void *);
-PyAPI_FUNC(void) PyObject_GC_UnTrack(void *);
-PyAPI_FUNC(void) PyObject_GC_Del(void *);
-
-#define PyObject_GC_New(type, typeobj) \
-		( (type *) _PyObject_GC_New(typeobj) )
-#define PyObject_GC_NewVar(type, typeobj, n) \
-		( (type *) _PyObject_GC_NewVar((typeobj), (n)) )
+PyAPI_FUNC(void) _PyGC_Object_Cache_Flush(void);
 
 
 /* Utility macro to help write tp_traverse functions.
@@ -321,9 +288,6 @@ PyAPI_FUNC(void) PyObject_GC_Del(void *);
 
 /* Test if a type supports weak references */
 #define PyType_SUPPORTS_WEAKREFS(t) ((t)->tp_weaklistoffset > 0)
-
-#define PyObject_GET_WEAKREFS_LISTPTR(o) \
-	((PyObject **) (((char *) (o)) + Py_TYPE(o)->tp_weaklistoffset))
 
 #ifdef __cplusplus
 }
