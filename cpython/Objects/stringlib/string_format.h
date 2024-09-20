@@ -485,7 +485,7 @@ format(PyObject *fieldobj, SubString *format_spec)
 
     /* Initialize cached value */
     if (format_str == NULL) {
-        /* Initialize static variable needed by _PyType_Lookup */
+        /* Initialize static variable needed by _PyType_LookupEx */
         format_str = PyUnicode_FromString("__format__");
         if (format_str == NULL)
             return NULL;
@@ -501,8 +501,9 @@ format(PyObject *fieldobj, SubString *format_spec)
     if (spec == NULL)
         goto done;
 
-    /* Find the (unbound!) __format__ method (a borrowed reference) */
-    meth = _PyType_Lookup(Py_Type(fieldobj), format_str);
+    /* Find the (unbound!) __format__ method */
+    if (_PyType_LookupEx(Py_Type(fieldobj), format_str, &meth) < 0)
+        goto done;
     if (meth == NULL) {
         PyErr_Format(PyExc_TypeError,
                      "Type %.100s doesn't define __format__",
@@ -512,6 +513,7 @@ format(PyObject *fieldobj, SubString *format_spec)
 
     /* And call it, binding it to the value */
     result = PyObject_CallFunctionObjArgs(meth, fieldobj, spec, NULL);
+    Py_DECREF(meth);
     if (result == NULL)
         goto done;
 
@@ -967,7 +969,7 @@ static void
 formatteriter_dealloc(formatteriterobject *it)
 {
     Py_XDECREF(it->str);
-    PyObject_FREE(it);
+    PyObject_DEL(it);
 }
 
 /* returns a tuple:
@@ -1089,7 +1091,7 @@ formatter_parser(PyUnicodeObject *self)
 {
     formatteriterobject *it;
 
-    it = PyObject_New(formatteriterobject, &PyFormatterIter_Type);
+    it = PyObject_NEW(formatteriterobject, &PyFormatterIter_Type);
     if (it == NULL)
         return NULL;
 
@@ -1127,7 +1129,7 @@ static void
 fieldnameiter_dealloc(fieldnameiterobject *it)
 {
     Py_XDECREF(it->str);
-    PyObject_FREE(it);
+    PyObject_DEL(it);
 }
 
 /* returns a tuple:
@@ -1229,7 +1231,7 @@ formatter_field_name_split(PyUnicodeObject *self)
     PyObject *first_obj = NULL;
     PyObject *result = NULL;
 
-    it = PyObject_New(fieldnameiterobject, &PyFieldNameIter_Type);
+    it = PyObject_NEW(fieldnameiterobject, &PyFieldNameIter_Type);
     if (it == NULL)
         return NULL;
 

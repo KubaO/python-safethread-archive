@@ -1836,8 +1836,6 @@ pattern_error(int status)
 static void
 pattern_dealloc(PatternObject* self)
 {
-    if (self->weakreflist != NULL)
-        PyObject_ClearWeakRefs((PyObject *) self);
     Py_XDECREF(self->pattern);
     Py_XDECREF(self->groupindex);
     Py_XDECREF(self->indexgroup);
@@ -2477,7 +2475,7 @@ pattern_copy(PatternObject* self, PyObject *unused)
     PatternObject* copy;
     int offset;
 
-    copy = PyObject_NEW_VAR(PatternObject, &Pattern_Type, self->codesize);
+    copy = PyObject_NEWVAR(PatternObject, &Pattern_Type, self->codesize);
     if (!copy)
         return NULL;
 
@@ -2661,7 +2659,7 @@ _compile(PyObject* self_, PyObject* args)
 
     n = PyList_GET_SIZE(code);
 
-    self = PyObject_NEW_VAR(PatternObject, &Pattern_Type, n);
+    self = PyObject_NEWVAR(PatternObject, &Pattern_Type, n);
     if (!self)
         return NULL;
 
@@ -3023,7 +3021,7 @@ match_copy(MatchObject* self, PyObject *unused)
 
     slots = 2 * (self->pattern->groups+1);
 
-    copy = PyObject_NEW_VAR(MatchObject, &Match_Type, slots);
+    copy = PyObject_NEWVAR(MatchObject, &Match_Type, slots);
     if (!copy)
         return NULL;
 
@@ -3170,7 +3168,7 @@ pattern_new_match(PatternObject* pattern, SRE_STATE* state, int status)
     if (status > 0) {
 
         /* create match object (with room for extra group marks) */
-        match = PyObject_NEW_VAR(MatchObject, &Match_Type,
+        match = PyObject_NEWVAR(MatchObject, &Match_Type,
                                  2*(pattern->groups+1));
         if (!match)
             return NULL;

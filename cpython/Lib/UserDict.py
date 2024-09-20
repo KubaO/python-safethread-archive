@@ -1,6 +1,8 @@
 """A more or less complete user-defined wrapper around dictionary objects."""
+from __future__ import shared_module
 
 class UserDict:
+    __shared__ = True
     def __init__(self, dict=None, **kwargs):
         self.data = {}
         if dict is not None:
@@ -77,6 +79,7 @@ class UserDict:
         return d
 
 class IterableUserDict(UserDict):
+    __shared__ = True
     def __iter__(self):
         return iter(self.data)
 
@@ -89,6 +92,7 @@ class DictMixin:
     # __contains__(), __iter__(), and iteritems().
 
     # XXX It would make more sense to expect __iter__ to be primitive.
+    __shared__ = True
 
     # second level definitions support higher levels
     def __iter__(self):

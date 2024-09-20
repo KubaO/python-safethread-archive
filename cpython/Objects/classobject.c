@@ -2,6 +2,7 @@
 
 #include "Python.h"
 #include "structmember.h"
+#include "pythread.h"
 
 #define TP_DESCR_GET(t) ((t)->tp_descr_get)
 
@@ -42,8 +43,12 @@ PyMethod_Class(PyObject *im)
    (b) as unbound methods (returned by ClassName.methodname)
    In case (b), im_self is NULL
 */
+//#define USE_METHOD_FREELIST
 
+#ifdef USE_METHOD_FREELIST
 static PyMethodObject *free_list;
+static PyThread_type_lock free_list_lock;
+#endif
 
 PyObject *
 PyMethod_New(PyObject *func, PyObject *self, PyObject *klass)
@@ -53,16 +58,23 @@ PyMethod_New(PyObject *func, PyObject *self, PyObject *klass)
 		PyErr_BadInternalCall();
 		return NULL;
 	}
+#ifdef USE_METHOD_FREELIST
+	PyThread_lock_acquire(free_list_lock);
 	im = free_list;
 	if (im != NULL) {
 		free_list = (PyMethodObject *)(im->im_self);
+		PyThread_lock_release(free_list_lock);
 		PyObject_INIT(im, &PyMethod_Type);
 	}
 	else {
-		im = PyObject_GC_New(PyMethodObject, &PyMethod_Type);
+		PyThread_lock_release(free_list_lock);
+#endif
+		im = PyObject_NEW(PyMethodObject, &PyMethod_Type);
 		if (im == NULL)
 			return NULL;
+#ifdef USE_METHOD_FREELIST
 	}
+#endif
 	im->im_weakreflist = NULL;
 	Py_INCREF(func);
 	im->im_func = func;
@@ -70,7 +82,7 @@ PyMethod_New(PyObject *func, PyObject *self, PyObject *klass)
 	im->im_self = self;
 	Py_XINCREF(klass);
 	im->im_class = klass;
-	_PyObject_GC_TRACK(im);
+	PyObject_COMPLETE(im);
 	return (PyObject *)im;
 }
 
@@ -119,22 +131,22 @@ method_getattro(PyObject *obj, PyObject *name)
 	PyTypeObject *tp = obj->ob_type;
 	PyObject *descr = NULL;
 
-	{
-		if (tp->tp_dict == NULL) {
-			if (PyType_Ready(tp) < 0)
-				return NULL;
-		}
-		descr = _PyType_Lookup(tp, name);
+	if (tp->tp_dict == NULL) {
+		if (PyType_Ready(tp) < 0)
+			return NULL;
 	}
+	if (_PyType_LookupEx(tp, name, &descr) < 0)
+		return NULL;
 
 	if (descr != NULL) {
 		descrgetfunc f = TP_DESCR_GET(descr->ob_type);
-		if (f != NULL)
-			return f(descr, obj, (PyObject *)obj->ob_type);
-		else {
-			Py_INCREF(descr);
+		if (f != NULL) {
+			PyObject *result = f(descr, obj,
+				(PyObject *)obj->ob_type);
+			Py_DECREF(descr);
+			return result;
+		} else
 			return descr;
-		}
 	}
 
 	return PyObject_GetAttr(im->im_func, name);
@@ -176,14 +188,17 @@ method_new(PyTypeObject* type, PyObject* args, PyObject *kw)
 static void
 method_dealloc(register PyMethodObject *im)
 {
-	_PyObject_GC_UNTRACK(im);
-	if (im->im_weakreflist != NULL)
-		PyObject_ClearWeakRefs((PyObject *)im);
 	Py_DECREF(im->im_func);
 	Py_XDECREF(im->im_self);
 	Py_XDECREF(im->im_class);
+#ifdef USE_METHOD_FREELIST
+	PyThread_lock_acquire(free_list_lock);
 	im->im_self = (PyObject *)free_list;
 	free_list = im;
+	PyThread_lock_release(free_list_lock);
+#else
+	PyObject_DEL(im);
+#endif
 }
 
 static PyObject *
@@ -425,6 +440,14 @@ method_descr_get(PyObject *meth, PyObject *obj, PyObject *cls)
 	return PyMethod_New(PyMethod_GET_FUNCTION(meth), obj, cls);
 }
 
+static int
+method_isshareable(PyMethodObject *a)
+{
+	return (PyObject_IsShareable(a->im_func) &&
+		(a->im_self == NULL || PyObject_IsShareable(a->im_self)) &&
+		(a->im_class == NULL || PyObject_IsShareable(a->im_class)));
+}
+
 PyTypeObject PyMethod_Type = {
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
 	"method",
@@ -445,7 +468,7 @@ PyTypeObject PyMethod_Type = {
 	method_getattro,			/* tp_getattro */
 	PyObject_GenericSetAttr,		/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SKIPWIPE, /* tp_flags */
 	method_doc,				/* tp_doc */
 	(traverseproc)method_traverse,		/* tp_traverse */
 	0,					/* tp_clear */
@@ -462,18 +485,39 @@ PyTypeObject PyMethod_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	method_new,				/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	(isshareablefunc)method_isshareable,	/* tp_isshareable */
 };
+
+void
+_PyMethod_Init(void)
+{
+#ifdef USE_METHOD_FREELIST
+	free_list_lock = PyThread_lock_allocate();
+	if (!free_list_lock)
+		Py_FatalError("unable to allocate lock");
+#endif
+}
 
 /* Clear out the free list */
 
 void
 PyMethod_Fini(void)
 {
+#ifdef USE_METHOD_FREELIST
 	while (free_list) {
 		PyMethodObject *im = free_list;
 		free_list = (PyMethodObject *)(im->im_self);
-		PyObject_GC_Del(im);
+		PyObject_DEL(im);
 	}
+
+	PyThread_lock_free(free_list_lock);
+	free_list_lock = NULL;
+#endif
 }

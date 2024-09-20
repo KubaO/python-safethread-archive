@@ -24,6 +24,7 @@ typedef struct {
 #define FUTURE_DIVISION "division"
 #define FUTURE_ABSOLUTE_IMPORT "absolute_import"
 #define FUTURE_WITH_STATEMENT "with_statement"
+#define FUTURE_SHARED_MODULE "shared_module"
 
 struct _mod; /* Declare the existence of this type */
 PyAPI_FUNC(PyCodeObject *) PyAST_Compile(struct _mod *, const char *,

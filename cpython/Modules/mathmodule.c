@@ -111,6 +111,7 @@ FUNC2(atan2, atan2,
 static PyObject * math_ceil(PyObject *self, PyObject *number) {
 	static PyObject *ceil_str = NULL;
 	PyObject *method;
+	PyObject *result;
 
 	if (ceil_str == NULL) {
 		ceil_str = PyUnicode_FromString("__ceil__");
@@ -118,11 +119,15 @@ static PyObject * math_ceil(PyObject *self, PyObject *number) {
 			return NULL;
 	}
 
-	method = _PyType_Lookup(Py_Type(number), ceil_str);
+	if (_PyType_LookupEx(Py_Type(number), ceil_str, &method) < 0)
+		return NULL;
 	if (method == NULL)
 		return math_1(number, ceil);
-	else
-		return PyObject_CallFunction(method, "O", number);
+	else {
+		result = PyObject_CallFunction(method, "O", number);
+		Py_DECREF(method);
+		return result;
+	}
 }
 
 PyDoc_STRVAR(math_ceil_doc,
@@ -141,6 +146,7 @@ FUNC1(fabs, fabs,
 static PyObject * math_floor(PyObject *self, PyObject *number) {
 	static PyObject *floor_str = NULL;
 	PyObject *method;
+	PyObject *result;
 
 	if (floor_str == NULL) {
 		floor_str = PyUnicode_FromString("__floor__");
@@ -148,11 +154,15 @@ static PyObject * math_floor(PyObject *self, PyObject *number) {
 			return NULL;
 	}
 
-	method = _PyType_Lookup(Py_Type(number), floor_str);
+	if (_PyType_LookupEx(Py_Type(number), floor_str, &method) < 0)
+		return NULL;
 	if (method == NULL)
 		return math_1(number, floor);
-	else
-		return PyObject_CallFunction(method, "O", number);
+	else {
+		result = PyObject_CallFunction(method, "O", number);
+		Py_DECREF(method);
+		return result;
+	}
 }
 
 PyDoc_STRVAR(math_floor_doc,

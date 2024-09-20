@@ -9,7 +9,7 @@
 PyObject *
 PyFunction_New(PyObject *code, PyObject *globals)
 {
-	PyFunctionObject *op = PyObject_GC_New(PyFunctionObject,
+	PyFunctionObject *op = PyObject_NEW(PyFunctionObject,
 					    &PyFunction_Type);
 	static PyObject *__name__ = 0;
 	if (op != NULL) {
@@ -50,15 +50,14 @@ PyFunction_New(PyObject *code, PyObject *globals)
 				return NULL;
 			}
 		}
-		module = PyDict_GetItem(globals, __name__);
-		if (module) {
-		    Py_INCREF(module);
-		    op->func_module = module;
+		if (PyDict_GetItemEx(globals, __name__, &module) < 0) {
+			Py_DECREF(op);
+			return NULL;
 		}
+		op->func_module = module;
 	}
 	else
 		return NULL;
-	_PyObject_GC_TRACK(op);
 	return (PyObject *)op;
 }
 
@@ -549,9 +548,6 @@ func_new(PyTypeObject* type, PyObject* args, PyObject* kw)
 static void
 func_dealloc(PyFunctionObject *op)
 {
-	_PyObject_GC_UNTRACK(op);
-	if (op->func_weakreflist != NULL)
-		PyObject_ClearWeakRefs((PyObject *) op);
 	Py_DECREF(op->func_code);
 	Py_DECREF(op->func_globals);
 	Py_XDECREF(op->func_module);
@@ -562,7 +558,7 @@ func_dealloc(PyFunctionObject *op)
 	Py_XDECREF(op->func_dict);
 	Py_XDECREF(op->func_closure);
 	Py_XDECREF(op->func_annotations);
-	PyObject_GC_Del(op);
+	PyObject_DEL(op);
 }
 
 static PyObject*
@@ -648,6 +644,13 @@ func_descr_get(PyObject *func, PyObject *obj, PyObject *type)
 	return PyMethod_New(func, obj, type);
 }
 
+static int
+func_isshareable(PyFunctionObject *f)
+{
+	/* XXX FIXME this is a bodge.  Shareable should be a flag and result in the usual shareable limitations */
+	return PyObject_IsShareable(f->func_globals);
+}
+
 PyTypeObject PyFunction_Type = {
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
 	"function",
@@ -685,8 +688,14 @@ PyTypeObject PyFunction_Type = {
 	0,					/* tp_descr_set */
 	offsetof(PyFunctionObject, func_dict),	/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	func_new,				/* tp_new */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	(isshareablefunc)func_isshareable,	/* tp_isshareable */
 };
 
 
@@ -717,9 +726,8 @@ typedef struct {
 static void
 cm_dealloc(classmethod *cm)
 {
-	_PyObject_GC_UNTRACK((PyObject *)cm);
 	Py_XDECREF(cm->cm_callable);
-	Py_Type(cm)->tp_free((PyObject *)cm);
+	PyObject_DEL(cm);
 }
 
 static int
@@ -774,6 +782,12 @@ cm_init(PyObject *self, PyObject *args, PyObject *kwds)
 	return 0;
 }
 
+static int
+cm_isshareable(classmethod *cm)
+{
+	return PyObject_IsShareable(cm->cm_callable);
+}
+
 PyDoc_STRVAR(classmethod_doc,
 "classmethod(function) -> method\n\
 \n\
@@ -815,7 +829,8 @@ PyTypeObject PyClassMethod_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
+		Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SHAREABLE,
 	classmethod_doc,			/* tp_doc */
 	(traverseproc)cm_traverse,		/* tp_traverse */
 	(inquiry)cm_clear,			/* tp_clear */
@@ -832,16 +847,20 @@ PyTypeObject PyClassMethod_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	cm_init,				/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	PyType_GenericNew,			/* tp_new */
-	PyObject_GC_Del,	                /* tp_free */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	(isshareablefunc)cm_isshareable,	/* tp_isshareable */
 };
 
 PyObject *
 PyClassMethod_New(PyObject *callable)
 {
-	classmethod *cm = (classmethod *)
-		PyType_GenericAlloc(&PyClassMethod_Type, 0);
+	classmethod *cm = PyObject_NEW(classmethod, &PyClassMethod_Type);
 	if (cm != NULL) {
 		Py_INCREF(callable);
 		cm->cm_callable = callable;
@@ -874,9 +893,8 @@ typedef struct {
 static void
 sm_dealloc(staticmethod *sm)
 {
-	_PyObject_GC_UNTRACK((PyObject *)sm);
 	Py_XDECREF(sm->sm_callable);
-	Py_Type(sm)->tp_free((PyObject *)sm);
+	PyObject_DEL(sm);
 }
 
 static int
@@ -924,6 +942,12 @@ sm_init(PyObject *self, PyObject *args, PyObject *kwds)
 	return 0;
 }
 
+static int
+sm_isshareable(staticmethod *sm)
+{
+	return PyObject_IsShareable(sm->sm_callable);
+}
+
 PyDoc_STRVAR(staticmethod_doc,
 "staticmethod(function) -> method\n\
 \n\
@@ -962,7 +986,8 @@ PyTypeObject PyStaticMethod_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
+		Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_SHAREABLE,
 	staticmethod_doc,			/* tp_doc */
 	(traverseproc)sm_traverse,		/* tp_traverse */
 	(inquiry)sm_clear,			/* tp_clear */
@@ -979,16 +1004,20 @@ PyTypeObject PyStaticMethod_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	sm_init,				/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	PyType_GenericNew,			/* tp_new */
-	PyObject_GC_Del,           		/* tp_free */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	(isshareablefunc)sm_isshareable,	/* tp_isshareable */
 };
 
 PyObject *
 PyStaticMethod_New(PyObject *callable)
 {
-	staticmethod *sm = (staticmethod *)
-		PyType_GenericAlloc(&PyStaticMethod_Type, 0);
+	staticmethod *sm = PyObject_NEW(staticmethod, &PyStaticMethod_Type);
 	if (sm != NULL) {
 		Py_INCREF(callable);
 		sm->sm_callable = callable;

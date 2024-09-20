@@ -3,8 +3,24 @@
 #define PY_SSIZE_T_CLEAN
 
 #include "Python.h"
+#include "pythread.h"
 
 #include <ctype.h>
+
+/* Use only if you know it's a string */
+int
+_PyString_SnoopState(PyStringObject *op)
+{
+	/* XXX Just what is required here?  This all needs to be audited/fixed anyway.. */
+	//return (int)AO_load_full(&op->state);
+	return (int)AO_load_acquire(&op->ob_sstate);
+}
+
+static inline void
+PyString_SetState(PyStringObject *op, int state)
+{
+	AO_store_full(&op->ob_sstate, state);
+}
 
 #ifdef COUNT_ALLOCS
 int null_strings, one_strings;
@@ -22,6 +38,7 @@ static PyStringObject *nullstring;
    count of a string is:  s->ob_refcnt + (s->ob_sstate?2:0)
 */
 static PyObject *interned;
+static PyCritical *interned_critical;
 
 /*
    For both PyString_FromString() and PyString_FromStringAndSize(), the
@@ -72,10 +89,15 @@ PyString_FromStringAndSize(const char *str, Py_ssize_t size)
 	}
 
 	/* Inline PyObject_NewVar */
-	op = (PyStringObject *)PyObject_MALLOC(sizeof(PyStringObject) + size);
+	//op = (PyStringObject *)PyObject_MALLOC(sizeof(PyStringObject) + size);
+	//op = (PyStringObject *)_PyObject_GC_Malloc(sizeof(PyStringObject) + size);
+	/* XXX FIXME _PyObject_GC_Malloc already calls PyErr_NoMemory */
+	//if (op == NULL)
+	//	return PyErr_NoMemory();
+	//PyObject_INIT_VAR(op, &PyString_Type, size);
+	op = PyObject_NEWVAR(PyStringObject, &PyString_Type, size);
 	if (op == NULL)
-		return PyErr_NoMemory();
-	PyObject_INIT_VAR(op, &PyString_Type, size);
+		return NULL;
 	op->ob_shash = -1;
 	op->ob_sstate = SSTATE_NOT_INTERNED;
 	if (str != NULL)
@@ -127,10 +149,15 @@ PyString_FromString(const char *str)
 	}
 
 	/* Inline PyObject_NewVar */
-	op = (PyStringObject *)PyObject_MALLOC(sizeof(PyStringObject) + size);
+	//op = (PyStringObject *)PyObject_MALLOC(sizeof(PyStringObject) + size);
+	//op = (PyStringObject *)_PyObject_GC_Malloc(sizeof(PyStringObject) + size);
+	/* XXX FIXME _PyObject_GC_Malloc already calls PyErr_NoMemory */
+	//if (op == NULL)
+	//	return PyErr_NoMemory();
+	//PyObject_INIT_VAR(op, &PyString_Type, size);
+	op = PyObject_NEWVAR(PyStringObject, &PyString_Type, size);
 	if (op == NULL)
-		return PyErr_NoMemory();
-	PyObject_INIT_VAR(op, &PyString_Type, size);
+		return NULL;
 	op->ob_shash = -1;
 	op->ob_sstate = SSTATE_NOT_INTERNED;
 	Py_MEMCPY(op->ob_sval, str, size+1);
@@ -499,27 +526,41 @@ PyObject *PyString_AsEncodedString(PyObject *str,
 }
 
 static void
-string_dealloc(PyObject *op)
+string_dealloc(PyStringObject *op)
 {
-	switch (PyString_CHECK_INTERNED(op)) {
-		case SSTATE_NOT_INTERNED:
-			break;
+	int state = _PyString_SnoopState(op);
+	assert(Py_RefcntSnoop(op) == 1);
+	assert(op->ob_sstate == SSTATE_NOT_INTERNED ||
+		op->ob_sstate == SSTATE_INTERNED);
 
-		case SSTATE_INTERNED_MORTAL:
-			/* revive dead object temporarily for DelItem */
-			Py_Refcnt(op) = 3;
-			if (PyDict_DelItem(interned, op) != 0)
-				Py_FatalError(
-					"deletion of interned string failed");
-			break;
+	if (state == SSTATE_INTERNED) {
+		PyCritical_Enter(interned_critical);
+		if (Py_RefcntSnoop(op) > 1) {
+			PyCritical_Exit(interned_critical);
+			/* An asynchronous DECREF is used to ensure we
+			 * don't become recursive and risk blowing our
+			 * stack. */
+			PyObject_REVIVE(op);
+			Py_DECREF_ASYNC(op);
+			return;
+		}
 
-		case SSTATE_INTERNED_IMMORTAL:
-			Py_FatalError("Immortal interned string died.");
+		/* See comments in unicodeobject.c */
+		//((PyObject *)op)->ob_refowner = (AO_t)PyThreadState_Get();
+		//((PyObject *)op)->ob_refcnt = 3;
+		Py_INCREF(op);
+		Py_INCREF(op);
+		if (PyDict_DelItem(interned, (PyObject *)op) != 0)
+			Py_FatalError("deletion of interned str8 string failed");
 
-		default:
-			Py_FatalError("Inconsistent interned string state.");
+		assert(Py_RefcntSnoop(op) == 1);
+
+		//((PyObject *)op)->ob_refcnt = 0;
+
+		PyCritical_Exit(interned_critical);
 	}
-	Py_Type(op)->tp_free(op);
+
+	PyObject_DEL(op);
 }
 
 /* Unescape a backslash-escaped string. If unicode is non-zero,
@@ -898,10 +939,15 @@ string_concat(register PyStringObject *a, register PyObject *bb)
 	}
 	  
 	/* Inline PyObject_NewVar */
-	op = (PyStringObject *)PyObject_MALLOC(sizeof(PyStringObject) + size);
+	//op = (PyStringObject *)PyObject_MALLOC(sizeof(PyStringObject) + size);
+	//op = (PyStringObject *)_PyObject_GC_Malloc(sizeof(PyStringObject) + size);
+	/* XXX FIXME _PyObject_GC_Malloc already calls PyErr_NoMemory */
+	//if (op == NULL)
+	//	return PyErr_NoMemory();
+	//PyObject_INIT_VAR(op, &PyString_Type, size);
+	op = PyObject_NEWVAR(PyStringObject, &PyString_Type, size);
 	if (op == NULL)
-		return PyErr_NoMemory();
-	PyObject_INIT_VAR(op, &PyString_Type, size);
+		return NULL;
 	op->ob_shash = -1;
 	op->ob_sstate = SSTATE_NOT_INTERNED;
 	Py_MEMCPY(op->ob_sval, a->ob_sval, Py_Size(a));
@@ -940,11 +986,16 @@ string_repeat(register PyStringObject *a, register Py_ssize_t n)
 			"repeated string is too long");
 		return NULL;
 	}
-	op = (PyStringObject *)
-		PyObject_MALLOC(sizeof(PyStringObject) + nbytes);
+	//op = (PyStringObject *)
+	//	PyObject_MALLOC(sizeof(PyStringObject) + nbytes);
+	//op = (PyStringObject *)_PyObject_GC_Malloc(sizeof(PyStringObject) + nbytes);
+	/* XXX FIXME _PyObject_GC_Malloc already calls PyErr_NoMemory */
+	//if (op == NULL)
+	//	return PyErr_NoMemory();
+	//PyObject_INIT_VAR(op, &PyString_Type, size);
+	op = PyObject_NEWVAR(PyStringObject, &PyString_Type, size);
 	if (op == NULL)
-		return PyErr_NoMemory();
-	PyObject_INIT_VAR(op, &PyString_Type, size);
+		return NULL;
 	op->ob_shash = -1;
 	op->ob_sstate = SSTATE_NOT_INTERNED;
 	op->ob_sval[size] = '\0';
@@ -3773,7 +3824,7 @@ str_subtype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 		return NULL;
 	assert(PyString_CheckExact(tmp));
 	n = PyString_GET_SIZE(tmp);
-	pnew = type->tp_alloc(type, n);
+	pnew = PyObject_NewVar(type, n);
 	if (pnew != NULL) {
 		Py_MEMCPY(PyString_AS_STRING(pnew), PyString_AS_STRING(tmp), n+1);
 		((PyStringObject *)pnew)->ob_shash =
@@ -3800,6 +3851,12 @@ string_mod(PyObject *v, PyObject *w)
 		return Py_NotImplemented;
 	}
 	return PyString_Format(v, w);
+}
+
+static int
+str_isshareable (PyObject *v)
+{
+	return PyString_CheckExact(v);
 }
 
 PyDoc_STRVAR(basestring_doc,
@@ -3833,7 +3890,8 @@ PyTypeObject PyBaseString_Type = {
 	0,					/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
+		Py_TPFLAGS_SHAREABLE,		/* tp_flags */
 	basestring_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -3850,9 +3908,7 @@ PyTypeObject PyBaseString_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	basestring_new,				/* tp_new */
-	0,		                	/* tp_free */
 };
 
 PyDoc_STRVAR(string_doc,
@@ -3868,7 +3924,7 @@ PyTypeObject PyString_Type = {
 	"str8",
 	sizeof(PyStringObject),
 	sizeof(char),
- 	string_dealloc, 			/* tp_dealloc */
+	(destructor)string_dealloc,		/* tp_dealloc */
 	0,			 		/* tp_print */
 	0,					/* tp_getattr */
 	0,					/* tp_setattr */
@@ -3884,7 +3940,8 @@ PyTypeObject PyString_Type = {
 	0,					/* tp_setattro */
 	&string_as_buffer,			/* tp_as_buffer */
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
-		Py_TPFLAGS_STRING_SUBCLASS,	/* tp_flags */
+		Py_TPFLAGS_STRING_SUBCLASS |
+		Py_TPFLAGS_SHAREABLE,		/* tp_flags */
 	string_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -3901,9 +3958,14 @@ PyTypeObject PyString_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	string_new,				/* tp_new */
-	PyObject_Del,	                	/* tp_free */
+	0,					/* tp_is_gc */
+	0,					/* tp_bases */
+	0,					/* tp_mro */
+	0,					/* tp_cache */
+	0,					/* tp_subclasses */
+	0,					/* tp_weaklist */
+	str_isshareable,			/* tp_isshareable */
 };
 
 void
@@ -3950,26 +4012,20 @@ _PyString_Resize(PyObject **pv, Py_ssize_t newsize)
 	register PyObject *v;
 	register PyStringObject *sv;
 	v = *pv;
-	if (!PyString_Check(v) || Py_Refcnt(v) != 1 || newsize < 0 ||
-	    PyString_CHECK_INTERNED(v)) {
+	if (!PyString_Check(v) || !Py_RefcntMatches(v, 1) || newsize < 0 ||
+	    _PyString_SnoopState((PyStringObject *)v)) {
 		*pv = 0;
 		Py_DECREF(v);
 		PyErr_BadInternalCall();
 		return -1;
 	}
-	/* XXX UNREF/NEWREF interface should be more symmetrical */
-	_Py_DEC_REFTOTAL;
-	_Py_ForgetReference(v);
-	*pv = (PyObject *)
-		PyObject_REALLOC((char *)v, sizeof(PyStringObject) + newsize);
+	*pv = PyObject_Resize(v, newsize);
 	if (*pv == NULL) {
-		PyObject_Del(v);
-		PyErr_NoMemory();
+		Py_DECREF(v);
 		return -1;
 	}
-	_Py_NewReference(*pv);
 	sv = (PyStringObject *) *pv;
-	Py_Size(sv) = newsize;
+	assert(Py_Size(sv) == newsize);
 	sv->ob_sval[newsize] = '\0';
 	sv->ob_shash = -1;	/* invalidate cached hash value */
 	return 0;
@@ -4126,7 +4182,7 @@ _PyString_FormatLong(PyObject *val, int flags, int prec, int type,
 	}
 
 	/* To modify the string in-place, there can only be one reference. */
-	if (Py_Refcnt(result) != 1) {
+	if (!Py_RefcntMatches(result, 1)) {
 		PyErr_BadInternalCall();
 		return NULL;
 	}
@@ -4765,43 +4821,41 @@ PyString_InternInPlace(PyObject **p)
 	   it in the interned dict might do. */
 	if (!PyString_CheckExact(s))
 		return;
-	if (PyString_CHECK_INTERNED(s))
+	if (_PyString_SnoopState(s))
 		return;
+
+	PyCritical_Enter(interned_critical);
 	if (interned == NULL) {
 		interned = PyDict_New();
 		if (interned == NULL) {
+			PyCritical_Exit(interned_critical);
 			PyErr_Clear(); /* Don't leave an exception */
 			return;
 		}
 	}
+
 	t = PyDict_GetItem(interned, (PyObject *)s);
 	if (t) {
-		Py_INCREF(t);
-		Py_DECREF(*p);
-		*p = t;
-		return;
+                assert(PyString_CheckExact(t));
+                Py_INCREF(t);
+                PyCritical_Exit(interned_critical);
+                Py_DECREF(*p);
+                *p = t;
+                return;
 	}
 
 	if (PyDict_SetItem(interned, (PyObject *)s, (PyObject *)s) < 0) {
+		PyCritical_Exit(interned_critical);
 		PyErr_Clear();
 		return;
 	}
 	/* The two references in interned are not counted by refcnt.
 	   The string deallocator will take care of this */
-	Py_Refcnt(s) -= 2;
-	PyString_CHECK_INTERNED(s) = SSTATE_INTERNED_MORTAL;
+	Py_DECREF(s);
+	Py_DECREF(s);
+	PyString_SetState(s, SSTATE_INTERNED);
+	PyCritical_Exit(interned_critical);
 }
-
-void
-PyString_InternImmortal(PyObject **p)
-{
-	PyString_InternInPlace(p);
-	if (PyString_CHECK_INTERNED(*p) != SSTATE_INTERNED_IMMORTAL) {
-		PyString_CHECK_INTERNED(*p) = SSTATE_INTERNED_IMMORTAL;
-		Py_INCREF(*p);
-	}
-}
-
 
 PyObject *
 PyString_InternFromString(const char *cp)
@@ -4811,6 +4865,14 @@ PyString_InternFromString(const char *cp)
 		return NULL;
 	PyString_InternInPlace(&s);
 	return s;
+}
+
+void
+_PyString_Init(void)
+{
+	interned_critical = PyCritical_Allocate(PyCRITICAL_NORMAL);
+	if (!interned_critical)
+		Py_FatalError("unable to allocate lock");
 }
 
 void
@@ -4825,17 +4887,32 @@ PyString_Fini(void)
 	nullstring = NULL;
 }
 
+void
+_PyString_PostFini(void)
+{
+	PyCritical_Free(interned_critical);
+	interned_critical = NULL;
+}
+
 void _Py_ReleaseInternedStrings(void)
 {
-	PyObject *keys;
-	PyStringObject *s;
+	PyObject *keys, *temp;
 	Py_ssize_t i, n;
-	Py_ssize_t immortal_size = 0, mortal_size = 0;
+	Py_ssize_t mortal_size = 0;
+	PyThreadState *tstate = PyThreadState_Get();
 
-	if (interned == NULL || !PyDict_Check(interned))
+	PyCritical_Enter(interned_critical);
+	if (AO_load_full(&tstate->interp->tstate_count) != 1)
+		Py_FatalError("Attempting to release interned strings while "
+			"multiple threads exist");
+
+	if (interned == NULL || !PyDict_Check(interned)) {
+		PyCritical_Exit(interned_critical);
 		return;
+	}
 	keys = PyDict_Keys(interned);
 	if (keys == NULL || !PyList_Check(keys)) {
+		PyCritical_Exit(interned_critical);
 		PyErr_Clear();
 		return;
 	}
@@ -4849,31 +4926,30 @@ void _Py_ReleaseInternedStrings(void)
 	fprintf(stderr, "releasing %" PY_FORMAT_SIZE_T "d interned strings\n",
 		n);
 	for (i = 0; i < n; i++) {
-		s = (PyStringObject *) PyList_GET_ITEM(keys, i);
-		switch (s->ob_sstate) {
-		case SSTATE_NOT_INTERNED:
-			/* XXX Shouldn't happen */
-			break;
-		case SSTATE_INTERNED_IMMORTAL:
-			Py_Refcnt(s) += 1;
-			immortal_size += Py_Size(s);
-			break;
-		case SSTATE_INTERNED_MORTAL:
-			Py_Refcnt(s) += 2;
-			mortal_size += Py_Size(s);
-			break;
-		default:
+		PyStringObject *s = (PyStringObject *) PyList_GET_ITEM(keys, i);
+		void *owner = (void *)AO_load_full(&((PyObject *)s)->ob_refowner);
+		if (_PyString_SnoopState(s) != SSTATE_INTERNED)
 			Py_FatalError("Inconsistent interned string state.");
-		}
+
+		if (owner == (void *)Py_REFOWNER_STATICINIT) {
+			/* Inline _PyGC_RefMode_Promote */
+			((PyObject *)s)->ob_refowner = (AO_t)tstate;
+		} else if (owner != tstate)
+			Py_FatalError("Interned string has wrong owner");
+
+		Py_INCREF(s);
+		Py_INCREF(s);
+		mortal_size += Py_Size(s);
 		s->ob_sstate = SSTATE_NOT_INTERNED;
 	}
 	fprintf(stderr, "total size of all interned strings: "
-			"%" PY_FORMAT_SIZE_T "d/%" PY_FORMAT_SIZE_T "d "
-			"mortal/immortal\n", mortal_size, immortal_size);
-	Py_DECREF(keys);
-	PyDict_Clear(interned);
-	Py_DECREF(interned);
+			"%" PY_FORMAT_SIZE_T "d\n", mortal_size);
+	temp = interned;
 	interned = NULL;
+	PyCritical_Exit(interned_critical);
+	Py_DECREF(keys);
+	PyDict_Clear(temp);
+	Py_DECREF(temp);
 }
 
 
@@ -4888,9 +4964,8 @@ typedef struct {
 static void
 striter_dealloc(striterobject *it)
 {
-	_PyObject_GC_UNTRACK(it);
 	Py_XDECREF(it->it_seq);
-	PyObject_GC_Del(it);
+	PyObject_DEL(it);
 }
 
 static int
@@ -4985,12 +5060,11 @@ str_iter(PyObject *seq)
 		PyErr_BadInternalCall();
 		return NULL;
 	}
-	it = PyObject_GC_New(striterobject, &PyStringIter_Type);
+	it = PyObject_NEW(striterobject, &PyStringIter_Type);
 	if (it == NULL)
 		return NULL;
 	it->it_index = 0;
 	Py_INCREF(seq);
 	it->it_seq = (PyStringObject *)seq;
-	_PyObject_GC_TRACK(it);
 	return (PyObject *)it;
 }

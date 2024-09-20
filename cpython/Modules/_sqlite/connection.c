@@ -505,9 +505,11 @@ void _pysqlite_func_callback(sqlite3_context* context, int argc, sqlite3_value**
     PyObject* py_func;
     PyObject* py_retval = NULL;
 
-    PyGILState_STATE threadstate;
+    PyState_EnterTag entertag;
 
-    threadstate = PyGILState_Ensure();
+    entertag = PyState_Enter();
+    if (!entertag)
+        Py_FatalError("PyState_Enter failed");
 
     py_func = (PyObject*)sqlite3_user_data(context);
 
@@ -529,7 +531,7 @@ void _pysqlite_func_callback(sqlite3_context* context, int argc, sqlite3_value**
         _sqlite3_result_error(context, "user-defined function raised exception", -1);
     }
 
-    PyGILState_Release(threadstate);
+    PyState_Exit(threadstate);
 }
 
 static void _pysqlite_step_callback(sqlite3_context *context, int argc, sqlite3_value** params)
@@ -540,9 +542,11 @@ static void _pysqlite_step_callback(sqlite3_context *context, int argc, sqlite3_
     PyObject** aggregate_instance;
     PyObject* stepmethod = NULL;
 
-    PyGILState_STATE threadstate;
+    PyState_EnterTag entertag;
 
-    threadstate = PyGILState_Ensure();
+    entertag = PyState_Enter();
+    if (!entertag)
+        Py_FatalError("PyState_Enter failed");
 
     aggregate_class = (PyObject*)sqlite3_user_data(context);
 
@@ -589,7 +593,7 @@ error:
     Py_XDECREF(stepmethod);
     Py_XDECREF(function_result);
 
-    PyGILState_Release(threadstate);
+    PyState_Exit(entertag);
 }
 
 void _pysqlite_final_callback(sqlite3_context* context)
@@ -598,9 +602,11 @@ void _pysqlite_final_callback(sqlite3_context* context)
     PyObject** aggregate_instance;
     PyObject* aggregate_class;
 
-    PyGILState_STATE threadstate;
+    PyState_EnterTag entertag;
 
-    threadstate = PyGILState_Ensure();
+    entertag = PyState_Enter();
+    if (!entertag)
+        Py_FatalError("PyState_Enter failed");
 
     aggregate_class = (PyObject*)sqlite3_user_data(context);
 
@@ -628,7 +634,7 @@ error:
     Py_XDECREF(*aggregate_instance);
     Py_XDECREF(function_result);
 
-    PyGILState_Release(threadstate);
+    PyState_Exit(entertag);
 }
 
 void _pysqlite_drop_unused_statement_references(pysqlite_Connection* self)
@@ -723,9 +729,12 @@ static int _authorizer_callback(void* user_arg, int action, const char* arg1, co
 {
     PyObject *ret;
     int rc;
-    PyGILState_STATE gilstate;
+    PyState_EnterTag entertag;
 
-    gilstate = PyGILState_Ensure();
+    entertag = PyState_Enter();
+    if (!entertag)
+        Py_FatalError("PyState_Enter failed");
+
     ret = PyObject_CallFunction((PyObject*)user_arg, "issss", action, arg1, arg2, dbname, access_attempt_source);
 
     if (!ret) {
@@ -745,7 +754,7 @@ static int _authorizer_callback(void* user_arg, int action, const char* arg1, co
         Py_DECREF(ret);
     }
 
-    PyGILState_Release(gilstate);
+    PyState_Exit(entertag);
     return rc;
 }
 
@@ -1009,12 +1018,14 @@ pysqlite_collation_callback(
     PyObject* callback = (PyObject*)context;
     PyObject* string1 = 0;
     PyObject* string2 = 0;
-    PyGILState_STATE gilstate;
+    PyState_EnterTag entertag;
 
     PyObject* retval = NULL;
     int result = 0;
 
-    gilstate = PyGILState_Ensure();
+    entertag = PyState_Enter();
+    if (!entertag)
+        Py_FatalError("PyState_Enter failed");
 
     if (PyErr_Occurred()) {
         goto finally;
@@ -1044,7 +1055,7 @@ finally:
     Py_XDECREF(string2);
     Py_XDECREF(retval);
 
-    PyGILState_Release(gilstate);
+    PyState_Exit(entertag);
 
     return result;
 }

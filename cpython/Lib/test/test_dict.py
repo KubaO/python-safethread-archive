@@ -10,6 +10,7 @@ class DictTest(unittest.TestCase):
         # calling built-in types without argument must return empty
         self.assertEqual(dict(), {})
         self.assert_(dict() is not {})
+        self.assertRaises(TypeError, dict, {'a': 7}, {'a': 42})
 
     def test_bool(self):
         self.assert_(not {})

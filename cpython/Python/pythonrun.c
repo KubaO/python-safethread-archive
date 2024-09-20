@@ -17,6 +17,7 @@
 #include "ast.h"
 #include "eval.h"
 #include "marshal.h"
+#include "branchobject.h"
 
 #ifdef HAVE_SIGNAL_H
 #include <signal.h>
@@ -49,6 +50,8 @@ extern char *Py_GetPath(void);
 extern grammar _PyParser_Grammar; /* From graminit.c */
 
 /* Forward */
+static void initfinalize(void);
+static void finifinalize(void);
 static void initmain(void);
 static void initsite(void);
 static PyObject *run_mod(mod_ty, const char *, PyObject *, PyObject *,
@@ -59,15 +62,21 @@ static void err_input(perrdetail *);
 static void initsigs(void);
 static void call_py_exitfuncs(void);
 static void call_ll_exitfuncs(void);
+extern void _PyGC_Init(void);
+extern void _PyUnicode_PreInit(void);
 extern void _PyUnicode_Init(void);
 extern void _PyUnicode_Fini(void);
+extern void _PyUnicode_PostFini(void);
+extern void _PyString_PostFini(void);
+extern void _PyDict_PreInit(void);
 extern int _PyLong_Init(void);
 extern void PyLong_Fini(void);
 
-#ifdef WITH_THREAD
-extern void _PyGILState_Init(PyInterpreterState *, PyThreadState *);
-extern void _PyGILState_Fini(void);
-#endif /* WITH_THREAD */
+extern void _PyState_InitThreads(void);
+extern void _PyState_Fini(void);
+
+extern void _Py_Refchain_Init(void);
+extern void _Py_Refchain_Fini(void);
 
 int Py_DebugFlag; /* Needed by parser.c */
 int Py_VerboseFlag; /* Needed by import.c */
@@ -82,6 +91,8 @@ int Py_IgnoreEnvironmentFlag; /* e.g. PYTHONPATH, PYTHONHOME */
    on the fly when the import lock may be held.  See 683658/771097
 */
 static PyObject *warnings_module = NULL;
+
+static PyObject *finalize_branch = NULL;
 
 /* Returns a borrowed reference to the 'warnings' module, or NULL.
    If the module is returned, it is guaranteed to have been obtained
@@ -112,6 +123,7 @@ PyObject *PyModule_GetWarningsModule(void)
 	return warnings_module;
 }
 
+/* 0 for uninitialized, 1 for initialized, -1 for finalized */
 static int initialized = 0;
 
 /* API to access the initialized flag -- useful for esoteric use */
@@ -119,7 +131,9 @@ static int initialized = 0;
 int
 Py_IsInitialized(void)
 {
-	return initialized;
+    /* Typical callers don't want to know we're finalized, so we make
+     * sure they don't have to test for it. */
+    return initialized == 1;
 }
 
 /* Global initializations.  Can be undone by Py_Finalize().  Don't
@@ -146,10 +160,10 @@ add_flag(int flag, const char *envs)
 }
 
 void
-Py_InitializeEx(int install_sigs)
+Py_InitializeEx(int handle_sigint)
 {
 	PyInterpreterState *interp;
-	PyThreadState *tstate;
+	//PyThreadState *tstate;
 	PyObject *bimod, *sysmod;
 	char *p;
 #if defined(HAVE_LANGINFO_H) && defined(CODESET)
@@ -157,8 +171,12 @@ Py_InitializeEx(int install_sigs)
 #endif
 	extern void _Py_ReadyTypes(void);
 
-	if (initialized)
-		return;
+	if (initialized == 1)
+		Py_FatalError("Cannot call Py_Initialize: already initialized");
+	if (initialized == -1)
+		Py_FatalError("Cannot call Py_Initialize: already finalized");
+	if (initialized != 0)
+		Py_FatalError("Cannot call Py_Initialize: unknown initialized stated");
 	initialized = 1;
 
 #ifdef HAVE_SETLOCALE
@@ -175,27 +193,47 @@ Py_InitializeEx(int install_sigs)
 	if ((p = Py_GETENV("PYTHONOPTIMIZE")) && *p != '\0')
 		Py_OptimizeFlag = add_flag(Py_OptimizeFlag, p);
 
+	_PyGC_Init();
+
+	_Py_Refchain_Init();
+
+	_PyState_InitThreads();
+
 	interp = PyInterpreterState_New();
 	if (interp == NULL)
 		Py_FatalError("Py_Initialize: can't make first interpreter");
 
-	tstate = PyThreadState_New(interp);
-	if (tstate == NULL)
-		Py_FatalError("Py_Initialize: can't make first thread");
-	(void) PyThreadState_Swap(tstate);
+	interp->entertag = PyState_Enter();
+	if (!interp->entertag)
+		Py_FatalError("Py_Initialize: PySpace_Enter failed");
+	//tstate = PyThreadState_New(interp);
+	//if (tstate == NULL)
+	//	Py_FatalError("Py_Initialize: can't make first thread");
+	//(void) PyThreadState_Swap(tstate);
+	//PyState_Resume();
 
-	_Py_ReadyTypes();
+	/* Bare minimum before other types */
+	_PyUnicode_PreInit();
+	_PyDict_PreInit();
 
 	if (!_PyFrame_Init())
 		Py_FatalError("Py_Initialize: can't init frames");
-
+	_PyMethod_Init();
 	if (!_PyLong_Init())
 		Py_FatalError("Py_Initialize: can't init longs");
-
+	_PyFloat_Init();
+	_PyTuple_Init();
+	_PyList_Init();
+	_PySet_Init();
+	_PyString_Init();
 	if (!PyBytes_Init())
 		Py_FatalError("Py_Initialize: can't init bytes");
+	_PyCFunction_Init();
 
-	_PyFloat_Init();
+	/* Init Unicode implementation; relies on the codec registry */
+	_PyUnicode_Init();
+
+	_Py_ReadyTypes();
 
 	interp->modules = PyDict_New();
 	if (interp->modules == NULL)
@@ -204,9 +242,6 @@ Py_InitializeEx(int install_sigs)
 	if (interp->modules_reloading == NULL)
 		Py_FatalError("Py_Initialize: can't make modules_reloading dictionary");
 
-	/* Init Unicode implementation; relies on the codec registry */
-	_PyUnicode_Init();
-
 	bimod = _PyBuiltin_Init();
 	if (bimod == NULL)
 		Py_FatalError("Py_Initialize: can't initialize __builtin__");
@@ -214,6 +249,8 @@ Py_InitializeEx(int install_sigs)
 	if (interp->builtins == NULL)
 		Py_FatalError("Py_Initialize: can't initialize builtins dict");
 	Py_INCREF(interp->builtins);
+
+	_Py_ThreadTools_Init();
 
 	sysmod = _PySys_Init();
 	if (sysmod == NULL)
@@ -229,25 +266,20 @@ Py_InitializeEx(int install_sigs)
 
 	_PyImport_Init();
 
-	/* initialize builtin exceptions */
-	_PyExc_Init();
-
 	/* phase 2 of builtins */
 	_PyImport_FixupExtension("__builtin__", "__builtin__");
 
 	_PyImportHooks_Init();
 
-	if (install_sigs)
-		initsigs(); /* Signal handling stuff, including initintr() */
+	_PySignal_Init();
+
+	initfinalize();
+
+	_PySignal_InitSigInt(handle_sigint);
 
 	initmain(); /* Module __main__ */
 	if (!Py_NoSiteFlag)
 		initsite(); /* Module site */
-
-	/* auto-thread-state API, if available */
-#ifdef WITH_THREAD
-	_PyGILState_Init(interp, tstate);
-#endif /* WITH_THREAD */
 
 	warnings_module = PyImport_ImportModule("warnings");
 	if (!warnings_module)
@@ -339,8 +371,12 @@ Py_Finalize(void)
 	PyInterpreterState *interp;
 	PyThreadState *tstate;
 
-	if (!initialized)
-		return;
+	if (initialized == 0)
+		Py_FatalError("Cannot call Py_Finalize: not yet initialized");
+	if (initialized == -1)
+		Py_FatalError("Cannot call Py_Finalize: already finalized");
+	if (initialized != 1)
+		Py_FatalError("Cannot call Py_Finalize: unknown initialized stated");
 
 	/* The interpreter is still entirely intact at this point, and the
 	 * exit funcs may be relying on that.  In particular, if some thread
@@ -351,18 +387,25 @@ Py_Finalize(void)
 	 * threads created thru it, so this also protects pending imports in
 	 * the threads created via Threading.
 	 */
+	/* XXX FIXME this isn't done in a thread-safe fashion.  The
+	 * initialized variable itself isn't accessed atomically, but we
+	 * also have a race before we change it after checking it. */
 	call_py_exitfuncs();
-	initialized = 0;
+	initialized = -1;
 
 	/* Flush stdout+stderr */
 	flush_std_files();
 
 	/* Get current thread state and interpreter pointer */
-	tstate = PyThreadState_GET();
+	tstate = PyThreadState_Get();
 	interp = tstate->interp;
 
+	_PySignal_FiniSigInt();
+
+	finifinalize();
+
 	/* Disable signal handling */
-	PyOS_FiniInterrupts();
+	_PySignal_Fini();
 
 	/* drop module references we saved */
 	Py_XDECREF(warnings_module);
@@ -380,20 +423,21 @@ Py_Finalize(void)
 	 * XXX but I'm unclear on exactly how that one happens.  In any case,
 	 * XXX I haven't seen a real-life report of either of these.
 	 */
-	PyGC_Collect();
+	//PyGC_Collect();
 #ifdef COUNT_ALLOCS
 	/* With COUNT_ALLOCS, it helps to run GC multiple times:
 	   each collection might release some types from the type
 	   list, so they become garbage. */
-	while (PyGC_Collect() > 0)
-		/* nothing */;
+	//while (PyGC_Collect() > 0)
+	//	/* nothing */;
 #endif
 
 	/* Destroy all modules */
 	PyImport_Cleanup();
 
 	/* Flush stdout+stderr (again, in case more was printed) */
-	flush_std_files();
+	/* XXX io.py is long gone at this point */
+	//flush_std_files();
 
 	/* Collect final garbage.  This disposes of cycles created by
 	 * new-style class definitions, for example.
@@ -434,11 +478,6 @@ Py_Finalize(void)
 		_Py_PrintReferences(stderr);
 #endif /* Py_TRACE_REFS */
 
-	/* Cleanup auto-thread-state */
-#ifdef WITH_THREAD
-	_PyGILState_Fini();
-#endif /* WITH_THREAD */
-
 	/* Clear interpreter state */
 	PyInterpreterState_Clear(interp);
 
@@ -450,16 +489,13 @@ Py_Finalize(void)
 
 	_PyExc_Fini();
 
-	/* Delete current thread */
-	PyThreadState_Swap(NULL);
-	PyInterpreterState_Delete(interp);
-
 	/* Sundry finalizers */
 	PyMethod_Fini();
 	PyFrame_Fini();
 	PyCFunction_Fini();
 	PyTuple_Fini();
 	PyList_Fini();
+	PyDict_Fini();
 	PySet_Fini();
 	PyString_Fini();
 	PyBytes_Fini();
@@ -490,114 +526,21 @@ Py_Finalize(void)
 		_PyObject_DebugMallocStats();
 #endif
 
+	_PyUnicode_PostFini();
+	_PyString_PostFini();
+
 	call_ll_exitfuncs();
-}
 
-/* Create and initialize a new interpreter and thread, and return the
-   new thread.  This requires that Py_Initialize() has been called
-   first.
-
-   Unsuccessful initialization yields a NULL pointer.  Note that *no*
-   exception information is available even in this case -- the
-   exception information is held in the thread, and there is no
-   thread.
-
-   Locking: as above.
-
-*/
-
-PyThreadState *
-Py_NewInterpreter(void)
-{
-	PyInterpreterState *interp;
-	PyThreadState *tstate, *save_tstate;
-	PyObject *bimod, *sysmod;
-
-	if (!initialized)
-		Py_FatalError("Py_NewInterpreter: call Py_Initialize first");
-
-	interp = PyInterpreterState_New();
-	if (interp == NULL)
-		return NULL;
-
-	tstate = PyThreadState_New(interp);
-	if (tstate == NULL) {
-		PyInterpreterState_Delete(interp);
-		return NULL;
-	}
-
-	save_tstate = PyThreadState_Swap(tstate);
-
-	/* XXX The following is lax in error checking */
-
-	interp->modules = PyDict_New();
-	interp->modules_reloading = PyDict_New();
-
-	bimod = _PyImport_FindExtension("__builtin__", "__builtin__");
-	if (bimod != NULL) {
-		interp->builtins = PyModule_GetDict(bimod);
-		if (interp->builtins == NULL)
-			goto handle_error;
-		Py_INCREF(interp->builtins);
-	}
-	sysmod = _PyImport_FindExtension("sys", "sys");
-	if (bimod != NULL && sysmod != NULL) {
-		interp->sysdict = PyModule_GetDict(sysmod);
-		if (interp->sysdict == NULL)
-			goto handle_error;
-		Py_INCREF(interp->sysdict);
-		PySys_SetPath(Py_GetPath());
-		PyDict_SetItemString(interp->sysdict, "modules",
-				     interp->modules);
-		_PyImportHooks_Init();
-		initmain();
-		if (!Py_NoSiteFlag)
-			initsite();
-	}
-
-	if (!PyErr_Occurred())
-		return tstate;
-
-handle_error:
-	/* Oops, it didn't work.  Undo it all. */
-
-	PyErr_Print();
-	PyThreadState_Clear(tstate);
-	PyThreadState_Swap(save_tstate);
-	PyThreadState_Delete(tstate);
+	/* Delete current thread */
+	//PyThreadState_Swap(NULL);
+	//PyThreadState_DeleteCurrent();
+	PyState_Exit(interp->entertag);
 	PyInterpreterState_Delete(interp);
 
-	return NULL;
-}
+	/* Cleanup auto-thread-state */
+	_PyState_Fini();
 
-/* Delete an interpreter and its last thread.  This requires that the
-   given thread state is current, that the thread has no remaining
-   frames, and that it is its interpreter's only remaining thread.
-   It is a fatal error to violate these constraints.
-
-   (Py_Finalize() doesn't have these constraints -- it zaps
-   everything, regardless.)
-
-   Locking: as above.
-
-*/
-
-void
-Py_EndInterpreter(PyThreadState *tstate)
-{
-	PyInterpreterState *interp = tstate->interp;
-
-	if (tstate != PyThreadState_GET())
-		Py_FatalError("Py_EndInterpreter: thread is not current");
-	if (tstate->frame != NULL)
-		Py_FatalError("Py_EndInterpreter: thread still has a frame");
-	if (tstate != interp->tstate_head || tstate->next != NULL)
-		Py_FatalError("Py_EndInterpreter: not the last thread");
-
-	PyImport_Cleanup();
-	PyInterpreterState_Clear(interp);
-	PyThreadState_Swap(NULL);
-	PyInterpreterState_Delete(interp);
+	_Py_Refchain_Fini();
 }
 
 static char *progname = "python";
@@ -632,6 +575,87 @@ Py_GetPythonHome(void)
 	return home;
 }
 
+/* Create finalizer thread */
+static void
+initfinalize(void)
+{
+    PyObject *queue, *runfinalizers, *x;
+
+    queue = PyObject_CallObject((PyObject *)&_PyDeathQueue_Type, NULL);
+    if (queue == NULL)
+        Py_FatalError("Py_Initialize: can't initialize finalizequeue");
+    if (PySys_SetObject("finalizequeue", queue) != 0)
+        Py_FatalError("Py_Initialize: can't assign finalizequeue");
+
+    runfinalizers = PySys_GetObject("_runfinalizers");
+    if (runfinalizers == NULL)
+        Py_FatalError("lost sys._runfinalizers");
+    Py_INCREF(runfinalizers);  /* PySys_GetObject returns a borrowed reference */
+
+    finalize_branch = PyObject_CallObject((PyObject *)&PyBranch_Type, NULL);
+    if (finalize_branch == NULL)
+        Py_FatalError("Failed to initialize finalize_branch");
+    x = PyObject_CallMethod(finalize_branch, "__enter__", "");
+    if (x == NULL)
+        Py_FatalError("Failed to call finalize_branch.__enter__()");
+    Py_DECREF(x);
+
+    x = PyObject_CallMethod(finalize_branch, "add", "OO", runfinalizers, queue);
+    if (x == NULL)
+        Py_FatalError("Failed to spawn finalizer thread");
+    Py_DECREF(queue);
+    Py_DECREF(runfinalizers);
+    Py_DECREF(x);
+}
+
+/* Destroy the finalizer thread */
+static void
+finifinalize(void)
+{
+    PyObject *x, *dummy, *queue;
+    PyObject *e_type, *e_val, *e_tb;
+
+    dummy = PySet_New(NULL);
+    if (dummy == NULL)
+        Py_FatalError("failed to create dummy to exit finalizer thread");
+    queue = PySys_GetObject("finalizequeue");
+    if (queue == NULL)
+        Py_FatalError("lost sys.finalizequeue");
+
+    x = PyObject_CallMethod(queue, "watch", "OO", dummy, Py_None);
+    if (x == NULL)
+        Py_FatalError("failed to watch dummy to exit finalizer thread");
+    Py_DECREF(x);
+    Py_DECREF(dummy);
+    //Py_DECREF(queue);  // PySys_GetObject returns a borrowed reference
+
+    /* XXX We're dependant on the GC deleting dummy, and preferably
+     * immediately.  This SHOULD happen, but it's not a great assumption. */
+
+    /* XXX This is all a big bodge */
+    PyErr_Fetch(&e_type, &e_val, &e_tb);
+    PyErr_NormalizeException(&e_type, &e_val, &e_tb);
+    if (e_type == NULL) {
+        Py_INCREF(Py_None);
+        e_type = Py_None;
+        Py_INCREF(Py_None);
+        e_val = Py_None;
+    }
+    if (e_tb == NULL) {
+        Py_INCREF(Py_None);
+        e_tb = Py_None;
+    }
+    assert(e_type && e_val && e_tb);
+    x = PyObject_CallMethod(finalize_branch, "__exit__", "OOO", e_type, e_val, e_tb);
+    /* XXX any DECREFs needed? */
+    if (x == NULL)
+        PyErr_Print();
+        //Py_FatalError("failed to call finalize_branch.__exit__()");
+    Py_XDECREF(x);
+    Py_CLEAR(finalize_branch);
+    /* XXX reraise or whatever as required by __exit__ specs */
+}
+
 /* Create __main__ module */
 
 static void
@@ -659,8 +683,14 @@ initsite(void)
 	PyObject *m, *f;
 	m = PyImport_ImportModule("site");
 	if (m == NULL) {
-		f = PySys_GetObject("stderr");
-		if (Py_VerboseFlag) {
+		//f = PySys_GetObject("stderr");
+		f = NULL;
+		if (f == NULL) {
+			fprintf(stderr, "'import site' failed; retrieving "
+				"sys.stderr also failed.\n");
+			PyErr_Print();
+			//PyErr_Clear();
+		} else if (Py_VerboseFlag) {
 			PyFile_WriteString(
 				"'import site' failed; traceback:\n", f);
 			PyErr_Print();
@@ -1144,11 +1174,12 @@ PyErr_Display(PyObject *exception, PyObject *value, PyObject *tb)
 	int err = 0;
 	PyObject *f = PySys_GetObject("stderr");
 	Py_INCREF(value);
-	if (f == NULL)
+
+	if (f == NULL) {
 		_PyObject_Dump(value);
-	if (f == NULL)
+		PyTraceBack_Print(tb, NULL);  /* XXX FIXME check return? */
 		fprintf(stderr, "lost sys.stderr\n");
-	else {
+	} else {
 		fflush(stdout);
 		if (tb && tb != Py_None)
 			err = PyTraceBack_Print(tb, f);
@@ -1648,21 +1679,6 @@ Py_Exit(int sts)
 	exit(sts);
 }
 
-static void
-initsigs(void)
-{
-#ifdef SIGPIPE
-	PyOS_setsig(SIGPIPE, SIG_IGN);
-#endif
-#ifdef SIGXFZ
-	PyOS_setsig(SIGXFZ, SIG_IGN);
-#endif
-#ifdef SIGXFSZ
-	PyOS_setsig(SIGXFSZ, SIG_IGN);
-#endif
-	PyOS_InitInterrupts(); /* May imply initsignal() */
-}
-
 
 /*
  * The file descriptor fd is considered ``interactive'' if either
@@ -1714,63 +1730,6 @@ PyOS_CheckStack(void)
 
 #endif /* USE_STACKCHECK */
 
-
-/* Wrappers around sigaction() or signal(). */
-
-PyOS_sighandler_t
-PyOS_getsig(int sig)
-{
-#ifdef HAVE_SIGACTION
-	struct sigaction context;
-	if (sigaction(sig, NULL, &context) == -1)
-		return SIG_ERR;
-	return context.sa_handler;
-#else
-	PyOS_sighandler_t handler;
-/* Special signal handling for the secure CRT in Visual Studio 2005 */
-#if defined(_MSC_VER) && _MSC_VER >= 1400
-	switch (sig) {
-	/* Only these signals are valid */
-	case SIGINT:
-	case SIGILL:
-	case SIGFPE:
-	case SIGSEGV:
-	case SIGTERM:
-	case SIGBREAK:
-	case SIGABRT:
-		break;
-	/* Don't call signal() with other values or it will assert */
-	default:
-		return SIG_ERR;
-	}
-#endif /* _MSC_VER && _MSC_VER >= 1400 */
-	handler = signal(sig, SIG_IGN);
-	if (handler != SIG_ERR)
-		signal(sig, handler);
-	return handler;
-#endif
-}
-
-PyOS_sighandler_t
-PyOS_setsig(int sig, PyOS_sighandler_t handler)
-{
-#ifdef HAVE_SIGACTION
-	struct sigaction context, ocontext;
-	context.sa_handler = handler;
-	sigemptyset(&context.sa_mask);
-	context.sa_flags = 0;
-	if (sigaction(sig, &context, &ocontext) == -1)
-		return SIG_ERR;
-	return ocontext.sa_handler;
-#else
-	PyOS_sighandler_t oldhandler;
-	oldhandler = signal(sig, handler);
-#ifdef HAVE_SIGINTERRUPT
-	siginterrupt(sig, 1);
-#endif
-	return oldhandler;
-#endif
-}
 
 /* Deprecated C API functions still provided for binary compatiblity */
 

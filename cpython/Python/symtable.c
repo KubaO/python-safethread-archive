@@ -33,8 +33,9 @@ PySTEntry_New(struct symtable *st, identifier name, _Py_block_ty block,
 	k = PyLong_FromVoidPtr(key);
 	if (k == NULL)
 		goto fail;
-	ste = (PySTEntryObject *)PyObject_New(PySTEntryObject,
-					      &PySTEntry_Type);
+	ste = PyObject_NEW(PySTEntryObject, &PySTEntry_Type);
+	if (ste == NULL)
+		Py_FatalError("Allocation failed in PySTEntry_New");
 	ste->ste_table = st;
 	ste->ste_id = k;
 	ste->ste_tmpname = 0;
@@ -102,7 +103,7 @@ ste_dealloc(PySTEntryObject *ste)
 	Py_XDECREF(ste->ste_symbols);
 	Py_XDECREF(ste->ste_varnames);
 	Py_XDECREF(ste->ste_children);
-	PyObject_Del(ste);
+	PyObject_DEL(ste);
 }
 
 #define OFF(x) offsetof(PySTEntryObject, x)
@@ -155,7 +156,6 @@ PyTypeObject PySTEntry_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	0,					/* tp_new */
 };
 

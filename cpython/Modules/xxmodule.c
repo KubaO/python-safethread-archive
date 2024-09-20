@@ -134,9 +134,7 @@ static PyTypeObject Xxo_Type = {
         0,                      /*tp_descr_set*/
         0,                      /*tp_dictoffset*/
         0,                      /*tp_init*/
-        0,                      /*tp_alloc*/
         0,                      /*tp_new*/
-        0,                      /*tp_free*/
         0,                      /*tp_is_gc*/
 };
 /* --------------------------------------------------------------------- */
@@ -252,9 +250,7 @@ static PyTypeObject Str_Type = {
 	0,			/*tp_descr_set*/
 	0,			/*tp_dictoffset*/
 	0,			/*tp_init*/
-	0,			/*tp_alloc*/
 	0,			/*tp_new*/
-	0,			/*tp_free*/
 	0,			/*tp_is_gc*/
 };
 
@@ -307,9 +303,7 @@ static PyTypeObject Null_Type = {
 	0,			/*tp_descr_set*/
 	0,			/*tp_dictoffset*/
 	0,			/*tp_init*/
-	0,			/*tp_alloc*/
 	PyType_GenericNew,	/*tp_new*/
-	0,			/*tp_free*/
 	0,			/*tp_is_gc*/
 };
 

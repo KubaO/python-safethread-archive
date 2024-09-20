@@ -48,7 +48,7 @@ extern const char *PyWin_DLLVersionString;
 PyObject *
 PySys_GetObject(const char *name)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyThreadState *tstate = PyThreadState_Get();
 	PyObject *sd = tstate->interp->sysdict;
 	if (sd == NULL)
 		return NULL;
@@ -58,7 +58,7 @@ PySys_GetObject(const char *name)
 int
 PySys_SetObject(const char *name, PyObject *v)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyThreadState *tstate = PyThreadState_Get();
 	PyObject *sd = tstate->interp->sysdict;
 	if (v == NULL) {
 		if (PyDict_GetItemString(sd, name) == NULL)
@@ -74,9 +74,12 @@ static PyObject *
 sys_displayhook(PyObject *self, PyObject *o)
 {
 	PyObject *outf;
-	PyInterpreterState *interp = PyThreadState_GET()->interp;
+	PyInterpreterState *interp = PyThreadState_Get()->interp;
 	PyObject *modules = interp->modules;
-	PyObject *builtins = PyDict_GetItemString(modules, "__builtin__");
+	PyObject *builtins;
+
+	if (PyDict_GetItemStringEx(modules, "__builtin__", &builtins) < 0)
+		return NULL;
 
 	if (builtins == NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "lost __builtin__");
@@ -87,24 +90,32 @@ sys_displayhook(PyObject *self, PyObject *o)
 	/* After printing, also assign to '_' */
 	/* Before, set '_' to None to avoid recursion */
 	if (o == Py_None) {
+		Py_DECREF(builtins);
 		Py_INCREF(Py_None);
 		return Py_None;
 	}
 	if (PyObject_SetAttrString(builtins, "_", Py_None) != 0)
-		return NULL;
+		goto failed;
 	outf = PySys_GetObject("stdout");
 	if (outf == NULL) {
 		PyErr_SetString(PyExc_RuntimeError, "lost sys.stdout");
-		return NULL;
+		goto failed;
 	}
 	if (PyFile_WriteObject(o, outf, 0) != 0)
-		return NULL;
+		goto failed;
 	if (PyFile_WriteString("\n", outf) != 0)
-		return NULL;
-	if (PyObject_SetAttrString(builtins, "_", o) != 0)
-		return NULL;
+		goto failed;
+	/* XXX FIXME this'll fail if o isn't shareable */
+#warning XXX FIXME displayhook
+	//if (PyObject_SetAttrString(builtins, "_", o) != 0)
+	//	goto failed;
+	Py_DECREF(builtins);
 	Py_INCREF(Py_None);
 	return Py_None;
+
+failed:
+	Py_DECREF(builtins);
+	return NULL;
 }
 
 PyDoc_STRVAR(displayhook_doc,
@@ -134,7 +145,7 @@ static PyObject *
 sys_exc_info(PyObject *self, PyObject *noargs)
 {
 	PyThreadState *tstate;
-	tstate = PyThreadState_GET();
+	tstate = PyThreadState_Get();
 	return Py_BuildValue(
 		"(OOO)",
 		tstate->exc_type != NULL ? tstate->exc_type : Py_None,
@@ -526,7 +537,7 @@ static PyObject *
 sys_setdlopenflags(PyObject *self, PyObject *args)
 {
 	int new_val;
-        PyThreadState *tstate = PyThreadState_GET();
+        PyThreadState *tstate = PyThreadState_Get();
 	if (!PyArg_ParseTuple(args, "i:setdlopenflags", &new_val))
 		return NULL;
         if (!tstate)
@@ -549,7 +560,7 @@ sys.setdlopenflags(dl.RTLD_NOW|dl.RTLD_GLOBAL)"
 static PyObject *
 sys_getdlopenflags(PyObject *self, PyObject *args)
 {
-        PyThreadState *tstate = PyThreadState_GET();
+        PyThreadState *tstate = PyThreadState_Get();
         if (!tstate)
 		return NULL;
         return PyInt_FromLong(tstate->interp->dlopenflags);
@@ -582,7 +593,7 @@ sys_mdebug(PyObject *self, PyObject *args)
 static PyObject *
 sys_getrefcount(PyObject *self, PyObject *arg)
 {
-	return PyInt_FromSsize_t(arg->ob_refcnt);
+	return PyInt_FromSsize_t(Py_RefcntSnoop(arg));
 }
 
 #ifdef Py_REF_DEBUG
@@ -626,7 +637,7 @@ purposes only."
 static PyObject *
 sys_getframe(PyObject *self, PyObject *args)
 {
-	PyFrameObject *f = PyThreadState_GET()->frame;
+	PyFrameObject *f = PyThreadState_Get()->frame;
 	int depth = -1;
 
 	if (!PyArg_ParseTuple(args, "|i:_getframe", &depth))
@@ -700,6 +711,33 @@ a 11-tuple where the entries in the tuple are counts of:\n\
 10. Number of stack pops performed by call_function()"
 );
 
+static PyObject *
+sys_runfinalizers(PyObject *self, PyObject *queue)
+{
+    PyObject *core, *res;
+
+    while (1) {
+        core = PyObject_CallMethod(queue, "pop", "");
+        if (core == NULL)
+            return NULL;
+        if (core == Py_None)
+            return Py_None;  /* Just steal the reference that was core */
+        res = PyObject_CallMethod(core, "__finalize__", "");
+        Py_DECREF(core);
+        if (res == NULL)
+            return NULL;
+        Py_DECREF(res);
+    }
+}
+
+PyDoc_STRVAR(runfinalizers_doc,
+"_runfinalizers(queue)\n\
+\n\
+Run all __finalize__ methods of objects returned by queue.pop(),\n\
+blocking if none are available.  Returns if an exception is thrown or\n\
+if queue.pop() produces None."
+);
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -760,6 +798,7 @@ static PyMethodDef sys_methods[] = {
 #ifdef USE_MALLOPT
 	{"mdebug",	sys_mdebug, METH_VARARGS},
 #endif
+	{"_runfinalizers", sys_runfinalizers, METH_O | METH_SHARED, runfinalizers_doc},
 	{"setdefaultencoding", sys_setdefaultencoding, METH_VARARGS,
 	 setdefaultencoding_doc},
 	{"setcheckinterval",	sys_setcheckinterval, METH_VARARGS,

@@ -1846,6 +1846,90 @@ _PyArg_NoKeywords(const char *funcname, PyObject *kw)
 			funcname);
 	return 0;
 }
+
+
+/* We assume args and kw were both constructed by other
+ * argument functions and neither can be modified while
+ * we iterate over them.
+ */
+int
+PyArg_RequireShareable(const char *funcname, PyObject *args, PyObject *kwargs)
+{
+	assert (args != NULL || kwargs != NULL);
+
+	if (args != NULL) {
+		Py_ssize_t i;
+		Py_ssize_t size = PyTuple_Size(args);
+		for (i = 0; i < size; i++) {
+			if (!PyObject_IsShareable(PyTuple_GetItem(args, i))) {
+				PyErr_Format(PyExc_TypeError, "%s requires "
+					"shareable arguments; positional "
+					"argument %d is not shareable",
+					funcname, i+1);
+				return 0;
+			}
+		}
+	}
+
+	if (kwargs != NULL) {
+		PyObject *key, *value;
+		Py_ssize_t pos = 0;
+		while (PyDict_Next(kwargs, &pos, &key, &value)) {
+			if (!PyObject_IsShareable(key)) {
+				char *ks = PyString_AsString(key);
+				PyErr_Format(PyExc_TypeError, "%s requires "
+					"shareable arguments; keyword "
+					"argument %s's key is not shareable",
+					funcname, ks);
+				return 0;
+			}
+			if (!PyObject_IsShareable(value)) {
+				char *ks = PyString_AsString(key);
+				PyErr_Format(PyExc_TypeError, "%s requires "
+					"shareable arguments; keyword "
+					"argument %s's value is not shareable",
+					funcname, ks);
+				return 0;
+			}
+		}
+	}
+
+	return 1;
+}
+
+/* funcname is the outer function (written in C) which wants a shareable object.
+ * innerfunc is the inner function that just returned a (hopefully) shareable object.
+ * The error context will be checked AND CHANGED to be shareable.
+ */
+int
+PyArg_RequireShareableReturn(const char *funcname, PyObject *innerfunc, PyObject *result)
+{
+	if (result != NULL) {
+		if (PyErr_Occurred())
+			Py_FatalError("Both exception and return value set");
+
+		if (PyObject_IsShareable(result))
+			return 1;
+
+		if (PyFunction_Check(innerfunc)) {
+			char *innerfuncname = PyString_AsString(
+				((PyFunctionObject *)innerfunc)->func_name);
+			PyErr_Format(PyExc_TypeError, "%s given unshareable return "
+				"value by %s()", funcname, innerfuncname);
+		} else
+			PyErr_Format(PyExc_TypeError, "%s given unshareable return "
+				"value by callable", funcname);
+
+		return 0;
+	} else {
+		if (!PyErr_Occurred())
+			Py_FatalError("Neither exception nor return value set");
+
+		/* XXX FIXME */
+		return 1;
+	}
+}
+
 #ifdef __cplusplus
 };
 #endif

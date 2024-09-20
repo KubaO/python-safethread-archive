@@ -24,7 +24,7 @@ extern "C" {
 void
 PyErr_Restore(PyObject *type, PyObject *value, PyObject *traceback)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyThreadState *tstate = PyThreadState_Get();
 	PyObject *oldtype, *oldvalue, *oldtraceback;
 
 	if (traceback != NULL && !PyTraceBack_Check(traceback)) {
@@ -52,6 +52,8 @@ PyErr_Restore(PyObject *type, PyObject *value, PyObject *traceback)
 void
 PyErr_SetObject(PyObject *exception, PyObject *value)
 {
+	if (exception != NULL && exception->ob_type == NULL)
+		Py_FatalError("Unitialized exception type passed to PyErr_SetObject");
 	if (exception != NULL &&
 	    !PyExceptionClass_Check(exception)) {
 		PyErr_Format(PyExc_SystemError,
@@ -82,7 +84,7 @@ PyErr_SetString(PyObject *exception, const char *string)
 PyObject *
 PyErr_Occurred(void)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyThreadState *tstate = PyThreadState_Get();
 
 	return tstate->curexc_type;
 }
@@ -215,7 +217,7 @@ finally:
 			Py_DECREF(initial_tb);
 	}
 	/* normalize recursively */
-	tstate = PyThreadState_GET();
+	tstate = PyThreadState_Get();
 	if (++tstate->recursion_depth > Py_GetRecursionLimit()) {
 	    --tstate->recursion_depth;
 	    PyErr_SetObject(PyExc_RuntimeError, PyExc_RecursionErrorInst);
@@ -225,11 +227,20 @@ finally:
 	--tstate->recursion_depth;
 }
 
+PyObject *
+PyErr_SimplifyException(PyObject *exc, PyObject *val, PyObject *tb)
+{
+    PyErr_NormalizeException(&exc, &val, &tb);
+    Py_DECREF(exc);
+    Py_XDECREF(tb);
+    return val;
+}
+
 
 void
 PyErr_Fetch(PyObject **p_type, PyObject **p_value, PyObject **p_traceback)
 {
-	PyThreadState *tstate = PyThreadState_GET();
+	PyThreadState *tstate = PyThreadState_Get();
 
 	*p_type = tstate->curexc_type;
 	*p_value = tstate->curexc_value;
@@ -290,11 +301,6 @@ PyErr_SetFromErrnoWithFilenameObject(PyObject *exc, PyObject *filenameObject)
 	WCHAR *s_buf = NULL;
 #endif /* Unix/Windows */
 #endif /* PLAN 9*/
-
-#ifdef EINTR
-	if (i == EINTR && PyErr_CheckSignals())
-		return NULL;
-#endif
 
 #ifdef PLAN9
 	rerrstr(errbuf, sizeof errbuf);

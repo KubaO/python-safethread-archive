@@ -183,10 +183,8 @@ MODULE_OBJS=	\
 		Modules/config.o \
 		Modules/getpath.o \
 		Modules/main.o \
-		Modules/gcmodule.o
-
-# Used of signalmodule.o is not available
-SIGNAL_OBJS=	@SIGNAL_OBJS@
+		Modules/gcmodule.o \
+		Modules/signalmodule.o
 
 
 ##########################################################################
@@ -291,6 +289,7 @@ OBJECT_OBJS=	\
 		Objects/classobject.o \
 		Objects/cobject.o \
 		Objects/codeobject.o \
+		Objects/branchobject.o \
 		Objects/complexobject.o \
 		Objects/descrobject.o \
 		Objects/enumobject.o \
@@ -300,6 +299,7 @@ OBJECT_OBJS=	\
 		Objects/floatobject.o \
 		Objects/frameobject.o \
 		Objects/funcobject.o \
+		Objects/interruptobject.o \
 		Objects/iterobject.o \
 		Objects/listobject.o \
 		Objects/longobject.o \
@@ -307,6 +307,7 @@ OBJECT_OBJS=	\
 		Objects/memoryobject.o \
 		Objects/methodobject.o \
 		Objects/moduleobject.o \
+		Objects/monitorobject.o \
 		Objects/object.o \
 		Objects/obmalloc.o \
 		Objects/rangeobject.o \
@@ -329,7 +330,6 @@ LIBRARY_OBJS=	\
 		$(OBJECT_OBJS) \
 		$(PYTHON_OBJS) \
 		$(MODULE_OBJS) \
-		$(SIGNAL_OBJS) \
 		$(MODOBJS)
 
 #########################################################################
@@ -364,7 +364,7 @@ $(LIBRARY): $(LIBRARY_OBJS)
 	$(AR) cr $@ $(PARSER_OBJS)
 	$(AR) cr $@ $(OBJECT_OBJS)
 	$(AR) cr $@ $(PYTHON_OBJS)
-	$(AR) cr $@ $(MODULE_OBJS) $(SIGNAL_OBJS)
+	$(AR) cr $@ $(MODULE_OBJS)
 	$(AR) cr $@ $(MODOBJS)
 	$(RANLIB) $@
 
@@ -458,7 +458,6 @@ Modules/getbuildinfo.o: $(PARSER_OBJS) \
 		$(OBJECT_OBJS) \
 		$(PYTHON_OBJS) \
 		$(MODULE_OBJS) \
-		$(SIGNAL_OBJS) \
 		$(MODOBJS) \
 		$(srcdir)/Modules/getbuildinfo.c
 	$(CC) -c $(PY_CFLAGS) -DSVNVERSION=\"`LC_ALL=C $(SVNVERSION)`\" -o $@ $(srcdir)/Modules/getbuildinfo.c
@@ -537,6 +536,7 @@ PYTHON_HEADERS= \
 		Include/cobject.h \
 		Include/code.h \
 		Include/codecs.h \
+		Include/branchobject.h \
 		Include/compile.h \
 		Include/complexobject.h \
 		Include/descrobject.h \
@@ -548,8 +548,8 @@ PYTHON_HEADERS= \
 		Include/formatter_unicode.h \
 		Include/funcobject.h \
 		Include/import.h \
+		Include/interruptobject.h \
 		Include/intobject.h \
-		Include/intrcheck.h \
 		Include/iterobject.h \
 		Include/listobject.h \
 		Include/longobject.h \
@@ -557,6 +557,7 @@ PYTHON_HEADERS= \
 		Include/methodobject.h \
 		Include/modsupport.h \
 		Include/moduleobject.h \
+		Include/monitorobject.h \
 		Include/object.h \
 		Include/objimpl.h \
 		Include/parsetok.h \
@@ -567,6 +568,7 @@ PYTHON_HEADERS= \
 		Include/pyfpe.h \
 		Include/pymem.h \
 		Include/pyport.h \
+		Include/pysignal.h \
 		Include/pystate.h \
 		Include/pythonrun.h \
 		Include/rangeobject.h \

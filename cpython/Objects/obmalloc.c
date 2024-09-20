@@ -1,6 +1,224 @@
 #include "Python.h"
 
+#include <pthread.h>
+
+
+#if 0
+#define CFPRINT(...) do {char buf[1024]; snprintf(buf, 1024, __VA_ARGS__); write(2, buf, strlen(buf)); } while(0)
+#elif 0
+#define CFPRINT(...) do {dprintf(2, __VA_ARGS__)} while (0)
+#else
+#define CFPRINT(...) do {} while (0)
+#endif
+
+PyThreadState * (*pymalloc_threadstate_hook)(void);
+
+static pthread_mutex_t pymemwrap_lock = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP;
+
+#define GET_SIZE(size_class) ((size_class) <= 0 ? size_classes[-(size_class)] : (size_class))
+
+/* XXX Must match up with PYMALLOC_CACHE_SIZECLASSES */
+static const Py_ssize_t size_classes[] = {
+	32,
+	48,
+	64,
+	96,
+	128,
+	192,
+	256,
+	384,
+	512,
+	768,
+	1024,
+	1536,
+	2048,
+};
+
+static Py_ssize_t
+find_size_class(size_t size)
+{
+	Py_ssize_t i;
+
+	assert(sizeof(size_classes) / sizeof(*size_classes) ==
+			PYMALLOC_CACHE_SIZECLASSES);
+	if (size > size_classes[PYMALLOC_CACHE_SIZECLASSES - 1])
+		return size; /* Too large to cache */
+
+	for (i = 0; ; i++) {
+		if (size <= size_classes[i])
+			return -i;
+	}
+}
+
+
+void *
+pymemcache_malloc(size_t size)
+{
+	void *mem;
+	Py_ssize_t size_class = find_size_class(size);
+
+	if (pymalloc_threadstate_hook != NULL && size_class <= 0) {
+		PyThreadState *tstate = pymalloc_threadstate_hook();
+		Py_ssize_t i;
+
+		for (i = 0; i < PYMALLOC_CACHE_COUNT; i++) {
+			if (tstate->malloc_cache[-size_class][i] != NULL) {
+				mem = tstate->malloc_cache[-size_class][i];
+				tstate->malloc_cache[-size_class][i] = NULL;
+				//printf("%p Cache hit!        %8d\n", tstate, size_class);
+				return mem;
+			}
+		}
+	}
+	//printf("%p Cache miss.       %8d\n", pymalloc_threadstate_hook(), size_class);
+
+	mem = malloc(GET_SIZE(size_class) + sizeof(Py_ssize_t));
+	if (mem == NULL)
+		return NULL;
+	*((Py_ssize_t *)mem) = size_class;
+	return mem + sizeof(Py_ssize_t);
+}
+
+void *
+pymemcache_realloc(void *old_inner_mem, size_t size)
+{
+	void *old_outer_mem;
+	void *new_outer_mem;
+	Py_ssize_t old_size_class;
+	Py_ssize_t new_size_class = find_size_class(size);
+
+	if (old_inner_mem == NULL)
+		old_outer_mem = NULL;
+	else {
+		old_outer_mem = old_inner_mem - sizeof(Py_ssize_t);
+		old_size_class = *((Py_ssize_t *)old_outer_mem);
+		if (old_size_class == new_size_class)
+			return old_inner_mem;  /* That was easy */
+	}
+
+	new_outer_mem = realloc(old_outer_mem, GET_SIZE(new_size_class) + sizeof(Py_ssize_t));
+	if (new_outer_mem == NULL)
+		return NULL;
+	*((Py_ssize_t *)new_outer_mem) = new_size_class;
+	return new_outer_mem + sizeof(Py_ssize_t);
+}
+
+void
+pymemcache_free(void *inner_mem)
+{
+	void *outer_mem;
+	Py_ssize_t size_class;
+
+	if (inner_mem == NULL)
+		return;
+	outer_mem = inner_mem - sizeof(Py_ssize_t);
+	size_class = *((Py_ssize_t *)outer_mem);
+
+	if (pymalloc_threadstate_hook != NULL && size_class <= 0) {
+		PyThreadState *tstate = pymalloc_threadstate_hook();
+		Py_ssize_t i;
+
+		for (i = 0; i < PYMALLOC_CACHE_COUNT; i++) {
+			if (tstate->malloc_cache[-size_class][i] == NULL) {
+				tstate->malloc_cache[-size_class][i] = inner_mem;
+                //printf("%p Cached filled.    %8d\n", tstate, size_class);
+				return;
+			}
+		}
+	}
+    //printf("%p Cache not filled. %8d\n", pymalloc_threadstate_hook(), size_class);
+
+	free(outer_mem);
+}
+
+
+void *
+_pymemwrap_malloc(const char *name, const char *group, size_t size)
+{
+#if 1
+	return pymemcache_malloc(size);
+#elif 1
+	if (size == 0)
+		/*Py_FatalError("No size!");*/
+		size = 1;
+	return malloc(size);
+#else
+	void *innermem;
+	void *outermem;
+	pthread_mutex_lock(&pymemwrap_lock);
+	size += sizeof(size_t) * 100;
+	if (size == 0)
+		/*Py_FatalError("No size!");*/
+		size = 1;
+	outermem = malloc(size);
+	if (outermem != NULL)
+		innermem = outermem + sizeof(size_t) * 50;
+	else
+		innermem = NULL;
+	CFPRINT("%s + %p (%d) %s\n", #group, outermem, size, #name);
+	pthread_mutex_unlock(&pymemwrap_lock);
+	return innermem;
+#endif
+}
+
+void *
+_pymemwrap_realloc(const char *name, const char *group, void *oldinnermem, size_t size)
+{
+#if 1
+	return pymemcache_realloc(oldinnermem, size);
+#elif 1
+	if (size == 0)
+		/*Py_FatalError("No size!");*/
+		size = 1;
+	return realloc(oldinnermem, size);
+#else
+	void *oldoutermem, *newinnermem, *newoutermem;
+	pthread_mutex_lock(&pymemwrap_lock);
+	CFPRINT("%s - %p %s\n", #group, oldoutermem, #name);
+	if (oldinnermem != NULL)
+		oldoutermem = oldinnermem - sizeof(size_t) * 50;
+	else
+		oldoutermem = NULL;
+	size += sizeof(size_t) * 100;
+	if (size == 0)
+		/*Py_FatalError("No size!");*/
+		size = 1;
+	newoutermem = realloc(oldoutermem, size);
+	if (newoutermem != NULL)
+		newinnermem = newoutermem + sizeof(size_t) * 50;
+	else
+		newinnermem = NULL;
+	CFPRINT("%s + %p from %p (%d) %s\n", #group, newoutermem, oldoutermem, size, #name);
+	pthread_mutex_unlock(&pymemwrap_lock);
+	return newinnermem;
+#endif
+}
+
+void
+_pymemwrap_free(const char *name, const char *group, void *innermem)
+{
+#if 1
+	pymemcache_free(innermem);
+#elif 1
+	free(innermem);
+#else
+	void *outermem;
+	pthread_mutex_lock(&pymemwrap_lock);
+	if (innermem != NULL)
+		outermem = innermem - sizeof(size_t) * 50;
+	else
+		outermem = NULL;
+	CFPRINT("%s - %p %s\n", #group, outermem, #name);
+	free(outermem);
+	pthread_mutex_unlock(&pymemwrap_lock);
+#endif
+}
+
+
 #ifdef WITH_PYMALLOC
+#ifdef WITH_FREETHREAD
+//#error "WITH_FREETHREAD is incompatible with WITH_PYMALLOC"
+#endif
 
 /* An object allocator for Python.
 
@@ -717,10 +935,38 @@ int Py_ADDRESS_IN_RANGE(void *P, poolp pool) Py_NO_INLINE;
  * Unless the optimizer reorders everything, being too smart...
  */
 
+PyThreadState * (*pymalloc_threadstate_hook)(void);
+
 #undef PyObject_Malloc
 void *
 PyObject_Malloc(size_t nbytes)
 {
+#if 1
+	unsigned char *mem;
+    Py_FatalError("MOOO");
+
+	if (nbytes < 4)
+		nbytes = 4;
+	if (nbytes >= 14 && nbytes < 16)
+		nbytes = 16;
+
+	if (pymalloc_threadstate_hook != NULL) {
+		PyThreadState *tstate = pymalloc_threadstate_hook();
+		if (tstate->malloc_cache != NULL && *(size_t *)tstate->malloc_cache >= nbytes) {
+			mem = tstate->malloc_cache;
+			//printf("Using   cached mem: %p %p %d %d\n", tstate, mem, nbytes, *(size_t *)mem);
+			tstate->malloc_cache = NULL;
+			return mem + sizeof(size_t);
+		}
+	}
+
+	mem = malloc(nbytes + sizeof(size_t));
+	if (mem == NULL)
+		return NULL;
+
+	*(size_t *)mem = nbytes;
+	return mem + sizeof(size_t);
+#else
 	block *bp;
 	poolp pool;
 	poolp next;
@@ -900,6 +1146,7 @@ redirect:
 	if (nbytes == 0)
 		nbytes = 1;
 	return (void *)malloc(nbytes);
+#endif
 }
 
 /* free */
@@ -908,6 +1155,28 @@ redirect:
 void
 PyObject_Free(void *p)
 {
+#if 1
+	unsigned char *mem;
+	size_t nbytes;
+
+	if (p == NULL)
+		return;
+
+	mem = p - sizeof(size_t);
+	nbytes = *(size_t *)mem;
+
+	if (pymalloc_threadstate_hook != NULL) {
+		PyThreadState *tstate = pymalloc_threadstate_hook();
+		if (tstate->malloc_cache == NULL && nbytes >= 14) {
+			tstate->malloc_cache = mem;
+			//printf("Storing cached mem: %p %p %d\n", tstate, mem, nbytes);
+			return;
+		}
+	}
+
+	//printf("Mooo, free of %d %p\n", nbytes, mem);
+	free(mem);
+#else
 	poolp pool;
 	block *lastfree;
 	poolp next, prev;
@@ -1112,6 +1381,7 @@ PyObject_Free(void *p)
 
 	/* We didn't allocate this address. */
 	free(p);
+#endif
 }
 
 /* realloc.  If p is NULL, this acts like malloc(nbytes).  Else if nbytes==0,
@@ -1123,6 +1393,23 @@ PyObject_Free(void *p)
 void *
 PyObject_Realloc(void *p, size_t nbytes)
 {
+#if 1
+	unsigned char *mem;
+
+	if (p == NULL)
+		return PyObject_Malloc(nbytes);
+
+	mem = p - sizeof(size_t);
+	if (nbytes < 4)
+		nbytes = 4;
+
+	mem = realloc(mem, nbytes + sizeof(size_t));
+	if (mem == NULL)
+		return NULL;
+
+	*(size_t *)mem = nbytes;
+	return mem + sizeof(size_t);
+#else
 	void *bp;
 	poolp pool;
 	size_t size;
@@ -1177,6 +1464,7 @@ PyObject_Realloc(void *p, size_t nbytes)
 	 */
 	bp = realloc(p, 1);
    	return bp ? bp : p;
+#endif
 }
 
 #else	/* ! WITH_PYMALLOC */
@@ -1185,6 +1473,7 @@ PyObject_Realloc(void *p, size_t nbytes)
 /* pymalloc not enabled:  Redirect the entry points to malloc.  These will
  * only be used by extensions that are compiled with pymalloc enabled. */
 
+#if 0
 void *
 PyObject_Malloc(size_t n)
 {
@@ -1202,6 +1491,7 @@ PyObject_Free(void *p)
 {
 	PyMem_FREE(p);
 }
+#endif
 #endif /* WITH_PYMALLOC */
 
 #ifdef PYMALLOC_DEBUG

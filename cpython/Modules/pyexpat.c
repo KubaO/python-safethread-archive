@@ -340,7 +340,7 @@ static PyObject*
 call_with_frame(PyCodeObject *c, PyObject* func, PyObject* args,
                 xmlparseobject *self)
 {
-    PyThreadState *tstate = PyThreadState_GET();
+    PyThreadState *tstate = PyThreadState_Get();
     PyFrameObject *f;
     PyObject *res;
 
@@ -1030,7 +1030,7 @@ xmlparse_ExternalEntityParserCreate(xmlparseobject *self, PyObject *args)
     new_parser = PyObject_New(xmlparseobject, &Xmlparsetype);
 #else
     /* Python versions 2.2 and later */
-    new_parser = PyObject_GC_New(xmlparseobject, &Xmlparsetype);
+    new_parser = PyObject_NEW(xmlparseobject, &Xmlparsetype);
 #endif
 
     if (new_parser == NULL)
@@ -1045,7 +1045,7 @@ xmlparse_ExternalEntityParserCreate(xmlparseobject *self, PyObject *args)
             PyObject_Del(new_parser);
 #else
             /* Code for versions 2.2 and later. */
-            PyObject_GC_Del(new_parser);
+            PyObject_DEL(new_parser);
 #endif
             return PyErr_NoMemory();
         }
@@ -1062,7 +1062,6 @@ xmlparse_ExternalEntityParserCreate(xmlparseobject *self, PyObject *args)
     new_parser->intern = self->intern;
     Py_XINCREF(new_parser->intern);
 #ifdef Py_TPFLAGS_HAVE_GC
-    PyObject_GC_Track(new_parser);
 #else
     PyObject_GC_Init(new_parser);
 #endif
@@ -1229,7 +1228,7 @@ newxmlparseobject(char *encoding, char *namespace_separator, PyObject *intern)
 
 #ifdef Py_TPFLAGS_HAVE_GC
     /* Code for versions 2.2 and later */
-    self = PyObject_GC_New(xmlparseobject, &Xmlparsetype);
+    self = PyObject_NEW(xmlparseobject, &Xmlparsetype);
 #else
     self = PyObject_New(xmlparseobject, &Xmlparsetype);
 #endif
@@ -1253,7 +1252,6 @@ newxmlparseobject(char *encoding, char *namespace_separator, PyObject *intern)
     self->intern = intern;
     Py_XINCREF(self->intern);
 #ifdef Py_TPFLAGS_HAVE_GC
-    PyObject_GC_Track(self);
 #else
     PyObject_GC_Init(self);
 #endif
@@ -1286,7 +1284,6 @@ xmlparse_dealloc(xmlparseobject *self)
 {
     int i;
 #ifdef Py_TPFLAGS_HAVE_GC
-    PyObject_GC_UnTrack(self);
 #else
     PyObject_GC_Fini(self);
 #endif
@@ -1314,7 +1311,7 @@ xmlparse_dealloc(xmlparseobject *self)
     PyObject_Del(self);
 #else
     /* Code for versions 2.2 and later. */
-    PyObject_GC_Del(self);
+    PyObject_DEL(self);
 #endif
 }
 

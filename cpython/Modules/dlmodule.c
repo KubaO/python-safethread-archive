@@ -27,7 +27,7 @@ static PyObject *
 newdlobject(PyUnivPtr *handle)
 {
 	dlobject *xp;
-	xp = PyObject_New(dlobject, &Dltype);
+	xp = PyObject_NEW(dlobject, &Dltype);
 	if (xp == NULL)
 		return NULL;
 	xp->dl_handle = handle;
@@ -39,7 +39,7 @@ dl_dealloc(dlobject *xp)
 {
 	if (xp->dl_handle != NULL)
 		dlclose(xp->dl_handle);
-	PyObject_Del(xp);
+	PyObject_DEL(xp);
 }
 
 static PyObject *

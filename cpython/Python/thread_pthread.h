@@ -106,6 +106,7 @@ typedef struct {
 } pthread_lock;
 
 #define CHECK_STATUS(name)  if (status != 0) { perror(name); error = 1; }
+#define CHECK_STATUS_ABORT(name)  if (status != 0) { perror(name); abort(); }
 
 /*
  * Initialization.
@@ -144,17 +145,20 @@ PyThread__init_thread(void)
  */
 
 
-long
-PyThread_start_new_thread(void (*func)(void *), void *arg)
+int
+PyThread_start_new_thread(PyThread_type_handle *handle, void (*func)(void *), void *arg)
 {
-	pthread_t th;
+	PyThread_type_handle dummy_handle;
 	int status;
 #if defined(THREAD_STACK_SIZE) || defined(PTHREAD_SYSTEM_SCHED_SUPPORTED)
 	pthread_attr_t attrs;
 #endif
 #if defined(THREAD_STACK_SIZE)
-	size_t	tss;
+	size_t tss;
 #endif
+
+	if (handle == NULL)
+		handle = &dummy_handle;
 
 	dprintf(("PyThread_start_new_thread called\n"));
 	if (!initialized)
@@ -178,7 +182,7 @@ PyThread_start_new_thread(void (*func)(void *), void *arg)
         pthread_attr_setscope(&attrs, PTHREAD_SCOPE_SYSTEM);
 #endif
 
-	status = pthread_create(&th, 
+	status = pthread_create(&handle->_value,
 #if defined(THREAD_STACK_SIZE) || defined(PTHREAD_SYSTEM_SCHED_SUPPORTED)
 				 &attrs,
 #else
@@ -194,107 +198,52 @@ PyThread_start_new_thread(void (*func)(void *), void *arg)
 	if (status != 0)
             return -1;
 
-        pthread_detach(th);
+        pthread_detach(handle->_value);
 
-#if SIZEOF_PTHREAD_T <= SIZEOF_LONG
-	return (long) th;
-#else
-	return (long) *(long *) &th;
-#endif
+        return 0;
 }
 
-/* XXX This implementation is considered (to quote Tim Peters) "inherently
-   hosed" because:
-     - It does not guarantee the promise that a non-zero integer is returned.
-     - The cast to long is inherently unsafe.
-     - It is not clear that the 'volatile' (for AIX?) and ugly casting in the
-       latter return statement (for Alpha OSF/1) are any longer necessary.
-*/
-long 
-PyThread_get_thread_ident(void)
+PyThread_type_handle
+PyThread_get_handle(void)
 {
-	volatile pthread_t threadid;
-	if (!initialized)
-		PyThread_init_thread();
-	/* Jump through some hoops for Alpha OSF/1 */
-	threadid = pthread_self();
-#if SIZEOF_PTHREAD_T <= SIZEOF_LONG
-	return (long) threadid;
-#else
-	return (long) *(long *) &threadid;
-#endif
+    PyThread_type_handle handle;
+    handle._value = pthread_self();
+    return handle;
 }
 
-static void 
-do_PyThread_exit_thread(int no_cleanup)
+void
+PyThread_send_signal(PyThread_type_handle handle, int signum)
 {
-	dprintf(("PyThread_exit_thread called\n"));
-	if (!initialized) {
-		if (no_cleanup)
-			_exit(0);
-		else
-			exit(0);
-	}
+    int status = pthread_kill(handle._value, signum);
+    if (status < 0) {
+        fprintf(stderr, "pthread_kill failed with %d\n", errno);
+        Py_FatalError("PyThread_send_signal failed calling pthread_kill");
+    }
 }
 
-void 
-PyThread_exit_thread(void)
-{
-	do_PyThread_exit_thread(0);
-}
-
-void 
-PyThread__exit_thread(void)
-{
-	do_PyThread_exit_thread(1);
-}
-
-#ifndef NO_EXIT_PROG
-static void 
-do_PyThread_exit_prog(int status, int no_cleanup)
-{
-	dprintf(("PyThread_exit_prog(%d) called\n", status));
-	if (!initialized)
-		if (no_cleanup)
-			_exit(status);
-		else
-			exit(status);
-}
-
-void 
-PyThread_exit_prog(int status)
-{
-	do_PyThread_exit_prog(status, 0);
-}
-
-void 
-PyThread__exit_prog(int status)
-{
-	do_PyThread_exit_prog(status, 1);
-}
-#endif /* NO_EXIT_PROG */
-
-#ifdef USE_SEMAPHORES
 
 /*
  * Lock support.
  */
 
-PyThread_type_lock 
-PyThread_allocate_lock(void)
+PyThread_type_lock
+PyThread_lock_allocate(void)
 {
-	sem_t *lock;
+	//sem_t *lock;
+	pthread_mutex_t *lock;
 	int status, error = 0;
 
 	dprintf(("PyThread_allocate_lock called\n"));
 	if (!initialized)
 		PyThread_init_thread();
 
-	lock = (sem_t *)malloc(sizeof(sem_t));
+	//lock = (sem_t *)malloc(sizeof(sem_t));
+	lock = malloc(sizeof(pthread_mutex_t));
 
 	if (lock) {
-		status = sem_init(lock,0,1);
-		CHECK_STATUS("sem_init");
+		//status = sem_init(lock,0,1);
+		status = pthread_mutex_init(lock, NULL);
+		CHECK_STATUS("pthread_mutex_init");
 
 		if (error) {
 			free((void *)lock);
@@ -306,21 +255,142 @@ PyThread_allocate_lock(void)
 	return (PyThread_type_lock)lock;
 }
 
-void 
-PyThread_free_lock(PyThread_type_lock lock)
+void
+PyThread_lock_free(PyThread_type_lock lock)
 {
-	sem_t *thelock = (sem_t *)lock;
-	int status, error = 0;
+	//sem_t *thelock = (sem_t *)lock;
+	pthread_mutex_t *thelock = (pthread_mutex_t *)lock;
+	int status;
 
 	dprintf(("PyThread_free_lock(%p) called\n", lock));
 
 	if (!thelock)
 		return;
 
-	status = sem_destroy(thelock);
-	CHECK_STATUS("sem_destroy");
+	//status = sem_destroy(thelock);
+	status = pthread_mutex_destroy(thelock);
+	CHECK_STATUS_ABORT("pthread_mutex_destroy");
 
 	free((void *)thelock);
+}
+
+#include <execinfo.h>
+
+void
+PyThread_lock_acquire(PyThread_type_lock lock)
+{
+	//sem_t *thelock = (sem_t *)lock;
+	pthread_mutex_t *thelock = (pthread_mutex_t *)lock;
+	int status;
+	static unsigned long long count;
+
+#if 0
+	count++;
+	if ((count % 10000) == 0) {
+		void *scratch[10] = {};
+		printf("PyThread_lock_acquire: %llu\n", count);
+		backtrace(scratch, 10);
+		backtrace_symbols_fd(scratch, 2, 1);
+		printf("*****\n");
+	}
+#endif
+
+	dprintf(("PyThread_acquire_lock(%p) called\n", lock));
+
+	//if (!waitflag)
+	//	abort();
+	status = pthread_mutex_lock(thelock);
+	CHECK_STATUS_ABORT("pthread_mutex_lock");
+
+	dprintf(("PyThread_acquire_lock(%p)\n", lock));
+}
+
+/* This is only temporary, until a better interface is available to those
+ * who need such functionality. */
+int
+_PyThread_lock_tryacquire(PyThread_type_lock lock)
+{
+	int success;
+	//sem_t *thelock = (sem_t *)lock;
+	pthread_mutex_t *thelock = (pthread_mutex_t *)lock;
+	int status;
+
+	dprintf(("PyThread_tryacquire_lock(%p) called\n", lock));
+
+	//if (!waitflag)
+	//	abort();
+	status = pthread_mutex_trylock(thelock);
+	if (status != EBUSY)
+		CHECK_STATUS_ABORT("pthread_mutex_trylock");
+
+	success = (status == 0) ? 1 : 0;
+	dprintf(("PyThread_tryacquire_lock(%p) -> %d\n", lock, success));
+	return success;
+}
+
+void
+PyThread_lock_release(PyThread_type_lock lock)
+{
+	//sem_t *thelock = (sem_t *)lock;
+	pthread_mutex_t *thelock = (pthread_mutex_t *)lock;
+	int status;
+
+	dprintf(("PyThread_release_lock(%p) called\n", lock));
+
+	//status = sem_post(thelock);
+	status = pthread_mutex_unlock(thelock);
+	CHECK_STATUS_ABORT("pthread_mutex_unlock");
+}
+
+
+/*
+ * Semaphore support.
+ */
+
+PyThread_type_sem
+PyThread_sem_allocate(int initial_value)
+{
+	sem_t *sem;
+	int status, error = 0;
+
+	dprintf(("PyThread_sem_allocate called\n"));
+	if (!initialized)
+		PyThread_init_thread();
+
+	if (initial_value < 0 || initial_value > 1)
+		Py_FatalError("PyThread_sem_allocate given invalid initial_value");
+
+	sem = malloc(sizeof(sem_t));
+
+	if (sem) {
+		status = sem_init(sem, 0, initial_value);
+		CHECK_STATUS("sem_init");
+
+		if (error) {
+			free((void *)sem);
+			sem = NULL;
+		}
+	}
+
+	dprintf(("PyThread_sem_allocate() -> %p\n", sem));
+	return (PyThread_type_sem)sem;
+}
+
+void
+PyThread_sem_free(PyThread_type_sem sem)
+{
+	sem_t *thesem = (sem_t *)sem;
+	int status;
+
+	dprintf(("PyThread_sem_free(%p) called\n", sem));
+
+	if (!thesem)
+		return;
+
+	status = sem_destroy(thesem);
+	CHECK_STATUS_ABORT("sem_destroy");
+
+	free((void *)thesem);
 }
 
 /*
@@ -330,162 +400,202 @@ PyThread_free_lock(PyThread_type_lock lock)
  * either.
  */
 static int
-fix_status(int status)
+fix_sem_status(int status)
 {
 	return (status == -1) ? errno : status;
 }
 
-int 
-PyThread_acquire_lock(PyThread_type_lock lock, int waitflag)
+void
+PyThread_sem_wait(PyThread_type_sem sem)
 {
-	int success;
-	sem_t *thelock = (sem_t *)lock;
-	int status, error = 0;
+	sem_t *thesem = (sem_t *)sem;
+	int status;
 
-	dprintf(("PyThread_acquire_lock(%p, %d) called\n", lock, waitflag));
+	dprintf(("PyThread_sem_wait(%p) called\n", sem));
 
 	do {
-		if (waitflag)
-			status = fix_status(sem_wait(thelock));
-		else
-			status = fix_status(sem_trywait(thelock));
+		status = fix_sem_status(sem_wait(thesem));
 	} while (status == EINTR); /* Retry if interrupted by a signal */
 
-	if (waitflag) {
-		CHECK_STATUS("sem_wait");
-	} else if (status != EAGAIN) {
-		CHECK_STATUS("sem_trywait");
-	}
+	if (status != EINTR)
+		CHECK_STATUS_ABORT("sem_wait");
 	
-	success = (status == 0) ? 1 : 0;
-
-	dprintf(("PyThread_acquire_lock(%p, %d) -> %d\n", lock, waitflag, success));
-	return success;
+	dprintf(("PyThread_sem_wait(%p)\n", sem));
 }
 
-void 
-PyThread_release_lock(PyThread_type_lock lock)
+void
+PyThread_sem_post(PyThread_type_sem sem)
 {
-	sem_t *thelock = (sem_t *)lock;
-	int status, error = 0;
+	sem_t *thesem = (sem_t *)sem;
+	int status;
 
-	dprintf(("PyThread_release_lock(%p) called\n", lock));
+	dprintf(("PyThread_sem_post(%p) called\n", sem));
 
-	status = sem_post(thelock);
-	CHECK_STATUS("sem_post");
+	status = sem_post(thesem);
+	CHECK_STATUS_ABORT("sem_post");
 }
 
-#else /* USE_SEMAPHORES */
 
 /*
- * Lock support.
+ * Condition support.
  */
-PyThread_type_lock 
-PyThread_allocate_lock(void)
+
+PyThread_type_cond
+PyThread_cond_allocate(void)
 {
-	pthread_lock *lock;
+	pthread_cond_t *cond;
 	int status, error = 0;
 
-	dprintf(("PyThread_allocate_lock called\n"));
+	dprintf(("PyThread_cond_allocate called\n"));
 	if (!initialized)
 		PyThread_init_thread();
 
-	lock = (pthread_lock *) malloc(sizeof(pthread_lock));
-	if (lock) {
-		memset((void *)lock, '\0', sizeof(pthread_lock));
-		lock->locked = 0;
+	cond = malloc(sizeof(pthread_cond_t));
 
-		status = pthread_mutex_init(&lock->mut,
-					    pthread_mutexattr_default);
-		CHECK_STATUS("pthread_mutex_init");
-
-		status = pthread_cond_init(&lock->lock_released,
-					   pthread_condattr_default);
+	if (cond) {
+		status = pthread_cond_init(cond, NULL);
 		CHECK_STATUS("pthread_cond_init");
 
 		if (error) {
-			free((void *)lock);
-			lock = 0;
+			free((void *)cond);
+			cond = NULL;
 		}
 	}
 
-	dprintf(("PyThread_allocate_lock() -> %p\n", lock));
-	return (PyThread_type_lock) lock;
+	dprintf(("PyThread_cond_allocate() -> %p\n", cond));
+	return (PyThread_type_cond)cond;
 }
 
-void 
-PyThread_free_lock(PyThread_type_lock lock)
+void
+PyThread_cond_free(PyThread_type_cond cond)
 {
-	pthread_lock *thelock = (pthread_lock *)lock;
-	int status, error = 0;
+	pthread_cond_t *thecond = (pthread_cond_t *)cond;
+	int status;
 
-	dprintf(("PyThread_free_lock(%p) called\n", lock));
+	dprintf(("PyThread_cond_free(%p) called\n", cond));
 
-	status = pthread_mutex_destroy( &thelock->mut );
-	CHECK_STATUS("pthread_mutex_destroy");
+	if (!thecond)
+		return;
 
-	status = pthread_cond_destroy( &thelock->lock_released );
-	CHECK_STATUS("pthread_cond_destroy");
+	status = pthread_cond_destroy(thecond);
+	CHECK_STATUS_ABORT("pthread_cond_destroy");
 
-	free((void *)thelock);
+	free((void *)thecond);
 }
 
-int 
-PyThread_acquire_lock(PyThread_type_lock lock, int waitflag)
+void
+PyThread_cond_wait(PyThread_type_cond cond, PyThread_type_lock lock)
 {
-	int success;
-	pthread_lock *thelock = (pthread_lock *)lock;
+	pthread_cond_t *thecond = (pthread_cond_t *)cond;
+	pthread_mutex_t *thelock = (pthread_mutex_t *)lock;
+	int status;
+
+	dprintf(("PyThread_cond_wait(%p, %p) called\n", cond, lock));
+
+	status = pthread_cond_wait(thecond, thelock);
+	CHECK_STATUS_ABORT("pthread_cond_wait");
+	
+	dprintf(("PyThread_cond_wait(%p, %p)\n", cond, lock));
+}
+
+void
+PyThread_cond_wakeone(PyThread_type_cond cond)
+{
+	pthread_cond_t *thecond = (pthread_cond_t *)cond;
+	int status;
+
+	dprintf(("PyThread_cond_wait(%p) called\n", cond));
+
+	status = pthread_cond_signal(thecond);
+	CHECK_STATUS_ABORT("pthread_cond_signal");
+	
+	dprintf(("PyThread_cond_wait(%p)\n", cond));
+}
+
+void
+PyThread_cond_wakeall(PyThread_type_cond cond)
+{
+	pthread_cond_t *thecond = (pthread_cond_t *)cond;
+	int status;
+
+	dprintf(("PyThread_cond_wait(%p) called\n", cond));
+
+	status = pthread_cond_broadcast(thecond);
+	CHECK_STATUS_ABORT("pthread_cond_broadcast");
+	
+	dprintf(("PyThread_cond_wait(%p)\n", cond));
+}
+
+
+/*
+ * Thread-local Storage support.
+ */
+
+#define Py_HAVE_NATIVE_TLS
+
+PyThread_type_key
+PyThread_create_key(void)
+{
+	pthread_key_t *thekey;
 	int status, error = 0;
 
-	dprintf(("PyThread_acquire_lock(%p, %d) called\n", lock, waitflag));
+	thekey = malloc(sizeof(pthread_key_t));
 
-	status = pthread_mutex_lock( &thelock->mut );
-	CHECK_STATUS("pthread_mutex_lock[1]");
-	success = thelock->locked == 0;
+	if (thekey) {
+		//status = sem_init(lock,0,1);
+		//status = pthread_mutex_init(lock, NULL);
+		status = pthread_key_create(thekey, NULL);
+		CHECK_STATUS("pthread_key_create");
 
-	if ( !success && waitflag ) {
-		/* continue trying until we get the lock */
-
-		/* mut must be locked by me -- part of the condition
-		 * protocol */
-		while ( thelock->locked ) {
-			status = pthread_cond_wait(&thelock->lock_released,
-						   &thelock->mut);
-			CHECK_STATUS("pthread_cond_wait");
+		if (error) {
+			free((void *)thekey);
+			thekey = NULL;
 		}
-		success = 1;
 	}
-	if (success) thelock->locked = 1;
-	status = pthread_mutex_unlock( &thelock->mut );
-	CHECK_STATUS("pthread_mutex_unlock[1]");
 
-	if (error) success = 0;
-	dprintf(("PyThread_acquire_lock(%p, %d) -> %d\n", lock, waitflag, success));
-	return success;
+	return (PyThread_type_key *)thekey;
 }
 
-void 
-PyThread_release_lock(PyThread_type_lock lock)
+void
+PyThread_delete_key(PyThread_type_key key)
 {
-	pthread_lock *thelock = (pthread_lock *)lock;
-	int status, error = 0;
+	pthread_key_t *thekey = (pthread_key_t *)key;
+	int status = 0;
 
-	dprintf(("PyThread_release_lock(%p) called\n", lock));
-
-	status = pthread_mutex_lock( &thelock->mut );
-	CHECK_STATUS("pthread_mutex_lock[3]");
-
-	thelock->locked = 0;
-
-	status = pthread_mutex_unlock( &thelock->mut );
-	CHECK_STATUS("pthread_mutex_unlock[3]");
-
-	/* wake up someone (anyone, if any) waiting on the lock */
-	status = pthread_cond_signal( &thelock->lock_released );
-	CHECK_STATUS("pthread_cond_signal");
+	status = pthread_key_delete(*thekey);
+	CHECK_STATUS_ABORT("pthread_key_delete");
 }
 
-#endif /* USE_SEMAPHORES */
+/* Unlock the default implementation, I consider replacing an existing
+ * key to be an error.  I'm not going to check it. */
+void
+PyThread_set_key_value(PyThread_type_key key, void *value)
+{
+	pthread_key_t *thekey = (pthread_key_t *)key;
+	int status = 0;
+
+	assert(thekey != NULL); /* Use PyThread_delete_key_value to delete */
+	status = pthread_setspecific(*thekey, value);
+	CHECK_STATUS_ABORT("pthread_setspecific");
+}
+
+void *
+PyThread_get_key_value(PyThread_type_key key)
+{
+	pthread_key_t *thekey = (pthread_key_t *)key;
+	return pthread_getspecific(*thekey);
+}
+
+void
+PyThread_delete_key_value(PyThread_type_key key)
+{
+	pthread_key_t *thekey = (pthread_key_t *)key;
+	int status = 0;
+
+	status = pthread_setspecific(*thekey, NULL);
+	CHECK_STATUS_ABORT("pthread_setspecific");
+}
+
 
 /* set the thread stack size.
  * Return 0 if size is valid, -1 if size is invalid,

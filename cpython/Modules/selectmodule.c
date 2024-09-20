@@ -550,7 +550,7 @@ static pollObject *
 newPollObject(void)
 {
         pollObject *self;
-	self = PyObject_New(pollObject, &poll_Type);
+	self = PyObject_NEW(pollObject, &poll_Type);
 	if (self == NULL)
 		return NULL;
 	/* ufd_uptodate is a Boolean, denoting whether the 
@@ -571,7 +571,7 @@ poll_dealloc(pollObject *self)
 	if (self->ufds != NULL)
 		PyMem_DEL(self->ufds);
 	Py_XDECREF(self->dict);
-  	PyObject_Del(self);
+  	PyObject_DEL(self);
 }
 
 static PyObject *

@@ -280,7 +280,7 @@ PyCArgObject *
 new_CArgObject(void)
 {
 	PyCArgObject *p;
-	p = PyObject_New(PyCArgObject, &PyCArg_Type);
+	p = PyObject_NEW(PyCArgObject, &PyCArg_Type);
 	if (p == NULL)
 		return NULL;
 	p->pffi_type = NULL;
@@ -294,7 +294,7 @@ static void
 PyCArg_dealloc(PyCArgObject *self)
 {
 	Py_XDECREF(self->obj);
-	PyObject_Del(self);
+	PyObject_DEL(self);
 }
 
 static PyObject *

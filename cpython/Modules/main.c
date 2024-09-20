@@ -181,7 +181,7 @@ WaitForThreadShutdown(void)
 {
 #ifdef WITH_THREAD
 	PyObject *result;
-	PyThreadState *tstate = PyThreadState_GET();
+	PyThreadState *tstate = PyThreadState_Get();
 	PyObject *threading = PyMapping_GetItemString(tstate->interp->modules,
 						      "threading");
 	if (threading == NULL) {

@@ -79,20 +79,28 @@ my_fgets(char *buf, int len, FILE *fp)
 		if (errno == EINTR) {
 			int s;
 #ifdef WITH_THREAD
-			PyEval_RestoreThread(_PyOS_ReadlineTState);
+			//PyEval_RestoreThread(_PyOS_ReadlineTState);
+			PyState_Resume();
 #endif
+#if 0
 			s = PyErr_CheckSignals();
-#ifdef WITH_THREAD
-			PyEval_SaveThread();
 #endif
+#ifdef WITH_THREAD
+			//PyEval_SaveThread();
+			PyState_Suspend();
+#endif
+#if 0
 			if (s < 0) {
 				return 1;
 			}
+#endif
 		}
 #endif
+#if 0
 		if (PyOS_InterruptOccurred()) {
 			return 1; /* Interrupt */
 		}
+#endif
 		return -2; /* Error */
 	}
 	/* NOTREACHED */
@@ -157,7 +165,7 @@ PyOS_Readline(FILE *sys_stdin, FILE *sys_stdout, char *prompt)
 {
 	char *rv;
 
-	if (_PyOS_ReadlineTState == PyThreadState_GET()) {
+	if (_PyOS_ReadlineTState == PyThreadState_Get()) {
 		PyErr_SetString(PyExc_RuntimeError,
 				"can't re-enter readline");
 		return NULL;
@@ -174,14 +182,14 @@ PyOS_Readline(FILE *sys_stdin, FILE *sys_stdout, char *prompt)
 	
 #ifdef WITH_THREAD
 	if (_PyOS_ReadlineLock == NULL) {
-		_PyOS_ReadlineLock = PyThread_allocate_lock();		
+		_PyOS_ReadlineLock = PyThread_lock_allocate();		
 	}
 #endif
 
-	_PyOS_ReadlineTState = PyThreadState_GET();
+	_PyOS_ReadlineTState = PyThreadState_Get();
 	Py_BEGIN_ALLOW_THREADS
 #ifdef WITH_THREAD
-	PyThread_acquire_lock(_PyOS_ReadlineLock, 1);
+	PyThread_lock_acquire(_PyOS_ReadlineLock);
 #endif
 
         /* This is needed to handle the unlikely case that the
@@ -197,7 +205,7 @@ PyOS_Readline(FILE *sys_stdin, FILE *sys_stdout, char *prompt)
 	Py_END_ALLOW_THREADS
 
 #ifdef WITH_THREAD
-	PyThread_release_lock(_PyOS_ReadlineLock);
+	PyThread_lock_release(_PyOS_ReadlineLock);
 #endif
 
 	_PyOS_ReadlineTState = NULL;

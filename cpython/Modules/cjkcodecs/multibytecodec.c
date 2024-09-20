@@ -676,7 +676,7 @@ static struct PyMethodDef multibytecodec_methods[] = {
 static void
 multibytecodec_dealloc(MultibyteCodecObject *self)
 {
-	PyObject_Del(self);
+	PyObject_DEL(self);
 }
 
 static PyTypeObject MultibyteCodec_Type = {
@@ -905,7 +905,7 @@ mbiencoder_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 					 incnewkwarglist, &errors))
 		return NULL;
 
-	self = (MultibyteIncrementalEncoderObject *)type->tp_alloc(type, 0);
+	self = PyObject_NEW(MultibyteIncrementalEncoderObject, type);
 	if (self == NULL)
 		return NULL;
 
@@ -953,9 +953,8 @@ mbiencoder_traverse(MultibyteIncrementalEncoderObject *self,
 static void
 mbiencoder_dealloc(MultibyteIncrementalEncoderObject *self)
 {
-	PyObject_GC_UnTrack(self);
 	ERROR_DECREF(self->errors);
-	Py_Type(self)->tp_free(self);
+	PyObject_DEL(self);
 }
 
 static PyTypeObject MultibyteIncrementalEncoder_Type = {
@@ -997,7 +996,6 @@ static PyTypeObject MultibyteIncrementalEncoder_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	mbiencoder_init,		/* tp_init */
-	0,				/* tp_alloc */
 	mbiencoder_new,			/* tp_new */
 };
 
@@ -1105,7 +1103,7 @@ mbidecoder_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 					 incnewkwarglist, &errors))
 		return NULL;
 
-	self = (MultibyteIncrementalDecoderObject *)type->tp_alloc(type, 0);
+	self = PyObject_NEW(MultibyteIncrementalDecoderObject, type);
 	if (self == NULL)
 		return NULL;
 
@@ -1153,9 +1151,8 @@ mbidecoder_traverse(MultibyteIncrementalDecoderObject *self,
 static void
 mbidecoder_dealloc(MultibyteIncrementalDecoderObject *self)
 {
-	PyObject_GC_UnTrack(self);
 	ERROR_DECREF(self->errors);
-	Py_Type(self)->tp_free(self);
+	PyObject_DEL(self);
 }
 
 static PyTypeObject MultibyteIncrementalDecoder_Type = {
@@ -1197,7 +1194,6 @@ static PyTypeObject MultibyteIncrementalDecoder_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	mbidecoder_init,		/* tp_init */
-	0,				/* tp_alloc */
 	mbidecoder_new,			/* tp_new */
 };
 
@@ -1435,7 +1431,7 @@ mbstreamreader_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 				streamkwarglist, &stream, &errors))
 		return NULL;
 
-	self = (MultibyteStreamReaderObject *)type->tp_alloc(type, 0);
+	self = PyObject_NEW(MultibyteStreamReaderObject, type);
 	if (self == NULL)
 		return NULL;
 
@@ -1486,10 +1482,9 @@ mbstreamreader_traverse(MultibyteStreamReaderObject *self,
 static void
 mbstreamreader_dealloc(MultibyteStreamReaderObject *self)
 {
-	PyObject_GC_UnTrack(self);
 	ERROR_DECREF(self->errors);
 	Py_DECREF(self->stream);
-	Py_Type(self)->tp_free(self);
+	PyObject_DEL(self);
 }
 
 static PyTypeObject MultibyteStreamReader_Type = {
@@ -1531,7 +1526,6 @@ static PyTypeObject MultibyteStreamReader_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	mbstreamreader_init,		/* tp_init */
-	0,				/* tp_alloc */
 	mbstreamreader_new,		/* tp_new */
 };
 
@@ -1638,7 +1632,7 @@ mbstreamwriter_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 				streamkwarglist, &stream, &errors))
 		return NULL;
 
-	self = (MultibyteStreamWriterObject *)type->tp_alloc(type, 0);
+	self = PyObject_NEW(MultibyteStreamWriterObject, type);
 	if (self == NULL)
 		return NULL;
 
@@ -1689,10 +1683,9 @@ mbstreamwriter_traverse(MultibyteStreamWriterObject *self,
 static void
 mbstreamwriter_dealloc(MultibyteStreamWriterObject *self)
 {
-	PyObject_GC_UnTrack(self);
 	ERROR_DECREF(self->errors);
 	Py_DECREF(self->stream);
-	Py_Type(self)->tp_free(self);
+	PyObject_DEL(self);
 }
 
 static struct PyMethodDef mbstreamwriter_methods[] = {
@@ -1751,7 +1744,6 @@ static PyTypeObject MultibyteStreamWriter_Type = {
 	0,				/* tp_descr_set */
 	0,				/* tp_dictoffset */
 	mbstreamwriter_init,		/* tp_init */
-	0,				/* tp_alloc */
 	mbstreamwriter_new,		/* tp_new */
 };
 
@@ -1775,7 +1767,7 @@ __create_codec(PyObject *ignore, PyObject *arg)
 	if (codec->codecinit != NULL && codec->codecinit(codec->config) != 0)
 		return NULL;
 
-	self = PyObject_New(MultibyteCodecObject, &MultibyteCodec_Type);
+	self = PyObject_NEW(MultibyteCodecObject, &MultibyteCodec_Type);
 	if (self == NULL)
 		return NULL;
 	self->codec = codec;

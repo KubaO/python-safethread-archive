@@ -165,8 +165,8 @@ shutdown(how) -- shut down traffic in one or both directions\n\
 #endif
 
 #ifdef USE_GETADDRINFO_LOCK
-#define ACQUIRE_GETADDRINFO_LOCK PyThread_acquire_lock(netdb_lock, 1);
-#define RELEASE_GETADDRINFO_LOCK PyThread_release_lock(netdb_lock);
+#define ACQUIRE_GETADDRINFO_LOCK PyThread_lock_acquire(netdb_lock);
+#define RELEASE_GETADDRINFO_LOCK PyThread_lock_release(netdb_lock);
 #else
 #define ACQUIRE_GETADDRINFO_LOCK
 #define RELEASE_GETADDRINFO_LOCK
@@ -1933,13 +1933,6 @@ sock_connect_ex(PySocketSockObject *s, PyObject *addro)
 	res = internal_connect(s, SAS2SA(&addrbuf), addrlen, &timeout);
 	Py_END_ALLOW_THREADS
 
-	/* Signals are not errors (though they may raise exceptions).  Adapted
-	   from PyErr_SetFromErrnoWithFilenameObject(). */
-#ifdef EINTR
-	if (res == EINTR && PyErr_CheckSignals())
-		return NULL;
-#endif
-
 	return PyInt_FromLong((long) res);
 }
 
@@ -2685,7 +2678,7 @@ sock_dealloc(PySocketSockObject *s)
 {
 	if (s->sock_fd != -1)
 		(void) SOCKETCLOSE(s->sock_fd);
-	Py_Type(s)->tp_free((PyObject *)s);
+	PyObject_DEL(s);
 }
 
 
@@ -2718,7 +2711,7 @@ sock_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
 	PyObject *new;
 
-	new = type->tp_alloc(type, 0);
+	new = PyObject_New(type);
 	if (new != NULL) {
 		((PySocketSockObject *)new)->sock_fd = -1;
 		((PySocketSockObject *)new)->sock_timeout = -1.0;
@@ -2811,9 +2804,7 @@ static PyTypeObject sock_type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	sock_initobj,				/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	sock_new,				/* tp_new */
-	PyObject_Del,				/* tp_free */
 };
 
 
@@ -3042,7 +3033,7 @@ socket_gethostbyname_ex(PyObject *self, PyObject *args)
 #endif
 #else /* not HAVE_GETHOSTBYNAME_R */
 #ifdef USE_GETHOSTBYNAME_LOCK
-	PyThread_acquire_lock(netdb_lock, 1);
+	ACQUIRE_GETADDRINFO_LOCK
 #endif
 	h = gethostbyname(name);
 #endif /* HAVE_GETHOSTBYNAME_R */
@@ -3055,7 +3046,7 @@ socket_gethostbyname_ex(PyObject *self, PyObject *args)
 	ret = gethost_common(h, (struct sockaddr *)&addr, sizeof(addr),
 			     sa->sa_family);
 #ifdef USE_GETHOSTBYNAME_LOCK
-	PyThread_release_lock(netdb_lock);
+    RELEASE_GETADDRINFO_LOCK
 #endif
 	return ret;
 }
@@ -3138,14 +3129,14 @@ socket_gethostbyaddr(PyObject *self, PyObject *args)
 #endif
 #else /* not HAVE_GETHOSTBYNAME_R */
 #ifdef USE_GETHOSTBYNAME_LOCK
-	PyThread_acquire_lock(netdb_lock, 1);
+	ACQUIRE_GETADDRINFO_LOCK
 #endif
 	h = gethostbyaddr(ap, al, af);
 #endif /* HAVE_GETHOSTBYNAME_R */
 	Py_END_ALLOW_THREADS
 	ret = gethost_common(h, (struct sockaddr *)&addr, sizeof(addr), af);
 #ifdef USE_GETHOSTBYNAME_LOCK
-	PyThread_release_lock(netdb_lock);
+	RELEASE_GETADDRINFO_LOCK
 #endif
 	return ret;
 }

@@ -8,6 +8,9 @@
 
 #include <ctype.h>
 
+#include "monitorobject.h"
+#include "branchobject.h"
+
 /* The default encoding used by the platform file system APIs
    Can remain NULL for all platforms that don't have such a concept
 */
@@ -140,12 +143,16 @@ builtin___import__(PyObject *self, PyObject *args, PyObject *kwds)
 	PyObject *locals = NULL;
 	PyObject *fromlist = NULL;
 	int level = -1;
+	PyObject *r;
 
 	if (!PyArg_ParseTupleAndKeywords(args, kwds, "s|OOOi:__import__",
 			kwlist, &name, &globals, &locals, &fromlist, &level))
 		return NULL;
-	return PyImport_ImportModuleLevel(name, globals, locals,
+	PyState_EnterImport();
+	r = PyImport_ImportModuleLevel(name, globals, locals,
 					  fromlist, level);
+	PyState_ExitImport();
+	return r;
 }
 
 PyDoc_STRVAR(import_doc,
@@ -287,7 +294,7 @@ builtin_format(PyObject *self, PyObject *args)
 
         /* Initialize cached value */
         if (format_str == NULL) {
-                /* Initialize static variable needed by _PyType_Lookup */
+                /* Initialize static variable needed by _PyType_LookupEx */
                 format_str = PyUnicode_FromString("__format__");
                 if (format_str == NULL)
                         goto done;
@@ -307,8 +314,9 @@ builtin_format(PyObject *self, PyObject *args)
                 if (PyType_Ready(Py_Type(value)) < 0)
                         goto done;
 
-        /* Find the (unbound!) __format__ method (a borrowed reference) */
-        meth = _PyType_Lookup(Py_Type(value), format_str);
+        /* Find the (unbound!) __format__ method */
+        if (_PyType_LookupEx(Py_Type(value), format_str, &meth) < 0)
+                goto done;
         if (meth == NULL) {
                 PyErr_Format(PyExc_TypeError,
                              "Type %.100s doesn't define __format__",
@@ -318,6 +326,7 @@ builtin_format(PyObject *self, PyObject *args)
 
         /* And call it, binding it to the value */
         result = PyObject_CallFunctionObjArgs(meth, value, spec, NULL);
+        Py_DECREF(meth);
 
         if (result && !PyUnicode_Check(result)) {
                 PyErr_SetString(PyExc_TypeError,
@@ -1418,6 +1427,7 @@ builtin_round(PyObject *self, PyObject *args, PyObject *kwds)
 	int ndigits = UNDEF_NDIGITS;
 	static char *kwlist[] = {"number", "ndigits", 0};
 	PyObject *number, *round;
+	PyObject *result;
 
 	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|i:round",
                 kwlist, &number, &ndigits))
@@ -1434,7 +1444,8 @@ builtin_round(PyObject *self, PyObject *args, PyObject *kwds)
 			return NULL;
 	}
 
-	round = _PyType_Lookup(Py_Type(number), round_str);
+	if (_PyType_LookupEx(Py_Type(number), round_str, &round) < 0)
+		return NULL;
 	if (round == NULL) {
 		PyErr_Format(PyExc_TypeError,
 			     "type %.100s doesn't define __round__ method",
@@ -1443,9 +1454,11 @@ builtin_round(PyObject *self, PyObject *args, PyObject *kwds)
 	}
 
 	if (ndigits == UNDEF_NDIGITS)
-                return PyObject_CallFunction(round, "O", number);
+		result = PyObject_CallFunction(round, "O", number);
 	else
-                return PyObject_CallFunction(round, "Oi", number, ndigits);
+                result = PyObject_CallFunction(round, "Oi", number, ndigits);
+	Py_DECREF(round);
+	return result;
 #undef UNDEF_NDIGITS
 }
 
@@ -1541,6 +1554,7 @@ builtin_trunc(PyObject *self, PyObject *number)
 {
 	static PyObject *trunc_str = NULL;
 	PyObject *trunc;
+	PyObject *result;
 
 	if (Py_Type(number)->tp_dict == NULL) {
 		if (PyType_Ready(Py_Type(number)) < 0)
@@ -1553,14 +1567,17 @@ builtin_trunc(PyObject *self, PyObject *number)
 			return NULL;
 	}
 
-	trunc = _PyType_Lookup(Py_Type(number), trunc_str);
+	if (_PyType_LookupEx(Py_Type(number), trunc_str, &trunc) < 0)
+		return NULL;
 	if (trunc == NULL) {
 		PyErr_Format(PyExc_TypeError,
 			     "type %.100s doesn't define __trunc__ method",
 			     Py_Type(number)->tp_name);
 		return NULL;
 	}
-	return PyObject_CallFunction(trunc, "O", number);
+	result = PyObject_CallFunction(trunc, "O", number);
+	Py_DECREF(trunc);
+	return result;
 }
 
 PyDoc_STRVAR(trunc_doc,
@@ -1700,50 +1717,50 @@ The returned iterator ends when the shortest argument iterable is exhausted.\n\
 
 static PyMethodDef builtin_methods[] = {
  	{"__build_class__", (PyCFunction)builtin___build_class__,
-         METH_VARARGS | METH_KEYWORDS, build_class_doc},
- 	{"__import__",	(PyCFunction)builtin___import__, METH_VARARGS | METH_KEYWORDS, import_doc},
- 	{"abs",		builtin_abs,        METH_O, abs_doc},
- 	{"all",		builtin_all,        METH_O, all_doc},
- 	{"any",		builtin_any,        METH_O, any_doc},
-	{"bin",		builtin_bin,	    METH_O, bin_doc},
- 	{"chr",		builtin_chr,        METH_VARARGS, chr_doc},
- 	{"cmp",		builtin_cmp,        METH_VARARGS, cmp_doc},
- 	{"compile",	(PyCFunction)builtin_compile,    METH_VARARGS | METH_KEYWORDS, compile_doc},
- 	{"delattr",	builtin_delattr,    METH_VARARGS, delattr_doc},
- 	{"dir",		builtin_dir,        METH_VARARGS, dir_doc},
- 	{"divmod",	builtin_divmod,     METH_VARARGS, divmod_doc},
- 	{"eval",	builtin_eval,       METH_VARARGS, eval_doc},
-	{"exec",        builtin_exec,       METH_VARARGS, exec_doc},
- 	{"filter",	builtin_filter,     METH_VARARGS, filter_doc},
- 	{"format",	builtin_format,     METH_VARARGS, format_doc},
- 	{"getattr",	builtin_getattr,    METH_VARARGS, getattr_doc},
- 	{"globals",	(PyCFunction)builtin_globals,    METH_NOARGS, globals_doc},
- 	{"hasattr",	builtin_hasattr,    METH_VARARGS, hasattr_doc},
- 	{"hash",	builtin_hash,       METH_O, hash_doc},
- 	{"hex",		builtin_hex,        METH_O, hex_doc},
- 	{"id",		builtin_id,         METH_O, id_doc},
- 	{"input",	builtin_input,      METH_VARARGS, input_doc},
- 	{"isinstance",  builtin_isinstance, METH_VARARGS, isinstance_doc},
- 	{"issubclass",  builtin_issubclass, METH_VARARGS, issubclass_doc},
- 	{"iter",	builtin_iter,       METH_VARARGS, iter_doc},
- 	{"len",		builtin_len,        METH_O, len_doc},
- 	{"locals",	(PyCFunction)builtin_locals,     METH_NOARGS, locals_doc},
- 	{"map",		builtin_map,        METH_VARARGS, map_doc},
- 	{"max",		(PyCFunction)builtin_max,        METH_VARARGS | METH_KEYWORDS, max_doc},
- 	{"min",		(PyCFunction)builtin_min,        METH_VARARGS | METH_KEYWORDS, min_doc},
-	{"next",	(PyCFunction)builtin_next,       METH_VARARGS, next_doc},
- 	{"oct",		builtin_oct,        METH_O, oct_doc},
- 	{"ord",		builtin_ord,        METH_O, ord_doc},
- 	{"pow",		builtin_pow,        METH_VARARGS, pow_doc},
- 	{"print",	(PyCFunction)builtin_print,      METH_VARARGS | METH_KEYWORDS, print_doc},
- 	{"repr",	builtin_repr,       METH_O, repr_doc},
- 	{"round",	(PyCFunction)builtin_round,      METH_VARARGS | METH_KEYWORDS, round_doc},
- 	{"setattr",	builtin_setattr,    METH_VARARGS, setattr_doc},
- 	{"sorted",	(PyCFunction)builtin_sorted,     METH_VARARGS | METH_KEYWORDS, sorted_doc},
- 	{"sum",		builtin_sum,        METH_VARARGS, sum_doc},
- 	{"vars",	builtin_vars,       METH_VARARGS, vars_doc},
- 	{"trunc",	builtin_trunc,      METH_O, trunc_doc},
-  	{"zip",         builtin_zip,        METH_VARARGS, zip_doc},
+         METH_SHARED | METH_VARARGS | METH_KEYWORDS, build_class_doc},
+ 	{"__import__",	(PyCFunction)builtin___import__, METH_SHARED | METH_VARARGS | METH_KEYWORDS, import_doc},
+ 	{"abs",		builtin_abs,        METH_SHARED | METH_O, abs_doc},
+ 	{"all",		builtin_all,        METH_SHARED | METH_O, all_doc},
+ 	{"any",		builtin_any,        METH_SHARED | METH_O, any_doc},
+	{"bin",		builtin_bin,	    METH_SHARED | METH_O, bin_doc},
+ 	{"chr",		builtin_chr,        METH_SHARED | METH_VARARGS, chr_doc},
+ 	{"cmp",		builtin_cmp,        METH_SHARED | METH_VARARGS, cmp_doc},
+ 	{"compile",	(PyCFunction)builtin_compile,    METH_SHARED | METH_VARARGS | METH_KEYWORDS, compile_doc},
+ 	{"delattr",	builtin_delattr,    METH_SHARED | METH_VARARGS, delattr_doc},
+ 	{"dir",		builtin_dir,        METH_SHARED | METH_VARARGS, dir_doc},
+ 	{"divmod",	builtin_divmod,     METH_SHARED | METH_VARARGS, divmod_doc},
+ 	{"eval",	builtin_eval,       METH_SHARED | METH_VARARGS, eval_doc},
+	{"exec",        builtin_exec,       METH_SHARED | METH_VARARGS, exec_doc},
+ 	{"filter",	builtin_filter,     METH_SHARED | METH_VARARGS, filter_doc},
+ 	{"format",	builtin_format,     METH_SHARED | METH_VARARGS, format_doc},
+ 	{"getattr",	builtin_getattr,    METH_SHARED | METH_VARARGS, getattr_doc},
+ 	{"globals",	(PyCFunction)builtin_globals,    METH_SHARED | METH_NOARGS, globals_doc},
+ 	{"hasattr",	builtin_hasattr,    METH_SHARED | METH_VARARGS, hasattr_doc},
+ 	{"hash",	builtin_hash,       METH_SHARED | METH_O, hash_doc},
+ 	{"hex",		builtin_hex,        METH_SHARED | METH_O, hex_doc},
+ 	{"id",		builtin_id,         METH_SHARED | METH_O, id_doc},
+ 	{"input",	builtin_input,      METH_SHARED | METH_VARARGS, input_doc},
+ 	{"isinstance",  builtin_isinstance, METH_SHARED | METH_VARARGS, isinstance_doc},
+ 	{"issubclass",  builtin_issubclass, METH_SHARED | METH_VARARGS, issubclass_doc},
+ 	{"iter",	builtin_iter,       METH_SHARED | METH_VARARGS, iter_doc},
+ 	{"len",		builtin_len,        METH_SHARED | METH_O, len_doc},
+ 	{"locals",	(PyCFunction)builtin_locals,     METH_SHARED | METH_NOARGS, locals_doc},
+ 	{"map",		builtin_map,        METH_SHARED | METH_VARARGS, map_doc},
+ 	{"max",		(PyCFunction)builtin_max,        METH_SHARED | METH_VARARGS | METH_KEYWORDS, max_doc},
+ 	{"min",		(PyCFunction)builtin_min,        METH_SHARED | METH_VARARGS | METH_KEYWORDS, min_doc},
+	{"next",	(PyCFunction)builtin_next,       METH_SHARED | METH_VARARGS, next_doc},
+ 	{"oct",		builtin_oct,        METH_SHARED | METH_O, oct_doc},
+ 	{"ord",		builtin_ord,        METH_SHARED | METH_O, ord_doc},
+ 	{"pow",		builtin_pow,        METH_SHARED | METH_VARARGS, pow_doc},
+ 	{"print",	(PyCFunction)builtin_print,      METH_SHARED | METH_VARARGS | METH_KEYWORDS, print_doc},
+ 	{"repr",	builtin_repr,       METH_SHARED | METH_O, repr_doc},
+ 	{"round",	(PyCFunction)builtin_round,      METH_SHARED | METH_VARARGS | METH_KEYWORDS, round_doc},
+ 	{"setattr",	builtin_setattr,    METH_SHARED | METH_VARARGS, setattr_doc},
+ 	{"sorted",	(PyCFunction)builtin_sorted,     METH_SHARED | METH_VARARGS | METH_KEYWORDS, sorted_doc},
+ 	{"sum",		builtin_sum,        METH_SHARED | METH_VARARGS, sum_doc},
+ 	{"vars",	builtin_vars,       METH_SHARED | METH_VARARGS, vars_doc},
+ 	{"trunc",	builtin_trunc,      METH_SHARED | METH_O, trunc_doc},
+  	{"zip",         builtin_zip,        METH_SHARED | METH_VARARGS, zip_doc},
 	{NULL,		NULL},
 };
 
@@ -1752,15 +1769,19 @@ PyDoc_STRVAR(builtin_doc,
 \n\
 Noteworthy: None is the `nil' object; Ellipsis represents `...' in slices.");
 
+extern PyTypeObject PyFakeRange_Type;
 PyObject *
 _PyBuiltin_Init(void)
 {
 	PyObject *mod, *dict, *debug;
-	mod = Py_InitModule4("__builtin__", builtin_methods,
+
+	PyState_EnterImport();
+
+	mod = Py_InitModule5("__builtin__", builtin_methods,
 			     builtin_doc, (PyObject *)NULL,
-			     PYTHON_API_VERSION);
+			     PYTHON_API_VERSION, 1);
 	if (mod == NULL)
-		return NULL;
+		goto error;
 	dict = PyModule_GetDict(mod);
 
 #ifdef Py_TRACE_REFS
@@ -1777,7 +1798,7 @@ _PyBuiltin_Init(void)
 
 #define SETBUILTIN(NAME, OBJECT) \
 	if (PyDict_SetItemString(dict, NAME, (PyObject *)OBJECT) < 0)	\
-		return NULL;						\
+		goto error;						\
 	ADD_TO_ALL(OBJECT)
 
 	SETBUILTIN("None",		Py_None);
@@ -1794,6 +1815,7 @@ _PyBuiltin_Init(void)
 	SETBUILTIN("complex",		&PyComplex_Type);
 #endif
 	SETBUILTIN("dict",		&PyDict_Type);
+	SETBUILTIN("shareddict",	&PySharedDict_Type);
  	SETBUILTIN("enumerate",		&PyEnum_Type);
 	SETBUILTIN("float",		&PyFloat_Type);
 	SETBUILTIN("frozenset",		&PyFrozenSet_Type);
@@ -1802,6 +1824,7 @@ _PyBuiltin_Init(void)
 	SETBUILTIN("list",		&PyList_Type);
 	SETBUILTIN("object",		&PyBaseObject_Type);
 	SETBUILTIN("range",		&PyRange_Type);
+	SETBUILTIN("fakerange",		&PyFakeRange_Type);
 	SETBUILTIN("reversed",		&PyReversed_Type);
 	SETBUILTIN("set",		&PySet_Type);
 	SETBUILTIN("slice",		&PySlice_Type);
@@ -1814,11 +1837,57 @@ _PyBuiltin_Init(void)
 	debug = PyBool_FromLong(Py_OptimizeFlag == 0);
 	if (PyDict_SetItemString(dict, "__debug__", debug) < 0) {
 		Py_XDECREF(debug);
-		return NULL;
+		goto error;
 	}
 	Py_XDECREF(debug);
 
+	/* initialize builtin exceptions */
+	_PyExc_Init();
+
+	PyState_ExitImport();
 	return mod;
+
+error:
+	PyState_ExitImport();
+	return NULL;
+#undef ADD_TO_ALL
+#undef SETBUILTIN
+}
+
+
+/* Doesn't really belong here, but oh well */
+PyDoc_STRVAR(module_doc,
+"This is a template module just for instruction.");
+
+PyMODINIT_FUNC
+_Py_ThreadTools_Init(void)
+{
+	PyObject *mod, *dict;
+
+	mod = Py_InitModule3("_threadtools", NULL, module_doc);
+	if (mod == NULL)
+		return;
+
+	dict = PyModule_GetDict(mod);
+
+#ifdef Py_TRACE_REFS
+#define ADD_TO_ALL(OBJECT) _Py_AddToAllObjects((PyObject *)(OBJECT), 0)
+#else
+#define ADD_TO_ALL(OBJECT) (void)0
+#endif
+
+#define SETBUILTIN(NAME, OBJECT) \
+	if (PyDict_SetItemString(dict, NAME, (PyObject *)OBJECT) < 0)	\
+		goto error;						\
+	ADD_TO_ALL(OBJECT)
+
+	SETBUILTIN("MonitorMeta",	&PyMonitorMeta_Type);
+	SETBUILTIN("Monitor",		&PyMonitor_Type);
+	SETBUILTIN("MonitorSpace",	&PyMonitorSpace_Type);
+	SETBUILTIN("branch",		&PyBranch_Type);
+
+error:
+	;
 #undef ADD_TO_ALL
 #undef SETBUILTIN
 }

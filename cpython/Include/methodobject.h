@@ -70,6 +70,9 @@ PyAPI_FUNC(PyObject *) PyCFunction_NewEx(PyMethodDef *, PyObject *,
 
 #define METH_COEXIST   0x0040
 
+/* METH_SHARED allows a method to be shared between threads */
+#define METH_SHARED   0x0080
+
 typedef struct PyMethodChain {
     PyMethodDef *methods;		/* Methods of this type */
     struct PyMethodChain *link;	/* NULL or base type */

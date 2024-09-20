@@ -23,6 +23,7 @@ returned item's reference count.
 
 typedef struct {
     PyObject_VAR_HEAD
+    AO_t shareable;
     PyObject *ob_item[1];
 
     /* ob_item contains space for 'ob_size' elements.

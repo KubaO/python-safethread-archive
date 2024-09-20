@@ -188,9 +188,11 @@ complex_subtype_from_c_complex(PyTypeObject *type, Py_complex cval)
 {
 	PyObject *op;
 
-	op = type->tp_alloc(type, 0);
-	if (op != NULL)
-		((PyComplexObject *)op)->cval = cval;
+	op = PyObject_New(type);
+	if (op == NULL)
+		return NULL;
+	((PyComplexObject *)op)->cval = cval;
+	PyObject_Complete(op);
 	return op;
 }
 
@@ -200,11 +202,17 @@ PyComplex_FromCComplex(Py_complex cval)
 	register PyComplexObject *op;
 
 	/* Inline PyObject_New */
-	op = (PyComplexObject *) PyObject_MALLOC(sizeof(PyComplexObject));
+	//op = (PyComplexObject *) PyObject_MALLOC(sizeof(PyComplexObject));
+	//op = (PyComplexObject *)_PyObject_GC_Malloc(sizeof(PyComplexObject));
+	/* XXX FIXME _PyObject_GC_Malloc already calls PyErr_NoMemory */
+	//if (op == NULL)
+	//	return PyErr_NoMemory();
+	//PyObject_INIT(op, &PyComplex_Type);
+	op = PyObject_NEW(PyComplexObject, &PyComplex_Type);
 	if (op == NULL)
-		return PyErr_NoMemory();
-	PyObject_INIT(op, &PyComplex_Type);
+		return NULL;
 	op->cval = cval;
+	PyObject_COMPLETE(op);
 	return (PyObject *) op;
 }
 
@@ -272,10 +280,11 @@ PyComplex_AsCComplex(PyObject *op)
 			if (!(complex_str = PyUnicode_FromString("__complex__")))
 				return cv;
 		}
-		complexfunc = _PyType_Lookup(op->ob_type, complex_str);
-		/* complexfunc is a borrowed reference */
+		if (_PyType_LookupEx(op->ob_type, complex_str, &complexfunc) < 0)
+			return cv;
 		if (complexfunc) {
 			newop = PyObject_CallFunctionObjArgs(complexfunc, op, NULL);
+			Py_DECREF(complexfunc);
 			if (!newop)
 				return cv;
 		}
@@ -304,7 +313,7 @@ PyComplex_AsCComplex(PyObject *op)
 static void
 complex_dealloc(PyObject *op)
 {
-	op->ob_type->tp_free(op);
+	PyObject_Del(op);
 }
 
 
@@ -1005,7 +1014,8 @@ PyTypeObject PyComplex_Type = {
 	PyObject_GenericGetAttr,		/* tp_getattro */
 	0,					/* tp_setattro */
 	0,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /* tp_flags */
+	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
+		Py_TPFLAGS_SHAREABLE | Py_TPFLAGS_SKIPWIPE, /* tp_flags */
 	complex_doc,				/* tp_doc */
 	0,					/* tp_traverse */
 	0,					/* tp_clear */
@@ -1022,9 +1032,7 @@ PyTypeObject PyComplex_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	PyType_GenericAlloc,			/* tp_alloc */
 	complex_new,				/* tp_new */
-	PyObject_Del,           		/* tp_free */
 };
 
 #endif

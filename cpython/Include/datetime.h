@@ -76,13 +76,8 @@ typedef struct
 typedef struct
 {
 	_PyDateTime_TIMEHEAD
-} _PyDateTime_BaseTime;		/* hastzinfo false */
-
-typedef struct
-{
-	_PyDateTime_TIMEHEAD
 	PyObject *tzinfo;
-} PyDateTime_Time;		/* hastzinfo true */
+} PyDateTime_Time;
 
 
 /* All datetime objects are of PyDateTime_DateTimeType, but that can be
@@ -103,13 +98,8 @@ typedef struct
 typedef struct
 {
 	_PyDateTime_DATETIMEHEAD
-} _PyDateTime_BaseDateTime;	/* hastzinfo false */
-
-typedef struct
-{
-	_PyDateTime_DATETIMEHEAD
 	PyObject *tzinfo;
-} PyDateTime_DateTime;		/* hastzinfo true */
+} PyDateTime_DateTime;
 
 
 /* Apply for date and datetime instances. */

@@ -1445,9 +1445,9 @@ s_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
 	PyObject *self;
 
-	assert(type != NULL && type->tp_alloc != NULL);
+	assert(type != NULL);
 
-	self = type->tp_alloc(type, 0);
+	self = PyObject_New(type);
 	if (self != NULL) {
 		PyStructObject *s = (PyStructObject*)self;
 		Py_INCREF(Py_None);
@@ -1484,13 +1484,11 @@ s_init(PyObject *self, PyObject *args, PyObject *kwds)
 static void
 s_dealloc(PyStructObject *s)
 {
-	if (s->weakreflist != NULL)
-		PyObject_ClearWeakRefs((PyObject *)s);
 	if (s->s_codes != NULL) {
 		PyMem_FREE(s->s_codes);
 	}
 	Py_XDECREF(s->s_format);
-	Py_Type(s)->tp_free((PyObject *)s);
+	PyObject_DEL(s);
 }
 
 static PyObject *
@@ -1875,9 +1873,7 @@ PyTypeObject PyStructType = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	s_init,				/* tp_init */
-	PyType_GenericAlloc,/* tp_alloc */
 	s_new,				/* tp_new */
-	PyObject_Del,		/* tp_free */
 };
 
 /* Module initialization */

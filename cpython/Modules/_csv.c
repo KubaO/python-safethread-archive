@@ -317,7 +317,7 @@ static void
 Dialect_dealloc(DialectObj *self)
 {
         Py_XDECREF(self->lineterminator);
-        Py_Type(self)->tp_free((PyObject *)self);
+        PyObject_DEL(self);
 }
 
 static char *dialect_kws[] = {
@@ -382,7 +382,7 @@ dialect_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 			return dialect;
 	}
 
-	self = (DialectObj *)type->tp_alloc(type, 0);
+	self = PyObject_NEW(DialectObj, type);
 	if (self == NULL) {
 		Py_XDECREF(dialect);
 		return NULL;
@@ -504,9 +504,7 @@ static PyTypeObject Dialect_Type = {
 	0,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	0,					/* tp_init */
-	0,					/* tp_alloc */
 	dialect_new,			        /* tp_new */
-	0,                           		/* tp_free */
 };
 
 /*
@@ -827,13 +825,12 @@ err:
 static void
 Reader_dealloc(ReaderObj *self)
 {
-	PyObject_GC_UnTrack(self);
         Py_XDECREF(self->dialect);
         Py_XDECREF(self->input_iter);
         Py_XDECREF(self->fields);
         if (self->field != NULL)
         	PyMem_Free(self->field);
-	PyObject_GC_Del(self);
+	PyObject_DEL(self);
 }
 
 static int
@@ -913,7 +910,7 @@ static PyObject *
 csv_reader(PyObject *module, PyObject *args, PyObject *keyword_args)
 {
 	PyObject * iterator, * dialect = NULL;
-        ReaderObj * self = PyObject_GC_New(ReaderObj, &Reader_Type);
+        ReaderObj * self = PyObject_NEW(ReaderObj, &Reader_Type);
 
         if (!self)
                 return NULL;
@@ -947,7 +944,6 @@ csv_reader(PyObject *module, PyObject *args, PyObject *keyword_args)
                 return NULL;
         }
 
-	PyObject_GC_Track(self);
         return (PyObject *)self;
 }
 
@@ -1258,12 +1254,11 @@ static struct PyMemberDef Writer_memberlist[] = {
 static void
 Writer_dealloc(WriterObj *self)
 {
-	PyObject_GC_UnTrack(self);
         Py_XDECREF(self->dialect);
         Py_XDECREF(self->writeline);
 	if (self->rec != NULL)
 		PyMem_Free(self->rec);
-	PyObject_GC_Del(self);
+	PyObject_DEL(self);
 }
 
 static int
@@ -1328,7 +1323,7 @@ static PyObject *
 csv_writer(PyObject *module, PyObject *args, PyObject *keyword_args)
 {
 	PyObject * output_file, * dialect = NULL;
-        WriterObj * self = PyObject_GC_New(WriterObj, &Writer_Type);
+        WriterObj * self = PyObject_NEW(WriterObj, &Writer_Type);
 
         if (!self)
                 return NULL;
@@ -1357,7 +1352,6 @@ csv_writer(PyObject *module, PyObject *args, PyObject *keyword_args)
                 Py_DECREF(self);
                 return NULL;
         }
-	PyObject_GC_Track(self);
         return (PyObject *)self;
 }
 

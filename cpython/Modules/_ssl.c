@@ -17,11 +17,10 @@
 #ifdef WITH_THREAD
 #include "pythread.h"
 #define PySSL_BEGIN_ALLOW_THREADS { \
-			PyThreadState *_save;  \
-			if (_ssl_locks_count>0) {_save = PyEval_SaveThread();}
-#define PySSL_BLOCK_THREADS	if (_ssl_locks_count>0){PyEval_RestoreThread(_save)};
-#define PySSL_UNBLOCK_THREADS	if (_ssl_locks_count>0){_save = PyEval_SaveThread()};
-#define PySSL_END_ALLOW_THREADS	if (_ssl_locks_count>0){PyEval_RestoreThread(_save);} \
+			if (_ssl_locks_count>0) {PyState_Suspend();}
+#define PySSL_BLOCK_THREADS	if (_ssl_locks_count>0){PyState_Resume();};
+#define PySSL_UNBLOCK_THREADS	if (_ssl_locks_count>0){PyState_Suspend();};
+#define PySSL_END_ALLOW_THREADS	if (_ssl_locks_count>0){PyState_Resume();} \
 		 }
 
 #else	/* no WITH_THREAD */
@@ -269,7 +268,7 @@ newPySSLObject(PySocketSockObject *Sock, char *key_file, char *cert_file,
 	int sockstate;
 	int verification_mode;
 
-	self = PyObject_New(PySSLObject, &PySSL_Type); /* Create new object */
+	self = PyObject_NEW(PySSLObject, &PySSL_Type); /* Create new object */
 	if (self == NULL)
 		return NULL;
 	memset(self->server, '\0', sizeof(char) * X509_NAME_MAXLEN);
@@ -399,9 +398,6 @@ newPySSLObject(PySocketSockObject *Sock, char *key_file, char *cert_file,
 			ret = SSL_accept(self->ssl);
 		err = SSL_get_error(self->ssl, ret);
 		PySSL_END_ALLOW_THREADS
-		if(PyErr_CheckSignals()) {
-			goto fail;
-		}
 		if (err == SSL_ERROR_WANT_READ) {
 			sockstate = check_socket_and_wait_for_timeout(Sock, 0);
 		} else if (err == SSL_ERROR_WANT_WRITE) {
@@ -1062,7 +1058,7 @@ static void PySSL_dealloc(PySSLObject *self)
 	if (self->ctx)
 		SSL_CTX_free(self->ctx);
 	Py_XDECREF(self->Socket);
-	PyObject_Del(self);
+	PyObject_DEL(self);
 }
 
 /* If the socket has a timeout, do a select()/poll() on the socket.
@@ -1164,9 +1160,6 @@ static PyObject *PySSL_SSLwrite(PySSLObject *self, PyObject *args)
 		len = SSL_write(self->ssl, data, count);
 		err = SSL_get_error(self->ssl, len);
 		PySSL_END_ALLOW_THREADS
-		if(PyErr_CheckSignals()) {
-			return NULL;
-		}
 		if (err == SSL_ERROR_WANT_READ) {
 			sockstate =
                             check_socket_and_wait_for_timeout(self->Socket, 0);
@@ -1243,10 +1236,6 @@ static PyObject *PySSL_SSLread(PySSLObject *self, PyObject *args)
 		count = SSL_read(self->ssl, PyBytes_AS_STRING(buf), len);
 		err = SSL_get_error(self->ssl, count);
 		PySSL_END_ALLOW_THREADS
-		if(PyErr_CheckSignals()) {
-			Py_DECREF(buf);
-			return NULL;
-		}
 		if (err == SSL_ERROR_WANT_READ) {
 			sockstate =
 			  check_socket_and_wait_for_timeout(self->Socket, 0);
@@ -1414,9 +1403,15 @@ static PyMethodDef PySSL_methods[] = {
 
 static PyThread_type_lock *_ssl_locks = NULL;
 
+#if OPENSSL_VERSION_NUMBER < 0x0090900fL
 static unsigned long _ssl_thread_id_function (void) {
-	return PyThread_get_thread_ident();
+#if SIZEOF_LONG == SIZEOF_VOID_P
+	return (unsigned long)&errno;
+#else
+#error OpenSSL 0.9.9s API is broken on platforms where sizeof(long) < sizeof(void *)
+#endif
 }
+#endif
 
 static void _ssl_thread_locking_function (int mode, int n, const char *file, int line) {
 	/* this function is needed to perform locking on shared data
@@ -1438,9 +1433,9 @@ static void _ssl_thread_locking_function (int mode, int n, const char *file, int
 		return;
 
 	if (mode & CRYPTO_LOCK) {
-		PyThread_acquire_lock(_ssl_locks[n], 1);
+		PyThread_lock_acquire(_ssl_locks[n]);
 	} else {
-		PyThread_release_lock(_ssl_locks[n]);
+		PyThread_lock_release(_ssl_locks[n]);
 	}
 }
 
@@ -1456,18 +1451,27 @@ static int _setup_ssl_threads(void) {
 			return 0;
 		memset(_ssl_locks, 0, sizeof(PyThread_type_lock) * _ssl_locks_count);
 		for (i = 0;  i < _ssl_locks_count;  i++) {
-			_ssl_locks[i] = PyThread_allocate_lock();
+			_ssl_locks[i] = PyThread_lock_allocate();
 			if (_ssl_locks[i] == NULL) {
 				int j;
 				for (j = 0;  j < i;  j++) {
-					PyThread_free_lock(_ssl_locks[j]);
+					PyThread_lock_free(_ssl_locks[j]);
 				}
 				free(_ssl_locks);
 				return 0;
 			}
 		}
 		CRYPTO_set_locking_callback(_ssl_thread_locking_function);
+		/* OpenSSL's API is broken.  It wants a per-thread
+		 * identifier that fits in a long, but all the normal
+		 * ways of getting one are at least size_t.  OpenSSL
+		 * 0.9.9 claims to add an alternate API that uses a
+		 * void * instead, but the default of &errno should work
+		 * on any platform with functional threading, so we just
+		 * skip it entirely there. */
+#if OPENSSL_VERSION_NUMBER < 0x0090900fL
 		CRYPTO_set_id_callback(_ssl_thread_id_function);
+#endif
 	}
 	return 1;
 }

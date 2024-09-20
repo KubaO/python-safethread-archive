@@ -49,6 +49,72 @@ extern "C" {
    performed on failure (no exception is set, no warning is printed, etc).
 */
 
+#if 1
+PyAPI_FUNC(void) Py_FatalError(const char *message);
+
+/* XXX Must match up with obmalloc.c's size_classes */
+#define PYMALLOC_CACHE_SIZECLASSES 13
+
+#define PYMALLOC_CACHE_COUNT 32
+
+
+PyAPI_FUNC(void *) pymemcache_malloc(size_t);
+PyAPI_FUNC(void *) pymemcache_realloc(void *, size_t);
+PyAPI_FUNC(void) pymemcache_free(void *);
+
+
+/* pymemwrap is just a temporary bodge until the different names are
+ * properly unified. */
+PyAPI_FUNC(void *) _pymemwrap_malloc(const char *, const char *, size_t);
+PyAPI_FUNC(void *) _pymemwrap_realloc(const char *, const char *, void *, size_t);
+PyAPI_FUNC(void) _pymemwrap_free(const char *, const char *, void *);
+
+#define PyMEMWRAP_MALLOC(name, group) \
+static inline void * \
+name(size_t size) \
+{ \
+	return _pymemwrap_malloc(#name, #group, size); \
+}
+
+#define PyMEMWRAP_REALLOC(name, group) \
+static inline void * \
+name(void *oldmem, size_t size) \
+{ \
+	return _pymemwrap_realloc(#name, #group, oldmem, size); \
+}
+
+#define PyMEMWRAP_FREE(name, group) \
+static inline void \
+name(void *mem) \
+{ \
+	_pymemwrap_free(#name, #group, mem); \
+}
+
+PyMEMWRAP_MALLOC(PyMem_Malloc, PyMem_Camel)
+PyMEMWRAP_REALLOC(PyMem_Realloc, PyMem_Camel)
+PyMEMWRAP_FREE(PyMem_Free, PyMem_Camel)
+
+PyMEMWRAP_MALLOC(PyMem_MALLOC, PyMem_UPPER)
+PyMEMWRAP_REALLOC(PyMem_REALLOC, PyMem_UPPER)
+PyMEMWRAP_FREE(PyMem_FREE, PyMem_UPPER)
+
+PyMEMWRAP_MALLOC(PyObject_Malloc, PyObject_Camel)
+PyMEMWRAP_REALLOC(PyObject_Realloc, PyObject_Camel)
+PyMEMWRAP_FREE(PyObject_Free, PyObject_Camel)
+
+PyMEMWRAP_MALLOC(PyObject_MALLOC, PyObject_UPPER)
+PyMEMWRAP_REALLOC(PyObject_REALLOC, PyObject_UPPER)
+PyMEMWRAP_FREE(PyObject_FREE, PyObject_UPPER)
+
+/* PyMem_Del is only used by multibytecodec.c */
+PyMEMWRAP_FREE(PyMem_Del, PyMem_CamelDel)
+PyMEMWRAP_FREE(PyMem_DEL, PyMem_UPPERDEL)
+
+//PyMEMWRAP_FREE(hidden_PyObject_Del, PyObject_CamelDel)
+//PyAPI_FUNC(void) PyObject_Del(void *);
+//PyMEMWRAP_FREE(PyObject_DEL, PyObject_UPPERDEL)
+
+#else
 PyAPI_FUNC(void *) PyMem_Malloc(size_t);
 PyAPI_FUNC(void *) PyMem_Realloc(void *, size_t);
 PyAPI_FUNC(void) PyMem_Free(void *);
@@ -74,6 +140,7 @@ PyAPI_FUNC(void) PyMem_Free(void *);
 #define PyMem_FREE		free
 
 #endif	/* PYMALLOC_DEBUG */
+#endif
 
 /*
  * Type-oriented memory interface
@@ -97,8 +164,8 @@ PyAPI_FUNC(void) PyMem_Free(void *);
 /* PyMem{Del,DEL} are left over from ancient days, and shouldn't be used
  * anymore.  They're just confusing aliases for PyMem_{Free,FREE} now.
  */
-#define PyMem_Del		PyMem_Free
-#define PyMem_DEL		PyMem_FREE
+//#define PyMem_Del		PyMem_Free
+//#define PyMem_DEL		PyMem_FREE
 
 #ifdef __cplusplus
 }
